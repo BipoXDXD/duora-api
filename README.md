@@ -116,13 +116,22 @@ Variáveis obrigatórias (sem elas a aplicação não sobe):
 | `DUORA_AUTH_JWK_SET_URI` | O `jwks_uri` do documento `https://{subdomínio}.ciamlogin.com/{tenant-id}/v2.0/.well-known/openid-configuration` |
 | `DUORA_AUTH_AUDIENCE` | Client id do registro da API no tenant |
 
-Configuração no tenant externo:
+Clientes: app Android (Kotlin) e app desktop (Java), ambos com login pelo navegador do sistema
+(authorization code + PKCE) e o scope `api://{client id da duora-api}/access_as_user`.
 
-1. Registre a aplicação **duora-api**: em *Expose an API*, defina o Application ID URI e um scope.
-2. No manifesto do registro, garanta tokens v2 (`"requestedAccessTokenVersion": 2`).
-3. Em *App roles*, crie o papel com valor `ADMIN` para usuários e atribua-o a quem administra.
-4. Registre o app cliente (mobile ou web) com permissão para o scope da API. O fluxo é
-   authorization code com PKCE.
+O tenant externo `duoraapp` (dados nos Estados Unidos) é configurado por script, que pode ser
+executado de novo sem duplicar nada:
+
+```bash
+az login --tenant d3e03557-0f3b-4474-9586-7ad43938423d --allow-no-subscriptions
+infra/entra/configure-tenant.sh
+```
+
+O script cria ou atualiza os registros `duora-api` (scope `access_as_user`, app role `ADMIN`,
+tokens v2), `duora-android` e `duora-desktop`, dá o consentimento de administrador e liga os dois
+clientes ao fluxo de cadastro e login com e-mail e senha. No fim, imprime as três variáveis da API
+e os client ids. Para dar acesso de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao
+usuário em *Enterprise applications*.
 
 ## Segurança
 

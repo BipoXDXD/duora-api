@@ -51,8 +51,12 @@ servidor de identidade para operar.
 - Rodar localmente com tokens de verdade exige um tenant. Sem ele, só as rotas públicas
   funcionam (`spring-boot:test-run` sobe com valores fictícios).
 - Trocar de provedor depois exige migrar os usuários, mesmo com a API mudando pouco.
-- Um front web deve obter tokens por um backend-for-frontend, sem guardá-los no navegador. Um app
-  iOS com login social precisa oferecer também o login com Apple (regra da App Store).
+- Os clientes são um app Android (Kotlin, MSAL) e um app desktop (Java, MSAL4J), ambos clientes
+  públicos sem segredo, com authorization code + PKCE. Sem front web, não há backend-for-frontend;
+  sem iOS, a exigência da App Store de oferecer login com Apple não se aplica.
+- O tenant (`duoraapp`) guarda os dados nos Estados Unidos: o Brasil ainda não é um país válido
+  para tenant externo, e a escolha não pode ser alterada.
+- A configuração do tenant é código: `infra/entra/configure-tenant.sh`.
 - O `sub` do token passa a ser a identidade do usuário; quando houver perfil no Duora, ele se liga
   a esse `sub`, nunca ao e-mail, que pode mudar.
 
