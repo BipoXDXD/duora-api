@@ -57,6 +57,24 @@ class JoinWaitlistRateLimitFilterTest {
         }
     }
 
+    @Test
+    void limitsRouteWhenAppRunsUnderContextPath() throws Exception {
+        for (int i = 0; i < CAPACITY; i++) {
+            send(requestUnderContextPath(), CLIENT_A);
+        }
+
+        var rejected = send(requestUnderContextPath(), CLIENT_A);
+
+        assertThat(rejected.response.getStatus()).isEqualTo(429);
+    }
+
+    private static MockHttpServletRequest requestUnderContextPath() {
+        var request = new MockHttpServletRequest("POST", "/duora" + JoinWaitlistRateLimitFilter.PATH);
+        request.setContextPath("/duora");
+        request.setServletPath(JoinWaitlistRateLimitFilter.PATH);
+        return request;
+    }
+
     private Outcome join(String clientIp) throws Exception {
         return send(new MockHttpServletRequest("POST", JoinWaitlistRateLimitFilter.PATH), clientIp);
     }

@@ -9,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -81,6 +83,31 @@ class JoinWaitlistIT {
 
         assertThat(repository.count()).isEqualTo(CAPACITY);
         assertThat(repository.findByEmail("one-too-many@example.com")).isEmpty();
+    }
+
+    /** Nenhuma grafia alternativa da rota pode chegar ao controller sem passar pelo limite. */
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/waitlist/", "/api//waitlist", "/api/waitlist;x=1", "/API/waitlist",
+            "/api/./waitlist", "/api/x/../waitlist", "/api/waitlist%2F", "/api/%77aitlist"})
+    void alternativeSpellingsOfRouteDoNotBypassRateLimit(String path) throws Exception {
+        var clientIp = "198.51.100.4";
+        for (int i = 0; i < CAPACITY; i++) {
+            join("spelling" + i + "@example.com", clientIp);
+        }
+
+        var status = mockMvc.perform(post(path)
+                        .with(request -> {
+                            request.setRemoteAddr(clientIp);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email": "bypass@example.com"}
+                                """))
+                .andReturn().getResponse().getStatus();
+
+        assertThat(status).as("status para %s", path).isNotEqualTo(202);
+        assertThat(repository.findByEmail("bypass@example.com")).isEmpty();
     }
 
     private ResultActions join(String email, String clientIp) throws Exception {

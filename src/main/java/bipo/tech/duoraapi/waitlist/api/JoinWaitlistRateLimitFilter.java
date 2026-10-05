@@ -12,6 +12,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.github.benmanes.caffeine.cache.Cache;
@@ -27,6 +29,10 @@ import io.github.bucket4j.Bucket;
 class JoinWaitlistRateLimitFilter extends OncePerRequestFilter {
 
     static final String PATH = "/api/waitlist";
+
+    /** Mesmo matcher das regras de autorização: casa como o MVC roteia, descontando o context path. */
+    private static final RequestMatcher JOIN_REQUEST =
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, PATH);
 
     /** Teto de IPs acompanhados ao mesmo tempo, para a memória não crescer sob ataque distribuído. */
     private static final long MAX_TRACKED_CLIENTS = 100_000;
@@ -49,7 +55,7 @@ class JoinWaitlistRateLimitFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !(HttpMethod.POST.matches(request.getMethod()) && PATH.equals(request.getRequestURI()));
+        return !JOIN_REQUEST.matches(request);
     }
 
     @Override
