@@ -1,10 +1,8 @@
 package bipo.tech.duoraapi.config;
 
-import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.io.IOException;
@@ -105,14 +103,6 @@ class BearerTokenValidationTest {
                 .andExpect(content().string(""));
     }
 
-    @Test
-    void rejectsRequestWithoutToken() throws Exception {
-        mockMvc.perform(get(ADMIN_ONLY_PATH))
-                .andExpect(status().isUnauthorized())
-                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, startsWith("Bearer")))
-                .andExpect(content().string(""));
-    }
-
     @ParameterizedTest
     @MethodSource("invalidTokens")
     void rejectsInvalidToken(String token) throws Exception {
@@ -135,6 +125,7 @@ class BearerTokenValidationTest {
                 Named.of("issuer de outro tenant", signed(adminClaims()
                         .issuer("https://other-tenant.ciamlogin.example/other-tenant/v2.0").build())),
                 Named.of("sem expiração", signed(adminClaims().expirationTime(null).build())),
+                Named.of("sem oid (identidade do usuário)", signed(adminClaims().claim("oid", null).build())),
                 Named.of("assinado por outra chave com o mesmo kid", signedWith(FOREIGN_KEY, adminClaims().build())),
                 Named.of("payload adulterado", tamperedToAdmin()),
                 Named.of("alg none", new PlainJWT(adminClaims().build()).serialize()),
@@ -148,7 +139,8 @@ class BearerTokenValidationTest {
         return new JWTClaimsSet.Builder()
                 .issuer(ISSUER)
                 .audience(AUDIENCE)
-                .subject("user-object-id")
+                .subject("pairwise-subject-for-the-api")
+                .claim("oid", "user-object-id")
                 .issueTime(Date.from(now.minus(Duration.ofMinutes(1))))
                 .expirationTime(Date.from(now.plus(Duration.ofMinutes(10))));
     }

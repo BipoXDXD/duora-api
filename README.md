@@ -17,10 +17,11 @@ O Maven vem pelo wrapper (`./mvnw`); não é preciso instalá-lo.
 
 ## Rodando localmente
 
-A API exige a configuração de autenticação (veja [Autenticação](#autenticação)). Com as
-variáveis definidas:
+A API exige a configuração de autenticação (veja [Autenticação](#autenticação)). O script do
+tenant grava as variáveis em `~/.config/duora/dev.env`:
 
 ```bash
+set -a; source ~/.config/duora/dev.env; set +a
 ./mvnw spring-boot:run
 ```
 
@@ -61,6 +62,7 @@ Os testes de integração usam PostgreSQL real (Testcontainers com `@ServiceConn
 | `@WebMvcTest` | `waitlist/api/WaitlistControllerTest` |
 | Spring Security (401/403) | `waitlist/api/WaitlistSecurityTest` |
 | Validação de JWT (tokens reais, JWKS local) | `config/BearerTokenValidationTest` |
+| Login web (BFF): sessão, cookie, CSRF, logout | `config/WebLoginIT` |
 | Subida sem configuração obrigatória | `config/RequiredAuthenticationSettingsIT` |
 | `@DataJpaTest` + PostgreSQL | `waitlist/domain/WaitlistEntryRepositoryIT` |
 | `@SpringBootTest` completo | `waitlist/JoinWaitlistIT` |
@@ -104,20 +106,40 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 
 ## Autenticação
 
-O login é feito pelo **Microsoft Entra External ID**. A API só valida o bearer token (JWT) de
-cada requisição: assinatura `RS256`, issuer, audience e expiração. A decisão e as alternativas
-estão em [ADR 0001](docs/adr/0001-autenticacao-entra-external-id.md).
+O login é feito pelo **Microsoft Entra External ID**, e a API tem duas portas de entrada com as
+mesmas regras de rota:
 
-Variáveis obrigatórias (sem elas a aplicação não sobe):
+- **Front web (BFF):** o próprio Spring faz o login no Entra e o navegador só recebe o cookie de
+  sessão `__Host-DUORA_SESSION` (`HttpOnly`, `Secure`, `SameSite=Lax`). Mutações exigem o token
+  CSRF do cookie `XSRF-TOKEN`, devolvido no header `X-XSRF-TOKEN`. A sessão fica no PostgreSQL.
+- **Bearer:** requisições com `Authorization: Bearer <JWT>`, para o futuro app Android e chamadas
+  máquina a máquina. A API valida assinatura `RS256`, issuer, audience, expiração e `oid`.
+
+A identidade do usuário é a claim `oid`; os papéis vêm da claim `roles` do access token da API.
+Decisões e alternativas: [ADR 0001](docs/adr/0001-autenticacao-entra-external-id.md) e
+[ADR 0002](docs/adr/0002-front-web-com-bff.md).
+
+Para o front (repositório `duora-web`):
+
+| Ação | Como |
+|---|---|
+| Entrar | Navegar para `/oauth2/authorization/entra`; após o login, volta para `/` |
+| Sair | `POST /logout` com o header `X-XSRF-TOKEN`; o navegador segue para o logout do Entra |
+| Saber se está logado | Uma rota da API responde `401` sem sessão |
+
+Em desenvolvimento, o Vite faz proxy da API, para front e API ficarem na mesma origem
+(`http://localhost:5173`).
+
+Variáveis obrigatórias (sem elas, ou com elas em branco, a aplicação não sobe):
 
 | Variável | Valor |
 |---|---|
 | `DUORA_AUTH_ISSUER_URI` | `https://{tenant-id}.ciamlogin.com/{tenant-id}/v2.0` |
-| `DUORA_AUTH_JWK_SET_URI` | O `jwks_uri` do documento `https://{subdomínio}.ciamlogin.com/{tenant-id}/v2.0/.well-known/openid-configuration` |
-| `DUORA_AUTH_AUDIENCE` | Client id do registro da API no tenant |
-
-Clientes: app Android (Kotlin) e app desktop (Java), ambos com login pelo navegador do sistema
-(authorization code + PKCE) e o scope `api://{client id da duora-api}/access_as_user`.
+| `DUORA_AUTH_AUTHORITY` | `https://{subdomínio}.ciamlogin.com/{tenant-id}` |
+| `DUORA_AUTH_JWK_SET_URI` | `{authority}/discovery/v2.0/keys` |
+| `DUORA_AUTH_AUDIENCE` | Client id do registro `duora-api` |
+| `DUORA_AUTH_WEB_CLIENT_ID` | Client id do registro `duora-web` |
+| `DUORA_AUTH_WEB_CLIENT_SECRET` | Segredo do registro `duora-web` (nunca no repositório) |
 
 O tenant externo `duoraapp` (dados nos Estados Unidos) é configurado por script, que pode ser
 executado de novo sem duplicar nada:
@@ -128,15 +150,16 @@ infra/entra/configure-tenant.sh
 ```
 
 O script cria ou atualiza os registros `duora-api` (scope `access_as_user`, app role `ADMIN`,
-tokens v2), `duora-android` e `duora-desktop`, dá o consentimento de administrador e liga os dois
-clientes ao fluxo de cadastro e login com e-mail e senha. No fim, imprime as três variáveis da API
-e os client ids. Para dar acesso de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao
-usuário em *Enterprise applications*.
+tokens v2), `duora-web` (cliente confidencial do BFF) e `duora-android`, dá o consentimento de
+administrador, liga os clientes ao fluxo de cadastro e login com e-mail e senha e remove registros
+obsoletos. As variáveis vão para `~/.config/duora/dev.env` (permissão 600); o segredo do
+`duora-web` é criado só se ainda não estiver lá, vale 180 dias e nunca é exibido. Para dar acesso
+de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *Enterprise applications*.
 
 ## Segurança
 
-- **Negado por padrão:** toda rota exige token válido, exceto a allowlist em `SecurityConfiguration`.
-  Sem token ou com token inválido, `401`; sem o papel necessário, `403`.
+- **Negado por padrão:** toda rota exige sessão ou token válido, exceto a allowlist em
+  `SecurityConfiguration`. Sem credencial válida, `401`; sem o papel necessário, `403`.
 - **Waitlist sem vazamento:** o `POST` responde igual para e-mail novo ou já inscrito.
 - **Rate limit:** 10 inscrições por IP por hora (`duora.waitlist.join-rate-limit.*`), com `429` e
   `Retry-After` acima disso. O limite vale por instância e usa o IP da conexão; atrás de proxy, é

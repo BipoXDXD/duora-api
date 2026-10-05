@@ -1,6 +1,6 @@
 # 0001. Autenticação com Microsoft Entra External ID e API como OAuth2 Resource Server
 
-- **Status:** Aceita
+- **Status:** Aceita; complementada e corrigida pela [ADR 0002](0002-front-web-com-bff.md)
 - **Data:** 2026-10-05
 
 ## Contexto

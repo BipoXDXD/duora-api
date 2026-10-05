@@ -9,6 +9,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.SpringApplication;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -25,7 +26,10 @@ class RequiredAuthenticationSettingsIT {
     private static final Map<String, String> SETTINGS = Map.of(
             "DUORA_AUTH_ISSUER_URI", "https://tenant-id.ciamlogin.example/tenant-id/v2.0",
             "DUORA_AUTH_JWK_SET_URI", "https://tenant.ciamlogin.example/tenant-id/discovery/v2.0/keys",
-            "DUORA_AUTH_AUDIENCE", "duora-api-client-id");
+            "DUORA_AUTH_AUDIENCE", "duora-api-client-id",
+            "DUORA_AUTH_AUTHORITY", "https://tenant.ciamlogin.example/tenant-id",
+            "DUORA_AUTH_WEB_CLIENT_ID", "duora-web-client-id",
+            "DUORA_AUTH_WEB_CLIENT_SECRET", "not-a-real-secret");
 
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(TestcontainersConfiguration.POSTGRES_IMAGE);
 
@@ -40,7 +44,8 @@ class RequiredAuthenticationSettingsIT {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"DUORA_AUTH_ISSUER_URI", "DUORA_AUTH_JWK_SET_URI", "DUORA_AUTH_AUDIENCE"})
+    @ValueSource(strings = {"DUORA_AUTH_ISSUER_URI", "DUORA_AUTH_JWK_SET_URI", "DUORA_AUTH_AUDIENCE",
+            "DUORA_AUTH_AUTHORITY", "DUORA_AUTH_WEB_CLIENT_ID", "DUORA_AUTH_WEB_CLIENT_SECRET"})
     void applicationRefusesToStartWithoutSetting(String missing) {
         assumeThat(System.getenv(missing))
                 .as("o teste simula o ambiente sem a variável")
@@ -52,15 +57,17 @@ class RequiredAuthenticationSettingsIT {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"", " "})
-    void applicationRefusesToStartWithBlankAudience(String audience) {
+    @CsvSource({
+            "DUORA_AUTH_AUDIENCE, ''", "DUORA_AUTH_AUDIENCE, ' '",
+            "DUORA_AUTH_AUTHORITY, ''", "DUORA_AUTH_WEB_CLIENT_ID, ''", "DUORA_AUTH_WEB_CLIENT_SECRET, ' '"})
+    void applicationRefusesToStartWithBlankSetting(String setting, String blank) {
         var arguments = Stream.concat(
-                Stream.of(argumentsWithout("DUORA_AUTH_AUDIENCE")),
-                Stream.of("--DUORA_AUTH_AUDIENCE=" + audience)).toArray(String[]::new);
+                Stream.of(argumentsWithout(setting)),
+                Stream.of("--" + setting + "=" + blank)).toArray(String[]::new);
 
         assertThatThrownBy(() -> SpringApplication.run(DuoraApiApplication.class, arguments))
                 .rootCause()
-                .hasMessageContaining("DUORA_AUTH_AUDIENCE");
+                .hasMessageContaining(setting);
     }
 
     private static String[] argumentsWithout(String missing) {
