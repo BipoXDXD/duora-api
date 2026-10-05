@@ -82,7 +82,7 @@ No CI, o relatório completo fica como artefato `jacoco-report`.
 
 ## Estrutura
 
-Pacotes por feature, cada uma dividida em camadas:
+Pacotes por módulo, cada um dividido em camadas:
 
 ```
 bipo.tech.duoraapi
@@ -93,7 +93,10 @@ bipo.tech.duoraapi
     └── domain/          # entidade, value objects, repositório
 ```
 
-Os testes espelham a mesma estrutura. O `ArchitectureTest` garante que `domain` não dependa de `api`.
+Os testes espelham a mesma estrutura. Módulos de apoio (como a waitlist) usam essas camadas
+simples; os do core (pareamento, minijogos, conexões, moderação) vão usar ports & adapters, com
+domínio sem framework. O `ArchitectureTest` cobra a classificação e a direção das dependências
+([ADR 0007](docs/adr/0007-estilo-por-modulo.md)).
 
 As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida o schema
 (`ddl-auto=validate`); quem o cria e altera é o Flyway.
