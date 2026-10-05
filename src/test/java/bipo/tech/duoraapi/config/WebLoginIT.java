@@ -110,6 +110,16 @@ class WebLoginIT {
         assertThat(sessionCookieOf(callback).getValue()).isNotEqualTo(start.session().getValue());
     }
 
+    /** Sem offline_access o Entra não emite refresh token: não há o que vazar da sessão (docs/adr/0010). */
+    @Test
+    void loginRequestsNoRefreshToken() throws Exception {
+        var redirect = mockMvc.perform(get(WebLoginConfiguration.LOGIN_PATH)).andReturn();
+
+        var authorize = UriComponentsBuilder.fromUriString(redirect.getResponse().getRedirectedUrl()).build();
+        var scopes = List.of(queryParam(authorize, "scope").split(" "));
+        assertThat(scopes).containsExactlyInAnyOrder("openid", "profile", "api://" + API_AUDIENCE + "/access_as_user");
+    }
+
     @Test
     void loggedInAdminReadsStatsWithSessionCookie() throws Exception {
         var session = logIn();

@@ -173,6 +173,21 @@ obsoletos. As variáveis vão para `~/.config/duora/dev.env` (permissão 600); o
 `duora-web` é criado só se ainda não estiver lá, vale 180 dias e nunca é exibido. Para dar acesso
 de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *Enterprise applications*.
 
+## Decisões de arquitetura
+
+| ADR | Decisão |
+|---|---|
+| [0001](docs/adr/0001-autenticacao-entra-external-id.md) | Entra External ID; API como resource server |
+| [0002](docs/adr/0002-front-web-com-bff.md) | Front web com BFF no Spring |
+| [0003](docs/adr/0003-estilo-de-testes.md) | Testes no estilo Khorikov: domínio sem mocks, banco real |
+| [0004](docs/adr/0004-identificadores-e-unicidade.md) | UUIDv7 como PK e id público; `NULLS NOT DISTINCT` |
+| [0005](docs/adr/0005-contrato-da-api.md) | Contrato: `POST /x/{id}:verbo`, 409/412, `Idempotency-Key`, `ProblemDetail` |
+| [0006](docs/adr/0006-rate-limit-no-postgresql.md) | Rate limit com estado no PostgreSQL |
+| [0007](docs/adr/0007-estilo-por-modulo.md) | Ports & adapters no core, camadas simples no supporting |
+| [0008](docs/adr/0008-imagem-e-let-it-crash.md) | Dockerfile multi-stage; queda só em estado irrecuperável |
+| [0009](docs/adr/0009-outbox-e-eventos.md) | Outbox próprio, eventos por chave, partição por limiar |
+| [0010](docs/adr/0010-sem-refresh-token.md) | Login web sem refresh token |
+
 ## Segurança
 
 - **Negado por padrão:** toda rota exige sessão ou token válido, exceto a allowlist em
