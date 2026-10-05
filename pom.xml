@@ -41,10 +41,10 @@
             <artifactId>spring-boot-starter-webmvc</artifactId>
         </dependency>
 
-        <!-- Segurança -->
+        <!-- Segurança: a API valida JWT emitido pelo Entra External ID (ADR 0001) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-security</artifactId>
+            <artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
         </dependency>
 
         <!-- JPA / Hibernate -->
@@ -129,10 +129,10 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- spring-security-test: @WithMockUser, SecurityMockMvcRequestPostProcessors -->
+        <!-- spring-security-test (jwt() do MockMvc) e o slice do resource server -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-security-test</artifactId>
+            <artifactId>spring-boot-starter-security-oauth2-resource-server-test</artifactId>
             <scope>test</scope>
         </dependency>
 

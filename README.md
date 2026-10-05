@@ -17,6 +17,9 @@ O Maven vem pelo wrapper (`./mvnw`); não é preciso instalá-lo.
 
 ## Rodando localmente
 
+A API exige a configuração de autenticação (veja [Autenticação](#autenticação)). Com as
+variáveis definidas:
+
 ```bash
 ./mvnw spring-boot:run
 ```
@@ -25,12 +28,16 @@ Sobe a aplicação em `http://localhost:8080` e, junto, o PostgreSQL do `compose
 Docker Compose do Spring Boot). Os dados ficam entre execuções: ao parar a aplicação o container
 é só parado. O Flyway aplica as migrations na subida.
 
-Para começar de um banco limpo, há duas opções:
+Sem tenant configurado, use:
 
 ```bash
-docker compose down -v       # apaga container e volume do compose; o próximo spring-boot:run recria
-./mvnw spring-boot:test-run  # usa um PostgreSQL descartável via Testcontainers, sem tocar no do compose
+./mvnw spring-boot:test-run
 ```
+
+Sobe com um PostgreSQL descartável via Testcontainers e valores fictícios de autenticação: as
+rotas públicas funcionam, as protegidas respondem `401` a requisições sem token.
+
+Para apagar o banco do compose: `docker compose down -v`.
 
 ```bash
 curl -i -X POST localhost:8080/api/waitlist \
@@ -53,6 +60,8 @@ Os testes de integração usam PostgreSQL real (Testcontainers com `@ServiceConn
 | Mockito | `waitlist/application/WaitlistServiceTest` |
 | `@WebMvcTest` | `waitlist/api/WaitlistControllerTest` |
 | Spring Security (401/403) | `waitlist/api/WaitlistSecurityTest` |
+| Validação de JWT (tokens reais, JWKS local) | `config/BearerTokenValidationTest` |
+| Subida sem configuração obrigatória | `config/RequiredAuthenticationSettingsIT` |
 | `@DataJpaTest` + PostgreSQL | `waitlist/domain/WaitlistEntryRepositoryIT` |
 | `@SpringBootTest` completo | `waitlist/JoinWaitlistIT` |
 | Migrations Flyway | `FlywayMigrationIT` |
@@ -93,10 +102,32 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 | `GET` | `/api/admin/waitlist/stats` | `ADMIN` | `200` com `{"total": n}` |
 | `GET` | `/actuator/health` | Público | Estado da aplicação |
 
+## Autenticação
+
+O login é feito pelo **Microsoft Entra External ID**. A API só valida o bearer token (JWT) de
+cada requisição: assinatura `RS256`, issuer, audience e expiração. A decisão e as alternativas
+estão em [ADR 0001](docs/adr/0001-autenticacao-entra-external-id.md).
+
+Variáveis obrigatórias (sem elas a aplicação não sobe):
+
+| Variável | Valor |
+|---|---|
+| `DUORA_AUTH_ISSUER_URI` | `https://{tenant-id}.ciamlogin.com/{tenant-id}/v2.0` |
+| `DUORA_AUTH_JWK_SET_URI` | O `jwks_uri` do documento `https://{subdomínio}.ciamlogin.com/{tenant-id}/v2.0/.well-known/openid-configuration` |
+| `DUORA_AUTH_AUDIENCE` | Client id do registro da API no tenant |
+
+Configuração no tenant externo:
+
+1. Registre a aplicação **duora-api**: em *Expose an API*, defina o Application ID URI e um scope.
+2. No manifesto do registro, garanta tokens v2 (`"requestedAccessTokenVersion": 2`).
+3. Em *App roles*, crie o papel com valor `ADMIN` para usuários e atribua-o a quem administra.
+4. Registre o app cliente (mobile ou web) com permissão para o scope da API. O fluxo é
+   authorization code com PKCE.
+
 ## Segurança
 
-- **Negado por padrão:** toda rota exige autenticação, exceto a allowlist em `SecurityConfiguration`.
-  Sem credencial, `401`; sem o papel necessário, `403`. O mecanismo de login ainda não foi escolhido.
+- **Negado por padrão:** toda rota exige token válido, exceto a allowlist em `SecurityConfiguration`.
+  Sem token ou com token inválido, `401`; sem o papel necessário, `403`.
 - **Waitlist sem vazamento:** o `POST` responde igual para e-mail novo ou já inscrito.
 - **Rate limit:** 10 inscrições por IP por hora (`duora.waitlist.join-rate-limit.*`), com `429` e
   `Retry-After` acima disso. O limite vale por instância e usa o IP da conexão; atrás de proxy, é

@@ -2,6 +2,7 @@ package bipo.tech.duoraapi.waitlist.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -12,7 +13,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -43,19 +44,17 @@ class WaitlistSecurityTest {
     }
 
     @Test
-    @WithMockUser(roles = "USER")
     void regularUserCannotReadStats() throws Exception {
-        mockMvc.perform(get(STATS_PATH))
+        mockMvc.perform(get(STATS_PATH).with(jwt()))
                 .andExpect(status().isForbidden())
                 .andExpect(content().string(""));
     }
 
     @Test
-    @WithMockUser(roles = "ADMIN")
     void adminReadsStats() throws Exception {
         given(waitlistService.countEntries()).willReturn(3L);
 
-        mockMvc.perform(get(STATS_PATH))
+        mockMvc.perform(get(STATS_PATH).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
                 .andExpect(status().isOk())
                 .andExpect(content().json("""
                         {"total": 3}
