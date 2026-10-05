@@ -2,12 +2,13 @@ package bipo.tech.duoraapi.waitlist.domain;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.Repository;
 
-public interface WaitlistEntryRepository extends Repository<WaitlistEntry, Long> {
+public interface WaitlistEntryRepository extends Repository<WaitlistEntry, UUID> {
 
     /** Atômico e idempotente: a constraint UNIQUE decide, sem "consultar e depois inserir". */
     @Modifying
