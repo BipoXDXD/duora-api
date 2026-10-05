@@ -165,7 +165,7 @@ Antes do piloto, revisar finalidades, bases legais, operadores, transferências 
 
 | Camada | Ferramentas e cenários |
 |---|---|
-| Unidade backend | [JUnit Jupiter, AssertJ e Mockito](https://docs.spring.io/spring-boot/reference/testing/index.html): elegibilidade, transições, bloqueios e decisões. TDD nas regras críticas, sem obrigação para cada linha. |
+| Unidade backend | [JUnit Jupiter e AssertJ](https://docs.spring.io/spring-boot/reference/testing/index.html), sem mocks no domínio: elegibilidade, transições, bloqueios e decisões. TDD nas regras críticas, sem obrigação para cada linha. Mockito só para fornecedores externos ([ADR 0003](adr/0003-estilo-de-testes.md)). |
 | Integração | [Testcontainers + PostgreSQL real](https://testcontainers.com/guides/testing-spring-boot-rest-api-using-testcontainers/), Spring Security Test e MockMvc: migrações, transações, autorização e idempotência. Simular fornecedores externos. |
 | Frontend | [Vitest](https://vitest.dev/guide/), [Testing Library](https://testing-library.com/docs/react-testing-library/intro/) e [MSW](https://mswjs.io/docs/): formulários, erros, reconexão e acessibilidade. |
 | Ponta a ponta | [Playwright](https://playwright.dev/docs/intro): dois contextos de navegador completam encontro e interesse mútuo; terceiro usuário tenta acessar sala indevida. Incluir teclado, celular e revisão manual com leitor de tela. |

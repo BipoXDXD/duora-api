@@ -34,6 +34,8 @@ class JoinWaitlistIT {
     private static final String CLIENT_A = "198.51.100.1";
     private static final String CLIENT_B = "198.51.100.2";
     private static final String CLIENT_C = "198.51.100.3";
+    private static final String CLIENT_D = "198.51.100.5";
+    private static final String CLIENT_E = "198.51.100.6";
     private static final int CAPACITY = 10;
 
     @Autowired
@@ -57,6 +59,31 @@ class JoinWaitlistIT {
 
         assertThat(repository.count()).isEqualTo(1);
         assertThat(repository.findByEmail("ana@example.com")).isPresent();
+    }
+
+    @Test
+    void joiningWithMalformedEmailIsRejectedWithoutWriting() throws Exception {
+        join("not-an-email", CLIENT_D)
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+
+        assertThat(repository.count()).isZero();
+    }
+
+    @Test
+    void joiningWithUnknownFieldIsRejectedWithoutWriting() throws Exception {
+        mockMvc.perform(post("/api/waitlist")
+                        .with(request -> {
+                            request.setRemoteAddr(CLIENT_E);
+                            return request;
+                        })
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email": "ana@example.com", "joinedAt": "2020-01-01T00:00:00Z"}
+                                """))
+                .andExpect(status().isBadRequest());
+
+        assertThat(repository.count()).isZero();
     }
 
     @Test

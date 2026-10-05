@@ -50,22 +50,24 @@ curl -i -X POST localhost:8080/api/waitlist \
 
 | Comando | O que roda | Precisa de Docker |
 |---|---|---|
-| `./mvnw test` | Testes rápidos (`*Test`): unitários, Mockito, `@WebMvcTest`, segurança, ArchUnit | Não |
-| `./mvnw verify` | Os rápidos + integração (`*IT`): `@DataJpaTest`, `@SpringBootTest`, migrations Flyway | Sim |
+| `./mvnw test` | Testes rápidos (`*Test`): domínio puro e ArchUnit | Não |
+| `./mvnw verify` | Os rápidos + integração (`*IT`): `@SpringBootTest`, `@DataJpaTest`, migrations Flyway | Sim |
 
-Os testes de integração usam PostgreSQL real (Testcontainers com `@ServiceConnection`), nunca H2.
+Os testes seguem o estilo de Khorikov ([ADR 0003](docs/adr/0003-estilo-de-testes.md)): o domínio é
+testado sem mocks; o banco próprio é sempre real (Testcontainers com `@ServiceConnection`, nunca
+H2); controllers e segurança passam por `@SpringBootTest` + MockMvc com os serviços de verdade.
+Mockito (`@MockitoBean`) só entra para dependências externas que a API não controla, como o Entra,
+o Web PubSub ou um serviço de e-mail.
 
 | Tipo | Exemplo |
 |---|---|
 | Unitário puro (JUnit + AssertJ) | `waitlist/domain/EmailAddressTest` |
-| Mockito | `waitlist/application/WaitlistServiceTest` |
-| `@WebMvcTest` | `waitlist/api/WaitlistControllerTest` |
-| Spring Security (401/403) | `waitlist/api/WaitlistSecurityTest` |
-| Validação de JWT (tokens reais, JWKS local) | `config/BearerTokenValidationTest` |
+| `@SpringBootTest` + MockMvc, ponta a ponta | `waitlist/JoinWaitlistIT` |
+| Spring Security (401/403) | `waitlist/WaitlistSecurityIT` |
+| Validação de JWT (tokens reais, JWKS local) | `config/BearerTokenValidationIT` |
 | Login web (BFF): sessão, cookie, CSRF, logout | `config/WebLoginIT` |
 | Subida sem configuração obrigatória | `config/RequiredAuthenticationSettingsIT` |
 | `@DataJpaTest` + PostgreSQL | `waitlist/domain/WaitlistEntryRepositoryIT` |
-| `@SpringBootTest` completo | `waitlist/JoinWaitlistIT` |
 | Migrations Flyway | `FlywayMigrationIT` |
 | Regras de arquitetura (ArchUnit) | `ArchitectureTest` |
 

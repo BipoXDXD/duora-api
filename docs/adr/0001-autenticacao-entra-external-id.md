@@ -64,10 +64,10 @@ servidor de identidade para operar.
 
 | Ameaça (STRIDE) | Mitigação | Teste |
 |---|---|---|
-| Spoofing: token forjado, `alg:none`/`nonE`, HS256 assinado com a chave pública, outra chave com o mesmo `kid` | Assinatura obrigatória e só `RS256` | `BearerTokenValidationTest.rejectsInvalidToken` |
-| Spoofing: token de outro tenant ou emitido para outro app (ID token do front) | Validação de `iss` e `aud` | `BearerTokenValidationTest.rejectsInvalidToken` |
-| Spoofing: token expirado ou sem expiração | Validação de `exp`, que passa a ser obrigatória | `BearerTokenValidationTest.rejectsInvalidToken` |
-| Tampering: payload alterado para ganhar `ADMIN` | Assinatura cobre o payload | `BearerTokenValidationTest.rejectsInvalidToken` |
-| Elevation of privilege: usuário comum em rota de admin | `hasRole("ADMIN")` a partir da claim `roles` | `BearerTokenValidationTest.forbidsValidTokenWithoutAdminRole`, `WaitlistSecurityTest` |
-| Elevation of privilege: rota esquecida fica pública | Negar por padrão, com allowlist explícita | `WaitlistSecurityTest.anonymousIsRejectedOnRoutesOutsideAllowlist` |
+| Spoofing: token forjado, `alg:none`/`nonE`, HS256 assinado com a chave pública, outra chave com o mesmo `kid` | Assinatura obrigatória e só `RS256` | `BearerTokenValidationIT.rejectsInvalidToken` |
+| Spoofing: token de outro tenant ou emitido para outro app (ID token do front) | Validação de `iss` e `aud` | `BearerTokenValidationIT.rejectsInvalidToken` |
+| Spoofing: token expirado ou sem expiração | Validação de `exp`, que passa a ser obrigatória | `BearerTokenValidationIT.rejectsInvalidToken` |
+| Tampering: payload alterado para ganhar `ADMIN` | Assinatura cobre o payload | `BearerTokenValidationIT.rejectsInvalidToken` |
+| Elevation of privilege: usuário comum em rota de admin | `hasRole("ADMIN")` a partir da claim `roles` | `BearerTokenValidationIT.forbidsValidTokenWithoutAdminRole`, `WaitlistSecurityIT` |
+| Elevation of privilege: rota esquecida fica pública | Negar por padrão, com allowlist explícita | `WaitlistSecurityIT.anonymousIsRejectedOnRoutesOutsideAllowlist` |
 | Configuração ausente deixa a API subir sem validar | A subida falha sem as variáveis ou com audience vazia | `RequiredAuthenticationSettingsIT` |
