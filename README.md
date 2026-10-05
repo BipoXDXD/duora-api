@@ -46,6 +46,18 @@ curl -i -X POST localhost:8080/api/waitlist \
   -d '{"email": "ana@example.com"}'
 ```
 
+## Imagem Docker
+
+```bash
+docker build -t duora-api:local .
+infra/docker/smoke-test.sh duora-api:local
+```
+
+O `Dockerfile` compila com o JDK e roda só com o JRE, em camadas, como usuário sem privilégios; as
+imagens base são fixadas por digest. O smoke test sobe a imagem com um PostgreSQL descartável e
+confere health, usuário e encerramento por SIGTERM. O CI faz os dois a cada push
+([ADR 0008](docs/adr/0008-imagem-e-let-it-crash.md)).
+
 ## Testes
 
 | Comando | O que roda | Precisa de Docker |

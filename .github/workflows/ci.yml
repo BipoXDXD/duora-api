@@ -48,6 +48,20 @@ jobs:
             target/surefire-reports/
             target/failsafe-reports/
 
+  image:
+    name: Imagem Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Os testes ficam no job de build; aqui só se confere que a imagem sobe e se comporta.
+      - name: Build
+        run: docker build --tag duora-api:${{ github.sha }} .
+
+      - name: Smoke test
+        run: infra/docker/smoke-test.sh duora-api:${{ github.sha }}
+
   secrets:
     name: Varredura de segredos
     runs-on: ubuntu-latest

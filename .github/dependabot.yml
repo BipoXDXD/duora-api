@@ -1,0 +1,7 @@
+version: 2
+updates:
+  # As imagens base do Dockerfile são fixadas por digest (docs/adr/0008); o Dependabot propõe o novo.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
