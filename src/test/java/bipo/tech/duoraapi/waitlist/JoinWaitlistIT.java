@@ -30,7 +30,7 @@ import bipo.tech.duoraapi.waitlist.domain.WaitlistEntryRepository;
 @Import(TestcontainersConfiguration.class)
 class JoinWaitlistIT {
 
-    /** Cada teste usa o próprio IP: o filtro de rate limit sobrevive entre testes no contexto em cache. */
+    /** Cada teste usa o próprio IP: um teste que esgota o limite não afeta os outros. */
     private static final String CLIENT_A = "198.51.100.1";
     private static final String CLIENT_B = "198.51.100.2";
     private static final String CLIENT_C = "198.51.100.3";
@@ -50,6 +50,7 @@ class JoinWaitlistIT {
     @BeforeEach
     void cleanDatabase() {
         jdbcClient.sql("delete from waitlist_entry").update();
+        jdbcClient.sql("delete from rate_limit_bucket").update();
     }
 
     @Test

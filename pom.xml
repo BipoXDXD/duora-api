@@ -90,15 +90,11 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
-        <!-- Rate limit: token bucket (Bucket4j) com buckets por cliente em cache limitado (Caffeine) -->
+        <!-- Rate limit: token bucket (Bucket4j) com o estado no PostgreSQL, compartilhado entre réplicas (ADR 0006) -->
         <dependency>
             <groupId>com.bucket4j</groupId>
-            <artifactId>bucket4j_jdk17-core</artifactId>
+            <artifactId>bucket4j_jdk17-postgresql</artifactId>
             <version>${bucket4j.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.ben-manes.caffeine</groupId>
-            <artifactId>caffeine</artifactId>
         </dependency>
 
         <!-- Health / métricas -->

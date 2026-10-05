@@ -86,7 +86,7 @@ Pacotes por feature, cada uma dividida em camadas:
 
 ```
 bipo.tech.duoraapi
-├── config/              # segurança, relógio
+├── config/              # segurança, sessão, relógio, rate limit compartilhado
 └── waitlist/
     ├── api/             # controller, DTOs, rate limit
     ├── application/     # casos de uso (WaitlistService)
@@ -164,7 +164,8 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
   `SecurityConfiguration`. Sem credencial válida, `401`; sem o papel necessário, `403`.
 - **Waitlist sem vazamento:** o `POST` responde igual para e-mail novo ou já inscrito.
 - **Rate limit:** 10 inscrições por IP por hora (`duora.waitlist.join-rate-limit.*`), com `429` e
-  `Retry-After` acima disso. O limite vale por instância e usa o IP da conexão; atrás de proxy, é
-  preciso configurar `server.forward-headers-strategy`.
+  `Retry-After` acima disso. Os buckets ficam no PostgreSQL, então o limite vale para todas as
+  réplicas juntas ([ADR 0006](docs/adr/0006-rate-limit-no-postgresql.md)). O limite usa o IP da
+  conexão; atrás de proxy, é preciso configurar `server.forward-headers-strategy`.
 - **Entrada estrita:** campos JSON desconhecidos são rejeitados com `400`.
 - **CI:** o gitleaks varre o histórico em busca de segredos a cada push e pull request.
