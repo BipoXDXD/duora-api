@@ -92,6 +92,34 @@ class JoinWaitlistRateLimitFilterIT {
     }
 
     @Test
+    void sharesLimitWithinIpv6Slash64() throws Exception {
+        join(filter, "2001:db8:1:2::1");
+        join(filter, "2001:db8:1:2:ffff:ffff:ffff:ffff");
+
+        var rejected = join(filter, "2001:db8:1:2:abcd::7");
+
+        assertThat(rejected.response.getStatus()).isEqualTo(429);
+    }
+
+    @Test
+    void countsEachIpv6Slash64Separately() throws Exception {
+        join(filter, "2001:db8:1:2::1");
+        join(filter, "2001:db8:1:2::2");
+
+        var otherNetwork = join(filter, "2001:db8:1:3::1");
+
+        assertThat(otherNetwork.chain.getRequest()).isNotNull();
+    }
+
+    @Test
+    void storesIpv6BucketUnderNetworkPrefix() throws Exception {
+        join(filter, "2001:DB8:1:2:0:0:0:1");
+
+        var keys = jdbcClient.sql("select id from rate_limit_bucket").query(String.class).list();
+        assertThat(keys).containsExactly("join-waitlist:2001:db8:1:2::/64");
+    }
+
+    @Test
     void storesBucketUnderPrefixedClientKey() throws Exception {
         join(filter, CLIENT_A);
 

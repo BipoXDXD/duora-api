@@ -166,7 +166,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 - **Negado por padrão:** toda rota exige sessão ou token válido, exceto a allowlist em
   `SecurityConfiguration`. Sem credencial válida, `401`; sem o papel necessário, `403`.
 - **Waitlist sem vazamento:** o `POST` responde igual para e-mail novo ou já inscrito.
-- **Rate limit:** 10 inscrições por IP por hora (`duora.waitlist.join-rate-limit.*`), com `429` e
+- **Rate limit:** 10 inscrições por hora por IPv4 ou rede IPv6 /64 (`duora.waitlist.join-rate-limit.*`), com `429` e
   `Retry-After` acima disso. Os buckets ficam no PostgreSQL, então o limite vale para todas as
   réplicas juntas ([ADR 0006](docs/adr/0006-rate-limit-no-postgresql.md)). O limite usa o IP da
   conexão; atrás de proxy, é preciso configurar `server.forward-headers-strategy`.
