@@ -18,11 +18,19 @@ O Maven vem pelo wrapper (`./mvnw`); não é preciso instalá-lo.
 ## Rodando localmente
 
 ```bash
-./mvnw spring-boot:test-run
+./mvnw spring-boot:run
 ```
 
-Sobe a aplicação em `http://localhost:8080` com um PostgreSQL descartável via Testcontainers
-(`TestDuoraApiApplication`). O Flyway aplica as migrations na subida.
+Sobe a aplicação em `http://localhost:8080` e, junto, o PostgreSQL do `compose.yaml` (suporte a
+Docker Compose do Spring Boot). Os dados ficam entre execuções: ao parar a aplicação o container
+é só parado. O Flyway aplica as migrations na subida.
+
+Para começar de um banco limpo, há duas opções:
+
+```bash
+docker compose down -v       # apaga container e volume do compose; o próximo spring-boot:run recria
+./mvnw spring-boot:test-run  # usa um PostgreSQL descartável via Testcontainers, sem tocar no do compose
+```
 
 ```bash
 curl -i -X POST localhost:8080/api/waitlist \
