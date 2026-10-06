@@ -18,7 +18,7 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 /**
  * Probes do Azure Container Apps (infra/azure): a plataforma chama sem credencial, então liveness e
  * readiness são públicas e respondem só o estado. A readiness inclui o banco, a liveness não
- * (docs/adr/0011).
+ * (docs/adr/0014).
  */
 @SpringBootTest
 @AutoConfigureMockMvc

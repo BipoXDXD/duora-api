@@ -71,7 +71,7 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- PostgreSQL. Escopo compile: o job de migração usa PGConnection.alterUserPassword (docs/adr/0011) -->
+        <!-- PostgreSQL. Escopo compile: o job de migração usa PGConnection.alterUserPassword (docs/adr/0014) -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>

@@ -1,4 +1,4 @@
-// Container Apps Job que migra o banco antes de cada revisão nova (plano §9, docs/adr/0011). Mesma
+// Container Apps Job que migra o banco antes de cada revisão nova (plano §9, docs/adr/0014). Mesma
 // imagem da API, outro processo: DatabaseMigration roda o Flyway com a credencial de administração e
 // ajusta o papel restrito da aplicação. Disparo manual, pelo workflow de deploy.
 

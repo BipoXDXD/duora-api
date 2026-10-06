@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sobe a imagem da API ao lado de um PostgreSQL descartável e confere o que o build não vê
-# (docs/adr/0008 e 0011), na ordem do deploy: o job de migração roda com a credencial de
+# (docs/adr/0008 e 0014), na ordem do deploy: o job de migração roda com a credencial de
 # administração, a aplicação sobe com o papel restrito, fica saudável nas probes, roda sem root e
 # encerra limpo com SIGTERM.
 # Uso: infra/docker/smoke-test.sh <imagem>

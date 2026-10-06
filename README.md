@@ -60,7 +60,7 @@ O `Dockerfile` compila com o JDK e roda só com o JRE, em camadas, como usuário
 imagens base são fixadas por digest. O smoke test sobe um PostgreSQL descartável, roda o job de
 migração da imagem, sobe a API com o papel restrito do banco e confere health, probes, usuário e
 encerramento por SIGTERM. O CI faz os dois a cada push
-([ADR 0008](docs/adr/0008-imagem-e-let-it-crash.md) e [0011](docs/adr/0011-infraestrutura-do-piloto-na-azure.md)).
+([ADR 0008](docs/adr/0008-imagem-e-let-it-crash.md) e [0014](docs/adr/0014-infraestrutura-do-piloto-na-azure.md)).
 
 A imagem liga o perfil `behind-proxy`, porque só roda atrás do ingress do Container Apps. Além das
 variáveis do Entra (abaixo), ela exige esta, e não sobe sem ela ou com ela em branco:
@@ -78,7 +78,7 @@ A infraestrutura do piloto (Container Apps, PostgreSQL 18 privado, Key Vault, lo
 Bicep em [`infra/azure/`](infra/azure/README.md), com o passo a passo do primeiro apply, que é manual.
 Cada commit da `main` vai para homologação e produção pelo workflow **Deploy**, disparado à mão: ele
 publica a imagem, migra o banco com um Container Apps Job e troca a revisão da API. Decisões e custo
-estimado: [ADR 0011](docs/adr/0011-infraestrutura-do-piloto-na-azure.md).
+estimado: [ADR 0014](docs/adr/0014-infraestrutura-do-piloto-na-azure.md).
 
 No deploy, quem migra é o job, com a credencial de administração; a API conecta com um papel que só
 lê e escreve dados e roda com `SPRING_FLYWAY_ENABLED=false`. O job é a própria imagem com outro ponto
@@ -260,7 +260,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0010](docs/adr/0010-sem-refresh-token.md) | Login web sem refresh token |
 | [0011](docs/adr/0011-conta-e-perfil.md) | Conta por emissor + `oid`; perfil singular com `If-Match`; regras 18+ |
 | [0013](docs/adr/0013-logs-estruturados-e-correlation-id.md) | Logs em JSON (ECS); trace id W3C como correlation ID |
-| [0011](docs/adr/0011-infraestrutura-do-piloto-na-azure.md) | Infraestrutura do piloto em Bicep, deploy por OIDC (proposta, custo pendente) |
+| [0014](docs/adr/0014-infraestrutura-do-piloto-na-azure.md) | Infraestrutura do piloto em Bicep, deploy por OIDC (proposta, custo pendente) |
 
 ## Segurança
 

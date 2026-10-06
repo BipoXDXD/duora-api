@@ -9,7 +9,7 @@ import org.flywaydb.core.Flyway;
 import org.postgresql.PGConnection;
 
 /**
- * Processo do job de migração do Azure Container Apps (infra/azure, docs/adr/0011). Roda na mesma
+ * Processo do job de migração do Azure Container Apps (infra/azure, docs/adr/0014). Roda na mesma
  * imagem da API, sem subir o Spring: {@code java -cp app.jar bipo.tech.duoraapi.migration.DatabaseMigration}.
  *
  * <p>Com a credencial de administração, garante o papel da aplicação com a senha atual, aplica as

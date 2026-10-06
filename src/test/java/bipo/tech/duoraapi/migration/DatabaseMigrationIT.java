@@ -22,7 +22,7 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 
 /**
  * O job de migração do Container Apps (infra/azure): migra o schema com a credencial de
- * administração e deixa a aplicação com um papel que só lê e escreve dados (docs/adr/0011).
+ * administração e deixa a aplicação com um papel que só lê e escreve dados (docs/adr/0014).
  *
  * <p>Como no Azure, quem migra não é superusuário: tem {@code CREATEROLE} e é dono do banco. Cada
  * teste usa um banco e um papel de aplicação próprios, porque papéis valem para o servidor inteiro.

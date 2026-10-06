@@ -1,6 +1,6 @@
 // Recursos compartilhados entre homologação e produção, num resource group próprio: o registry onde
 // cada commit vira uma imagem, promovida igual entre os ambientes, e a identidade que o GitHub
-// Actions assume por OIDC para publicar nele. Decisões em docs/adr/0011.
+// Actions assume por OIDC para publicar nele. Decisões em docs/adr/0014.
 
 targetScope = 'resourceGroup'
 

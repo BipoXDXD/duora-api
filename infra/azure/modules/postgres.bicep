@@ -1,6 +1,6 @@
 // PostgreSQL Flexible Server 18 com acesso privado (VNet), sem IP público e sem HA no piloto.
 // Autenticação por senha: o login de administração só é usado pelo job de migração; a aplicação
-// conecta com um papel restrito que o próprio job cria (DatabaseMigration, docs/adr/0011).
+// conecta com um papel restrito que o próprio job cria (DatabaseMigration, docs/adr/0014).
 
 param namePrefix string
 
