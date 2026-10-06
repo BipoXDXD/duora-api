@@ -69,7 +69,7 @@ precisa ser igual ao do access token.
 | Spoofing: ID token de outro tenant, de outro app ou reaproveitado (nonce) | Validação de `iss`, `aud` e `nonce` | `WebLoginIT.rejectsLoginWithInvalidTokens` |
 | Spoofing: access token de outra API, de outro usuário ou com chave forjada | Mesmo `JwtDecoder` da porta bearer e `oid` igual nos dois tokens | `WebLoginIT.rejectsLoginWithInvalidTokens` |
 | Repudiation/elevation: sessão continua válida após sair | Logout invalida a sessão aqui e no Entra | `WebLoginIT.sessionCookieIsUselessAfterLogout`, `logoutEndsSessionHereAndAnswersTheEntraLogoutUrl` |
-| Information disclosure: `/api/me` vaza e-mail, `oid` ou papéis | DTO com allowlist (`displayName`) | `WebLoginIT.currentUserExposesOnlyTheDisplayName`, `BearerTokenValidationIT.currentUserFromBearerTokenExposesOnlyTheDisplayName` |
+| Information disclosure: `/api/me` vaza e-mail, `oid`, id da conta ou papéis | DTO com allowlist (`displayName` e, desde a [ADR 0011](0011-conta-e-perfil.md), `profileComplete`) | `WebLoginIT.currentUserExposesOnlyDisplayNameAndProfileStatus`, `BearerTokenValidationIT.currentUserFromBearerTokenExposesOnlyDisplayNameAndProfileStatus` |
 | Configuração ausente | A subida falha sem as variáveis novas ou com elas em branco | `RequiredAuthenticationSettingsIT` |
 
 ### Logout sem ID token

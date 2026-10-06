@@ -174,16 +174,19 @@ class WebLoginIT {
                 .doesNotContainIgnoringCase("Domain=");
     }
 
-    /** O front só precisa do nome para exibir; e-mail, oid e papéis ficam no servidor. */
+    /**
+     * O front só precisa do nome para exibir e de saber se falta completar o perfil; e-mail, oid, id da
+     * conta e papéis ficam no servidor.
+     */
     @Test
-    void currentUserExposesOnlyTheDisplayName() throws Exception {
+    void currentUserExposesOnlyDisplayNameAndProfileStatus() throws Exception {
         var session = logIn();
 
         mockMvc.perform(get(CURRENT_USER_PATH).cookie(session))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(content().json("""
-                        {"displayName": "Ana Souza"}
+                        {"displayName": "Ana Souza", "profileComplete": false}
                         """, JsonCompareMode.STRICT));
     }
 
@@ -196,7 +199,7 @@ class WebLoginIT {
         mockMvc.perform(get(CURRENT_USER_PATH).cookie(session))
                 .andExpect(status().isOk())
                 .andExpect(content().json("""
-                        {"displayName": null}
+                        {"displayName": null, "profileComplete": false}
                         """, JsonCompareMode.STRICT));
     }
 
