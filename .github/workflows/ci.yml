@@ -62,8 +62,12 @@ jobs:
       - name: Smoke test
         run: infra/docker/smoke-test.sh duora-api:${{ github.sha }}
 
-      # Schemathesis contra a imagem subida, a partir de docs/openapi.json (docs/adr/0012).
+      # Schemathesis contra a imagem subida, a partir de docs/openapi.json (docs/adr/0012). Seed fixa:
+      # o resultado só muda quando muda a API ou a spec. A busca com seed aleatória fica no
+      # workflow semanal contract-fuzz.yml.
       - name: Teste de contrato
+        env:
+          SCHEMATHESIS_SEED: '20261005'
         run: infra/docker/contract-test.sh duora-api:${{ github.sha }}
 
   bicep:

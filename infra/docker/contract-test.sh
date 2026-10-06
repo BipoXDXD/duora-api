@@ -7,7 +7,10 @@
 # A porta bearer é exercida com um token de verdade: o script gera um par de chaves RSA, publica a
 # chave pública num JWKS local e assina um access token com o papel ADMIN. A porta de sessão (BFF)
 # fica de fora, porque exige o login interativo no Entra.
-# Uso: infra/docker/contract-test.sh <imagem>
+#
+# A geração parte de uma seed: a de SCHEMATHESIS_SEED, para repetir uma execução (o CI de PR usa uma
+# fixa), ou uma aleatória, impressa no log para reproduzir o que ela achar.
+# Uso: [SCHEMATHESIS_SEED=<n>] infra/docker/contract-test.sh <imagem>
 set -euo pipefail
 
 image="${1:?uso: $0 <imagem>}"
@@ -100,6 +103,10 @@ status="$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $toke
 [[ "$status" == "200" ]] || fail "o token de teste não autentica como ADMIN (status $status)"
 echo "ok: token de teste aceito como ADMIN"
 
+seed="${SCHEMATHESIS_SEED:-$(od -An -N8 -tu8 /dev/urandom | tr -d ' ')}"
+[[ "$seed" =~ ^[0-9]+$ ]] || fail "SCHEMATHESIS_SEED precisa ser um inteiro não negativo"
+echo "seed do Schemathesis: $seed (reproduza com SCHEMATHESIS_SEED=$seed)"
+
 docker create --name "$fuzzer" --network "$network" "$schemathesis_image" \
   --config-file /spec/schemathesis.toml \
   run /spec/openapi.json \
@@ -107,6 +114,7 @@ docker create --name "$fuzzer" --network "$network" "$schemathesis_image" \
   --checks all \
   --header "Authorization: Bearer $token" \
   --max-examples 500 \
+  --seed "$seed" \
   --generation-database none \
   --output-sanitize true >/dev/null
 docker cp "$repo/docs" "$fuzzer:/spec"
