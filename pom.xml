@@ -103,6 +103,13 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- Tracing W3C (Micrometer + OpenTelemetry): o trace id é o correlation ID dos logs. O envio por
+             OTLP ao Azure Monitor só liga com endpoint configurado (docs/adr/0011). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-opentelemetry</artifactId>
+        </dependency>
+
         <!-- Dev: spring-boot:run sobe o compose.yaml e conecta no PostgreSQL dele -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
