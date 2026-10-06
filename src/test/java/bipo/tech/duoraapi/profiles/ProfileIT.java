@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.ArrayList;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -22,11 +23,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
@@ -47,6 +51,7 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
+@ExtendWith(OutputCaptureExtension.class)
 class ProfileIT {
 
     private static final String PROFILE_PATH = "/api/me/profile";
@@ -224,6 +229,25 @@ class ProfileIT {
                 Named.of("JSON quebrado", "{\"displayName\": "),
                 Named.of("lista no lugar do objeto", "[]"),
                 Named.of("null no lugar do objeto", "null"));
+    }
+
+    /** O valor recusado pode ser dado pessoal: não volta na resposta nem vai para o log. */
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"displayName\": \"%s%s\"}", "{\"bio\": \"%s\\u0000%s\"}",
+            "{\"birthDate\": \"%s%s\"}", "{\"region\": \"%s%s\"}", "{\"nickname\": \"%s%s\"}",
+            "{\"displayName\": \"%s%s"})
+    void rejectedValueIsNotEchoedInTheResponseOrTheLog(String bodyTemplate, CapturedOutput output) throws Exception {
+        var canary = "CANARY-" + UUID.randomUUID();
+        var body = bodyTemplate.formatted(canary, "x".repeat(50));
+
+        var response = edit(ana(), "\"0\"", body)
+                .andExpect(status().isBadRequest())
+                .andReturn().getResponse();
+
+        assertThat(response.getContentAsString()).doesNotContain(canary);
+        assertThat(response.getHeaderNames()).allSatisfy(
+                name -> assertThat(String.join(",", response.getHeaders(name))).doesNotContain(canary));
+        assertThat(output.getAll()).doesNotContain(canary);
     }
 
     /** id, versão, dono e estado calculado são do servidor (mass assignment). */
