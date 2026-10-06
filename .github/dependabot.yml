@@ -5,3 +5,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  # Spectral e o ruleset OWASP do lint da spec (docs/adr/0011), fixados pelo package-lock.json.
+  - package-ecosystem: npm
+    directory: /tools/contract
+    schedule:
+      interval: weekly
