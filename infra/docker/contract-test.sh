@@ -106,7 +106,7 @@ docker create --name "$fuzzer" --network "$network" "$schemathesis_image" \
   --url "http://$api:8080" \
   --checks all \
   --header "Authorization: Bearer $token" \
-  --max-examples 100 \
+  --max-examples 500 \
   --generation-database none \
   --output-sanitize true >/dev/null
 docker cp "$repo/docs" "$fuzzer:/spec"
