@@ -4,9 +4,8 @@
 
 Backend do Duora. Java 25, Spring Boot 4, PostgreSQL e Flyway.
 
-O projeto está no início: a primeira feature é uma **waitlist** de pré-lançamento, que serve
-também para exercitar toda a infraestrutura de testes. Matching, chat, eventos e pagamentos
-vêm depois.
+O projeto está no início: há uma **waitlist** de pré-lançamento e a **conta e o perfil** do
+usuário autenticado (etapa 1 do plano). Matching, chat, eventos e pagamentos vêm depois.
 
 ## Pré-requisitos
 
@@ -83,8 +82,9 @@ o Web PubSub ou um serviço de e-mail.
 
 | Tipo | Exemplo |
 |---|---|
-| Unitário puro (JUnit + AssertJ) | `waitlist/domain/EmailAddressTest` |
-| `@SpringBootTest` + MockMvc, ponta a ponta | `waitlist/JoinWaitlistIT` |
+| Unitário puro (JUnit + AssertJ) | `waitlist/domain/EmailAddressTest`, `profiles/domain/ProfileTest` |
+| `@SpringBootTest` + MockMvc, ponta a ponta | `waitlist/JoinWaitlistIT`, `profiles/ProfileIT` |
+| Concorrência (primeiro acesso, edições simultâneas) | `identity/AccountProvisioningIT`, `profiles/ProfileIT` |
 | Spring Security (401/403) | `waitlist/WaitlistSecurityIT` |
 | Validação de JWT (tokens reais, JWKS local) | `config/BearerTokenValidationIT` |
 | Login web (BFF): sessão, cookie, CSRF, logout | `config/WebLoginIT` |
@@ -92,7 +92,7 @@ o Web PubSub ou um serviço de e-mail.
 | HTTP real pelo Tomcat (`X-Forwarded-For`, `/error`) | `config/ForwardedClientAddressIT`, `config/UnexpectedErrorIT` |
 | `@DataJpaTest` + PostgreSQL | `waitlist/domain/WaitlistEntryRepositoryIT` |
 | Migrations Flyway | `FlywayMigrationIT` |
-| Regras de arquitetura (ArchUnit) | `ArchitectureTest` |
+| Regras de arquitetura (ArchUnit) | `ArchitectureTest`, `ArchitectureRulesTest` |
 
 ### Cobertura
 
@@ -110,14 +110,24 @@ Pacotes por módulo, cada um dividido em camadas:
 ```
 bipo.tech.duoraapi
 ├── config/              # segurança, sessão, relógio, rate limit compartilhado
+├── identity/            # conta interna; AccountId é a API publicada
+│   ├── api/             # abre a conta e a entrega ao parâmetro AccountId
+│   ├── application/     # AccountService
+│   └── domain/          # conta, identidade externa, repositório
+├── profiles/            # perfil do próprio usuário e GET /api/me
+│   ├── api/
+│   ├── application/
+│   └── domain/          # regras 18+, value objects, repositório
 └── waitlist/
     ├── api/             # controller, DTOs, rate limit
     ├── application/     # casos de uso (WaitlistService)
     └── domain/          # entidade, value objects, repositório
 ```
 
-Os testes espelham a mesma estrutura. Módulos de apoio (como a waitlist) usam essas camadas
-simples; os do core (pareamento, minijogos, conexões, moderação) vão usar ports & adapters, com
+Os testes espelham a mesma estrutura. Um módulo só usa de outro a API publicada, que são as
+classes na raiz do pacote dele (como `identity.AccountId`); as camadas são internas
+([ADR 0011](docs/adr/0011-conta-e-perfil.md)). Módulos de apoio (waitlist, identity, profiles) usam
+essas camadas simples; os do core (pareamento, minijogos, conexões, moderação) vão usar ports & adapters, com
 domínio sem framework. O `ArchitectureTest` cobra a classificação e a direção das dependências
 ([ADR 0007](docs/adr/0007-estilo-por-modulo.md)).
 
@@ -130,7 +140,9 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 |---|---|---|---|
 | `POST` | `/api/waitlist` | Público | `202`, para e-mail novo ou repetido |
 | `GET` | `/api/admin/waitlist/stats` | `ADMIN` | `200` com `{"total": n}` |
-| `GET` | `/api/me` | Autenticado | `200` com `{"displayName": "..."}` (`null` se o Entra não tiver nome); `401` sem sessão |
+| `GET` | `/api/me` | Autenticado | `200` com `{"displayName": "...", "profileComplete": false}` (`displayName` é o nome do Entra, `null` se não houver); `401` sem sessão. Abre a conta interna no primeiro acesso |
+| `GET` | `/api/me/profile` | Autenticado | `200` com `{displayName, birthDate, bio, region, complete}` e `ETag` com a versão (`"0"` antes da primeira edição) |
+| `PATCH` | `/api/me/profile` | Autenticado | Edição parcial: campo ausente não muda, `null` apaga. Exige `If-Match` com o `ETag` lido: sem ele `428`, desatualizado `412`. `200` com o perfil e o `ETag` novo; `400` para valor inválido ou campo desconhecido; `409` ao trocar a data de nascimento |
 | `GET` | `/actuator/health` | Público | Estado da aplicação |
 
 ## Autenticação
@@ -154,7 +166,8 @@ Para o front (repositório `duora-web`):
 |---|---|
 | Entrar | Navegar para `/oauth2/authorization/entra`; após o login, volta para `/` |
 | Sair | `POST /logout` com o header `X-XSRF-TOKEN`; a resposta é `200` com `{"logoutUrl": "..."}`, e o front navega até essa URL para sair também do Entra |
-| Saber se está logado | `GET /api/me`: `200` com o nome de exibição, ou `401` sem sessão |
+| Saber se está logado | `GET /api/me`: `200` com o nome de exibição e `profileComplete`, ou `401` sem sessão |
+| Completar ou editar o perfil | `GET /api/me/profile` e `PATCH /api/me/profile` com `If-Match` (o `ETag` do `GET`) e `X-XSRF-TOKEN`; em `412`, ler de novo e reaplicar |
 
 Em desenvolvimento, o Vite faz proxy da API, para front e API ficarem na mesma origem
 (`http://localhost:5173`).
@@ -199,6 +212,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0008](docs/adr/0008-imagem-e-let-it-crash.md) | Dockerfile multi-stage; queda só em estado irrecuperável |
 | [0009](docs/adr/0009-outbox-e-eventos.md) | Outbox próprio, eventos por chave, partição por limiar |
 | [0010](docs/adr/0010-sem-refresh-token.md) | Login web sem refresh token |
+| [0011](docs/adr/0011-conta-e-perfil.md) | Conta por emissor + `oid`; perfil singular com `If-Match`; regras 18+ |
 
 ## Segurança
 
@@ -211,4 +225,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
   usa o IP da conexão. Atrás do ingress (perfil `behind-proxy`, ligado na imagem), usa o
   `X-Forwarded-For` só quando a conexão vem da faixa `DUORA_TRUSTED_PROXIES`.
 - **Entrada estrita:** campos JSON desconhecidos são rejeitados com `400`.
+- **Perfil:** cada usuário só alcança o próprio (`/api/me/profile`, sem id na rota). Região só como
+  UF (`BR-SP`), nunca localização precisa; data de nascimento só de maior de idade, informada uma vez,
+  e a elegibilidade é calculada na hora, nunca guardada ([ADR 0011](docs/adr/0011-conta-e-perfil.md)).
 - **CI:** o gitleaks varre o histórico em busca de segredos a cada push e pull request.

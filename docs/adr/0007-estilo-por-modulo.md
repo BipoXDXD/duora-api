@@ -26,7 +26,7 @@ Cada módulo é classificado antes de ganhar código:
 | Tipo | Módulos | Estilo |
 |---|---|---|
 | **Core** | `experiences`, `matching`, `connections`, `trustsafety` | Ports & adapters. `domain` sem Spring, Spring Data, web, Jackson nem SDKs; anotações `jakarta.persistence` toleradas (entidade e modelo de persistência são o mesmo objeto). `application` fala com banco e serviços externos por portas; as implementações ficam em `adapter` |
-| **Supporting** | `waitlist`, `profiles`, `notifications` | Camadas simples: `api` → `application` → `domain`, com Spring Data no `domain` |
+| **Supporting** | `waitlist`, `identity`, `profiles`, `notifications` | Camadas simples: `api` → `application` → `domain`, com Spring Data no `domain` |
 | **Infraestrutura** | `config` | Composition root e infraestrutura compartilhada (segurança, sessão, relógio, rate limit), sem regra de negócio |
 
 Em todos, `domain` não depende de `api`, `application` nem `adapter`, e `application` não depende
@@ -42,13 +42,12 @@ nas regras que diferenciam o produto, e não em cerimônia no CRUD.
   classificado aqui e lá.
 - Um supporting que ganhar regras de verdade (por exemplo, `profiles` com elegibilidade complexa)
   é reclassificado como core, com refactor e nova revisão desta ADR.
-- Comunicação entre módulos e o acesso a tabelas de outro módulo ainda não têm regra no ArchUnit;
-  ela entra junto com o segundo módulo.
-- Exceção em `config`: o `CurrentUserController` (`GET /api/me`) e o seu DTO de resposta moram lá
-  por ora, porque só leem as claims da sessão ou do token e não há módulo de usuário. É camada de
-  entrega dentro da infraestrutura, e o `ArchitectureTest` não a vê, porque `config` não tem
-  camadas. **Gatilho de saída:** o endpoint vai para `profiles/api` no commit que criar o módulo
-  `profiles`, e esta exceção sai da ADR. Nenhum outro controller entra em `config`, salvo o
+- Comunicação entre módulos: um módulo só depende da API publicada de outro, que são as classes na
+  raiz do pacote do módulo (como `identity.AccountId`); as camadas são internas. A regra entrou com
+  `identity` e `profiles` ([ADR 0011](0011-conta-e-perfil.md)). O acesso a tabelas de outro módulo
+  continua sem verificação automática: fica na revisão de PR e de migration.
+- O `GET /api/me` morava em `config` até existir o módulo `profiles`; foi para `profiles/api` junto
+  com ele ([ADR 0011](0011-conta-e-perfil.md)). Nenhum controller entra em `config`, salvo o
   `ProblemDetailErrorController`, que é infraestrutura de erro compartilhada por todas as rotas.
 
 ## Compliance
@@ -59,4 +58,6 @@ nas regras que diferenciam o produto, e não em cerimônia no CRUD.
 - `domainDependsOnNoOuterLayer` e `applicationDoesNotDependOnDelivery`: direção das camadas em todos
   os módulos;
 - `coreDomainIsFrameworkFree` e `coreApplicationTalksToInfrastructureThroughPorts`: o estilo do
-  core.
+  core;
+- `modulesUseOnlyPublishedApisOfOtherModules`: entre módulos, só a API publicada (`ArchitectureRulesTest`
+  confere que a regra pega a violação).
