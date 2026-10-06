@@ -18,6 +18,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -198,11 +200,7 @@ class AdminEventIT {
 
         try (var executor = Executors.newFixedThreadPool(CONCURRENT_ACTIONS)) {
             for (int i = 0; i < CONCURRENT_ACTIONS; i++) {
-                futures.add(executor.submit(() -> {
-                    start.await();
-                    return mockMvc.perform(post(adminEventPath(id) + ":publish").with(admin()))
-                            .andReturn().getResponse().getStatus();
-                }));
+                futures.add(executor.submit(actionAfter(start, id, ":publish")));
             }
             start.countDown();
             var statuses = new ArrayList<Integer>();
@@ -212,6 +210,28 @@ class AdminEventIT {
             assertThat(statuses).containsOnly(200, 409).containsOnlyOnce(200);
         }
         assertThat(statusOf(id)).isEqualTo("PUBLISHED");
+    }
+
+    /**
+     * Publicar e cancelar o mesmo rascunho ao mesmo tempo: nenhuma resposta é 500, e o estado final é o
+     * da última ação que respondeu 200. Cancelar depois de publicar é válido, então os dois 200 também
+     * podem acontecer, e aí o evento termina cancelado.
+     */
+    @RepeatedTest(3)
+    void concurrentPublishAndCancelLeaveTheStateOfTheActionsThatSucceeded() throws Exception {
+        String id = createDraft(mockMvc, eventJson());
+        var start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Future<Integer> publish = executor.submit(actionAfter(start, id, ":publish"));
+            Future<Integer> cancel = executor.submit(actionAfter(start, id, ":cancel"));
+            start.countDown();
+            int published = publish.get(30, TimeUnit.SECONDS);
+            int cancelled = cancel.get(30, TimeUnit.SECONDS);
+
+            assertThat(List.of(published, cancelled)).containsOnly(200, 409).contains(200);
+            assertThat(statusOf(id)).isEqualTo(cancelled == 200 ? "CANCELLED" : "PUBLISHED");
+        }
     }
 
     @ParameterizedTest
@@ -404,6 +424,13 @@ class AdminEventIT {
                 .andExpect(content().json("""
                         {"title": "%s"}
                         """.formatted(title)));
+    }
+
+    private Callable<Integer> actionAfter(CountDownLatch start, String id, String action) {
+        return () -> {
+            start.await();
+            return mockMvc.perform(post(adminEventPath(id) + action).with(admin())).andReturn().getResponse().getStatus();
+        };
     }
 
     private ResultActions create(String body) throws Exception {

@@ -70,6 +70,10 @@ class RegistrationIT {
     private static final int SMALL_CAPACITY = 3;
     private static final int CONCURRENT_REPEATS = 5;
 
+    /** Cursor bem formado com o ano +999999999, que o timestamptz não guarda. */
+    private static final String YEAR_BEYOND_TIMESTAMPTZ_TOKEN =
+            "Kzk5OTk5OTk5OS0xMi0zMVQyMzo1OTo1OVogMDE5NjZjNGUtN2QxYS03YzNlLTliNWYtM2YyYTFjMGQ5ZThi";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -321,6 +325,32 @@ class RegistrationIT {
         assertThat(registrationsOf(eventId)).isEqualTo(1);
     }
 
+    /**
+     * O ADMIN cancela enquanto alguém se inscreve: o cancelamento sempre grava, e a inscrição ou entrou
+     * antes (201, e fica guardada) ou viu o evento cancelado (409, nada gravado). Nunca 500.
+     */
+    @RepeatedTest(3)
+    void registrationRacingTheEventCancellationEndsConsistent() throws Exception {
+        String eventId = createPublishedEvent(mockMvc);
+        completeProfile(mockMvc, ana());
+        var start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Future<Integer> registered = executor.submit(registerAfter(start, ana(), eventId));
+            Future<Integer> cancelled = executor.submit(() -> {
+                start.await();
+                return mockMvc.perform(post(adminEventPath(eventId) + ":cancel").with(admin()))
+                        .andReturn().getResponse().getStatus();
+            });
+            start.countDown();
+            int registration = registered.get(30, TimeUnit.SECONDS);
+
+            assertThat(cancelled.get(30, TimeUnit.SECONDS)).isEqualTo(200);
+            assertThat(registration).isIn(201, 409);
+            assertThat(registrationsOf(eventId)).isEqualTo(registration == 201 ? 1 : 0);
+        }
+    }
+
     /** Com o evento travado por outra transação além do teto, a inscrição desiste com 503, sem gravar. */
     @Test
     void registrationThatWaitsTooLongForTheEventLockIsRefused() throws Exception {
@@ -501,6 +531,8 @@ class RegistrationIT {
         mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("pageSize", "51").with(ana()))
                 .andExpect(status().isBadRequest());
         mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("pageToken", "AAAA").with(ana()))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("pageToken", YEAR_BEYOND_TIMESTAMPTZ_TOKEN).with(ana()))
                 .andExpect(status().isBadRequest());
     }
 
