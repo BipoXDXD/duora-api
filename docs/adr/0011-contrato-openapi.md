@@ -84,9 +84,14 @@ não no navegador do usuário, quando o contrato muda, e uma quebra só entra de
   coberta pelos testes de integração (`WebLoginIT`). `QUERY` e `TRACE` ficam fora da sondagem de
   método não suportado (`tools/contract/schemathesis.toml`): o `StrictHttpFirewall` do Spring
   Security os recusa com 400 antes do roteamento, por design.
-- O fuzzing já achou um defeito: `Content-Type: multipart/form-data` sem boundary respondia 500 em
-  qualquer rota. Como a API não recebe upload, o multipart foi desligado
-  (`spring.servlet.multipart.enabled=false`); volta com a primeira rota de upload.
+- O fuzzing já achou dois defeitos, ambos 500 em qualquer rota, sem credencial:
+  - `Content-Type: multipart/form-data` sem boundary. Como a API não recebe upload, o multipart foi
+    desligado (`spring.servlet.multipart.enabled=false`); volta com a primeira rota de upload.
+  - cookie `__Host-DUORA_SESSION` com NUL no id, que chegava à consulta do Spring Session no
+    PostgreSQL. Agora só id no formato UUID chega ao repositório; o resto vale como sessão ausente
+    (`WellFormedSessionIdCookieSerializer`).
+- O Schemathesis gera dados aleatórios a cada execução: um PR sem relação com a API pode falhar
+  por um defeito antigo que só agora apareceu. O log traz a seed e o comando para reproduzir.
 - Imagens do oasdiff, do Schemathesis e do busybox (JWKS) ficam fixadas por digest em scripts, fora
   do alcance do Dependabot; atualizar à mão. Spectral e o ruleset seguem o `package-lock.json`, que
   o Dependabot atualiza.
@@ -106,4 +111,6 @@ não no navegador do usuário, quando o contrato muda, e uma quebra só entra de
 - `OpenApiCustomActionIT`: `POST /x/{id}:verbo` (ADR 0005) aparece com o `:` no path e o id como
   parâmetro de path `uuid`.
 - `MultipartContentTypeIT`: multipart malformado responde 415 no `POST` e é ignorado no `GET`.
+- `MalformedSessionCookieIT`: cookie de sessão com id malformado (NUL, fora do formato UUID)
+  responde 401 em `ProblemDetail`, como uma requisição sem sessão.
 - CI: Spectral sem erro, `oasdiff breaking` sem quebra não registrada, Schemathesis sem violação.
