@@ -56,14 +56,14 @@ precisa ser igual ao do access token.
 - O front não guarda tokens nem conversa com o Entra: leva o usuário a `/oauth2/authorization/entra`
   para entrar e faz `POST /logout`, com o token CSRF, para sair. Como o `fetch` não segue um 302
   para outra origem, o logout responde `200` com `{"logoutUrl": "..."}` (o logout do Entra, com
-  `post_logout_redirect_uri`), e o front navega até essa URL. `GET /api/me` diz se há sessão e
-  devolve só o nome de exibição.
+  `client_id` e `post_logout_redirect_uri`, sem `id_token_hint`; ver "Logout sem ID token"), e o
+  front navega até essa URL. `GET /api/me` diz se há sessão e devolve só o nome de exibição.
 
 ## Compliance
 
 | Ameaça (STRIDE) | Mitigação | Teste |
 |---|---|---|
-| Information disclosure: XSS rouba credencial | Token só no servidor; cookie `HttpOnly`. **Pendente:** o logout em JSON entrega o ID token ao JavaScript (ver abaixo) | `WebLoginIT.sessionCookieIsHostOnlyHttpOnlySecureAndLax` |
+| Information disclosure: XSS rouba credencial | Token só no servidor; cookie `HttpOnly`; a URL de logout entregue ao JavaScript não leva o ID token (ver "Logout sem ID token") | `WebLoginIT.sessionCookieIsHostOnlyHttpOnlySecureAndLax`, `logoutResponseDoesNotCarryTheIdToken` |
 | Spoofing: fixação de sessão | Id da sessão trocado no login; sessão anterior não autentica | `WebLoginIT.loginRedirectsToFrontAndRotatesSessionId`, `preLoginSessionIsUselessAfterLogin` |
 | Tampering: CSRF em mutação autenticada | Token CSRF obrigatório | `WebLoginIT.logoutWithoutCsrfTokenIsRejectedAndKeepsSession` |
 | Spoofing: ID token de outro tenant, de outro app ou reaproveitado (nonce) | Validação de `iss`, `aud` e `nonce` | `WebLoginIT.rejectsLoginWithInvalidTokens` |
@@ -72,22 +72,61 @@ precisa ser igual ao do access token.
 | Information disclosure: `/api/me` vaza e-mail, `oid` ou papéis | DTO com allowlist (`displayName`) | `WebLoginIT.currentUserExposesOnlyTheDisplayName`, `BearerTokenValidationIT.currentUserFromBearerTokenExposesOnlyTheDisplayName` |
 | Configuração ausente | A subida falha sem as variáveis novas ou com elas em branco | `RequiredAuthenticationSettingsIT` |
 
-### Pendente: ID token no corpo do logout
+### Logout sem ID token
 
-O `{"logoutUrl": "..."}` do `POST /logout` traz `id_token_hint` com o ID token inteiro, assinado
-pelo Entra e com `name`, `oid` e, se houver, `email`. Antes ele só passava pelo `Location` de um
-302, que o JavaScript não lê numa navegação. Com isso, a mitigação "token só no servidor" da
-primeira linha da tabela deixa de valer para o ID token: um XSS no `duora-web` que leia o cookie
-`XSRF-TOKEN` e chame o logout obtém a PII assinada e um `id_token_hint` válido. O ID token não
-autoriza a API (`aud` é outra), mas pode servir de prova de identidade a quem valide mal a `aud`.
+Decidido em 2026-10-05 (usuário), depois da revisão dos PRs #1 e #2.
 
-Decisão do usuário, em aberto. Opções levantadas na revisão dos PRs #1 e #2:
+**Problema.** Na primeira versão, o `{"logoutUrl": "..."}` do `POST /logout` trazia `id_token_hint`
+com o ID token inteiro, assinado pelo Entra e com `name`, `oid` e, se houver, `email`. Antes ele só
+passava pelo `Location` de um 302, que o JavaScript não lê numa navegação. Com o JSON, a mitigação
+"token só no servidor" da primeira linha da tabela deixava de valer para o ID token: um XSS no
+`duora-web` que leia o cookie `XSRF-TOKEN` e chame o logout obteria a PII assinada e um
+`id_token_hint` válido. O ID token não autoriza a API (`aud` é outra), mas pode servir de prova de
+identidade a quem valide mal a `aud`.
 
-- montar a URL sem `id_token_hint`, só com `client_id` e `post_logout_redirect_uri` (ou com
-  `logout_hint`), testando contra o Entra real;
-- voltar ao 302 com navegação top-level por formulário `POST`, levando o token CSRF em parâmetro
-  (com `csrf.spa()`, ele passa pelo handler XOR).
+| Opção | Prós | Contras |
+|---|---|---|
+| Manter o `id_token_hint` no JSON | Nenhuma mudança; o Entra identifica a sessão a encerrar sem perguntar | Entrega PII assinada e um token reutilizável ao JavaScript, ao alcance de um XSS |
+| Voltar ao 302, com navegação top-level por formulário `POST` levando o token CSRF em parâmetro | O ID token só passa pelo `Location`, que o JavaScript não lê | Muda o contrato com o front (formulário em vez de `fetch`); o token CSRF passa a ir num parâmetro do corpo, pelo handler XOR do `csrf.spa()`; o ID token continua no histórico e nos logs do Entra como parâmetro de URL |
+| **URL sem `id_token_hint`, só com `client_id` e `post_logout_redirect_uri`** | Nenhum token sai do servidor; o contrato com o front não muda | O Entra pode mostrar a seleção de conta ao sair |
+| URL com `logout_hint` | Sai sem seleção de conta | Exige ligar a optional claim `login_hint` no registro `duora-web` e guardar o valor na sessão; o valor iria ao JavaScript do mesmo jeito (é opaco, mas identifica o usuário para o Entra) |
 
-Qualquer que seja a escolha, ela entra com um teste que afirma que a resposta do logout não contém
-o ID token (por exemplo, um canário `CANARY-<uuid>` numa claim do ID token de teste), e esta seção
-sai da ADR.
+**Decisão.** O logout monta a URL do Entra **sem `id_token_hint`**, só com `client_id` e
+`post_logout_redirect_uri`. O handler é próprio (`WebLoginConfiguration.entraLogoutSuccessHandler`)
+porque o `OidcClientInitiatedLogoutSuccessHandler` do Spring sempre acrescenta o `id_token_hint`
+quando o usuário entrou por OIDC.
+
+`logout_hint` fica de fora: depende da optional claim `login_hint`, que precisa ser ligada no
+registro do app (mais uma configuração do tenant a manter no `infra/entra/configure-tenant.sh`), e a
+documentação da Microsoft não diz se ela existe em tenant externo. O ganho seria só evitar a
+seleção de conta.
+
+**Por que o Entra aceita.** Na documentação do Microsoft identity platform, que o External ID usa
+para OpenID Connect ("OpenID Connect: Yes" em tenant externo), o `end_session_endpoint` só lista
+`post_logout_redirect_uri` (recomendado, e precisa ser um redirect URI registrado no app) e
+`logout_hint` (opcional); o exemplo de logout é um `GET` só com `post_logout_redirect_uri`. O
+`id_token_hint` nem aparece. O `client_id` vem da especificação OpenID Connect RP-Initiated Logout
+1.0: ele é opcional, e o uso mais comum que a especificação cita é justamente
+`post_logout_redirect_uri` sem `id_token_hint`, para o provedor saber de que app validar o
+redirect. A Microsoft não documenta o `client_id` no logout; o primeiro logout no tenant real
+confirma que ele é aceito.
+
+- <https://learn.microsoft.com/entra/identity-platform/v2-protocols-oidc#send-a-sign-out-request>
+- <https://learn.microsoft.com/entra/external-id/customers/concept-supported-features-customers#openid-connect-and-oauth2-flows>
+- <https://learn.microsoft.com/troubleshoot/entra/entra-id/app-integration/sign-out-of-openid-connect-oauth2-applications-without-user-selection-prompt>
+- <https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout>
+
+**Consequências.**
+
+- Sem o hint, o Entra pode pedir que o usuário escolha a conta a encerrar, sobretudo com mais de
+  uma conta no navegador. A sessão do Duora já acabou antes disso, então a escolha só afeta a sessão
+  do Entra.
+- O comportamento foi confirmado na documentação, não contra o tenant real: o primeiro logout no
+  `duoraapp` confere que o Entra volta ao `post_logout_redirect_uri`.
+- A URL não depende mais do usuário autenticado: um `POST /logout` sem sessão (mas com o token
+  CSRF) também recebe a URL do Entra, o que é inofensivo.
+
+**Teste.** `WebLoginIT.logoutResponseDoesNotCarryTheIdToken` afirma que nem o corpo nem os
+cabeçalhos da resposta trazem o payload do ID token emitido no login, nem `id_token_hint`;
+`logoutEndsSessionHereAndAnswersTheEntraLogoutUrl` afirma que a URL tem só `client_id` e
+`post_logout_redirect_uri`, com os valores certos.
