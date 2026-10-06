@@ -26,7 +26,7 @@ Cada módulo é classificado antes de ganhar código:
 | Tipo | Módulos | Estilo |
 |---|---|---|
 | **Core** | `experiences`, `matching`, `connections`, `trustsafety` | Ports & adapters. `domain` sem Spring, Spring Data, web, Jackson nem SDKs; anotações `jakarta.persistence` toleradas (entidade e modelo de persistência são o mesmo objeto). `application` fala com banco e serviços externos por portas; as implementações ficam em `adapter` |
-| **Supporting** | `waitlist`, `identity`, `profiles`, `notifications` | Camadas simples: `api` → `application` → `domain`, com Spring Data no `domain` |
+| **Supporting** | `waitlist`, `identity`, `profiles`, `events` (desde a [ADR 0016](0016-eventos-e-inscricoes.md)), `notifications` | Camadas simples: `api` → `application` → `domain`, com Spring Data no `domain` |
 | **Infraestrutura** | `config` | Composition root e infraestrutura compartilhada (segurança, sessão, relógio, rate limit), sem regra de negócio |
 
 Em todos, `domain` não depende de `api`, `application` nem `adapter`, e `application` não depende
