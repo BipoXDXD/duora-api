@@ -29,7 +29,7 @@ class ArchitectureTest {
     private static final String[] CORE_MODULES = {"experiences", "matching", "connections", "trustsafety"};
 
     /** Subdomínios de apoio: camadas simples (api, application, domain). */
-    private static final String[] SUPPORTING_MODULES = {"waitlist", "identity", "profiles", "notifications"};
+    private static final String[] SUPPORTING_MODULES = {"waitlist", "identity", "profiles", "events", "notifications"};
 
     /** Infraestrutura compartilhada e composition root, sem regra de negócio. */
     private static final String[] INFRASTRUCTURE = {"config", "migration"};
