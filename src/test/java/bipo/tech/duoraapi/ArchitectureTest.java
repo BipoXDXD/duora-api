@@ -6,10 +6,15 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import java.util.Arrays;
 import java.util.stream.Stream;
 
+import com.tngtech.archunit.core.domain.Dependency;
+import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
+import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
+import com.tngtech.archunit.lang.ConditionEvents;
+import com.tngtech.archunit.lang.SimpleConditionEvent;
 
 /**
  * Estilo de cada módulo conforme a classificação da docs/adr/0007. Módulo novo entra numa das
@@ -24,7 +29,7 @@ class ArchitectureTest {
     private static final String[] CORE_MODULES = {"experiences", "matching", "connections", "trustsafety"};
 
     /** Subdomínios de apoio: camadas simples (api, application, domain). */
-    private static final String[] SUPPORTING_MODULES = {"waitlist", "profiles", "notifications"};
+    private static final String[] SUPPORTING_MODULES = {"waitlist", "identity", "profiles", "notifications"};
 
     /** Infraestrutura compartilhada e composition root, sem regra de negócio. */
     private static final String[] INFRASTRUCTURE = {"config"};
@@ -69,6 +74,42 @@ class ArchitectureTest {
             .should().dependOnClassesThat().resideInAnyPackage(
                     "org.springframework.data..", "org.springframework.web..", "jakarta.servlet..", "com.azure..")
             .allowEmptyShould(true);
+
+    /**
+     * Um módulo só enxerga de outro a API publicada: as classes na raiz do pacote do módulo (como
+     * {@code identity.AccountId}). As camadas (api, application, domain) são internas, e uma tabela só é
+     * lida ou escrita pelo módulo dono (docs/adr/0011).
+     */
+    @ArchTest
+    static final ArchRule modulesUseOnlyPublishedApisOfOtherModules = modulesUseOnlyPublishedApisOfOtherModules(ROOT);
+
+    static ArchRule modulesUseOnlyPublishedApisOfOtherModules(String root) {
+        return classes().should(new ArchCondition<JavaClass>("use only the published API of other modules") {
+            @Override
+            public void check(JavaClass origin, ConditionEvents events) {
+                String originModule = moduleOf(root, origin.getPackageName());
+                for (Dependency dependency : origin.getDirectDependenciesFromSelf()) {
+                    String targetPackage = dependency.getTargetClass().getPackageName();
+                    String targetModule = moduleOf(root, targetPackage);
+                    boolean internalOfAnotherModule = targetModule != null && !targetModule.equals(originModule)
+                            && targetPackage.startsWith(root + "." + targetModule + ".");
+                    if (internalOfAnotherModule) {
+                        events.add(SimpleConditionEvent.violated(dependency, dependency.getDescription()));
+                    }
+                }
+            }
+        }).because("módulos conversam por operações explícitas, não pelos internos um do outro (docs/adr/0011)");
+    }
+
+    /** O primeiro segmento depois da raiz, ou null fora dela. */
+    private static String moduleOf(String root, String packageName) {
+        if (!packageName.startsWith(root + ".")) {
+            return null;
+        }
+        String relative = packageName.substring(root.length() + 1);
+        int dot = relative.indexOf('.');
+        return dot < 0 ? relative : relative.substring(0, dot);
+    }
 
     private static Stream<String> packagesOf(String[] modules) {
         return Arrays.stream(modules).map(module -> ROOT + "." + module + "..");
