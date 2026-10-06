@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 
+import jakarta.servlet.DispatcherType;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -96,6 +98,9 @@ public class SecurityConfiguration {
     private static void authorizeRoutes(
             AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry auth) {
         auth
+                // O Tomcat encaminha exceções não tratadas para /error. Recusar esse encaminhamento
+                // trocaria o 5xx por um 401. Só o encaminhamento: GET /error direto continua fechado.
+                .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                 .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                 .requestMatchers(JOIN_WAITLIST).permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")

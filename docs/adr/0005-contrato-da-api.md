@@ -63,4 +63,6 @@ query evita vazar perfil de quem bloqueou.
   (sem verbo, verbo desconhecido, segmento extra), responde 400 para id vazio ou inválido, e o
   matcher do Spring Security trata o `:` e o `%3A` como o controller.
 - `JoinWaitlistIT`: erros de entrada respondem `application/problem+json`.
+- `UnexpectedErrorIT`: com HTTP real, uma exceção não tratada numa rota pública chega a `/error`
+  e responde `500` em `application/problem+json`, sem nome de classe, SQL nem stack trace.
 - Revisão de PR: status, header e envelope de cada endpoint novo seguem esta ADR.
