@@ -38,7 +38,12 @@
                 }
               }
             },
-            "description" : "OK"
+            "description" : "OK",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "401" : {
             "content" : {
@@ -48,7 +53,12 @@
                 }
               }
             },
-            "description" : "Sem credencial válida"
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "403" : {
             "content" : {
@@ -58,7 +68,12 @@
                 }
               }
             },
-            "description" : "Sem o papel ADMIN"
+            "description" : "Sem o papel ADMIN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "500" : {
             "content" : {
@@ -68,7 +83,12 @@
                 }
               }
             },
-            "description" : "Erro inesperado"
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           }
         },
         "summary" : "Total de inscrições na lista de espera",
@@ -88,7 +108,12 @@
                 }
               }
             },
-            "description" : "OK"
+            "description" : "OK",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "401" : {
             "content" : {
@@ -98,7 +123,12 @@
                 }
               }
             },
-            "description" : "Sem credencial válida"
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "500" : {
             "content" : {
@@ -108,7 +138,12 @@
                 }
               }
             },
-            "description" : "Erro inesperado"
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           }
         },
         "summary" : "Quem está logado",
@@ -139,6 +174,9 @@
                   "pattern" : "^\"[0-9]{1,18}\"$"
                 },
                 "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
               }
             }
           },
@@ -150,7 +188,12 @@
                 }
               }
             },
-            "description" : "Sem credencial válida"
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "500" : {
             "content" : {
@@ -160,7 +203,12 @@
                 }
               }
             },
-            "description" : "Erro inesperado"
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           }
         },
         "summary" : "Lê o próprio perfil",
@@ -210,6 +258,9 @@
                   "pattern" : "^\"[0-9]{1,18}\"$"
                 },
                 "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
               }
             }
           },
@@ -221,7 +272,12 @@
                 }
               }
             },
-            "description" : "Valor inválido, campo obrigatório apagado, JSON malformado ou campo desconhecido"
+            "description" : "Valor inválido, campo obrigatório apagado, JSON malformado ou campo desconhecido",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "401" : {
             "content" : {
@@ -231,7 +287,12 @@
                 }
               }
             },
-            "description" : "Sem credencial válida"
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "403" : {
             "content" : {
@@ -241,7 +302,12 @@
                 }
               }
             },
-            "description" : "Sessão web sem o token CSRF no header X-XSRF-TOKEN"
+            "description" : "Sessão web sem o token CSRF no header X-XSRF-TOKEN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "409" : {
             "content" : {
@@ -251,7 +317,12 @@
                 }
               }
             },
-            "description" : "A data de nascimento já foi informada e não muda"
+            "description" : "A data de nascimento já foi informada e não muda",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "412" : {
             "content" : {
@@ -261,7 +332,12 @@
                 }
               }
             },
-            "description" : "O If-Match não é o ETag atual: o perfil mudou desde a leitura, ou o valor não é um ETag"
+            "description" : "O If-Match não é o ETag atual: o perfil mudou desde a leitura, ou o valor não é um ETag",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "415" : {
             "content" : {
@@ -271,7 +347,12 @@
                 }
               }
             },
-            "description" : "Corpo em outro formato que não application/json"
+            "description" : "Corpo em outro formato que não application/json",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "428" : {
             "content" : {
@@ -281,7 +362,12 @@
                 }
               }
             },
-            "description" : "Falta o If-Match"
+            "description" : "Falta o If-Match",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "500" : {
             "content" : {
@@ -291,7 +377,12 @@
                 }
               }
             },
-            "description" : "Erro inesperado"
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           }
         },
         "summary" : "Edita o próprio perfil",
@@ -314,7 +405,12 @@
         },
         "responses" : {
           "202" : {
-            "description" : "Inscrição aceita, nova ou repetida"
+            "description" : "Inscrição aceita, nova ou repetida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "400" : {
             "content" : {
@@ -324,7 +420,12 @@
                 }
               }
             },
-            "description" : "E-mail ausente ou inválido, JSON malformado ou campo desconhecido"
+            "description" : "E-mail ausente ou inválido, JSON malformado ou campo desconhecido",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "415" : {
             "content" : {
@@ -334,7 +435,12 @@
                 }
               }
             },
-            "description" : "Corpo em outro formato que não application/json"
+            "description" : "Corpo em outro formato que não application/json",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "429" : {
             "content" : {
@@ -356,6 +462,9 @@
                   "minimum" : 0
                 },
                 "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
               }
             }
           },
@@ -367,7 +476,12 @@
                 }
               }
             },
-            "description" : "Erro inesperado"
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           },
           "503" : {
             "content" : {
@@ -377,7 +491,12 @@
                 }
               }
             },
-            "description" : "Limite de inscrições indisponível; a inscrição é recusada"
+            "description" : "Limite de inscrições indisponível; a inscrição é recusada",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           }
         },
         "security" : [ ],
@@ -387,6 +506,18 @@
     }
   },
   "components" : {
+    "headers" : {
+      "RequestId" : {
+        "description" : "Correlation ID da requisição (trace id W3C); informe-o ao reportar um erro",
+        "required" : true,
+        "schema" : {
+          "type" : "string",
+          "maxLength" : 32,
+          "minLength" : 32,
+          "pattern" : "^[0-9a-f]{32}$"
+        }
+      }
+    },
     "schemas" : {
       "CurrentUserResponse" : {
         "type" : "object",
@@ -462,6 +593,13 @@
             "type" : "string",
             "format" : "uri-reference",
             "maxLength" : 1000
+          },
+          "requestId" : {
+            "type" : "string",
+            "description" : "Correlation ID, o mesmo do header X-Request-Id; vem nos erros inesperados (500)",
+            "maxLength" : 32,
+            "minLength" : 32,
+            "pattern" : "^[0-9a-f]{32}$"
           },
           "status" : {
             "type" : "integer",

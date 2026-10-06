@@ -67,6 +67,22 @@ class OpenApiContractIT {
                 .isEqualTo(jsonMapper.readTree(generated));
     }
 
+    /** O correlation ID (docs/adr/0013) sai em toda resposta e no ProblemDetail do 500; a spec diz isso. */
+    @Test
+    void everyResponseDeclaresTheRequestId() throws Exception {
+        JsonNode spec = jsonMapper.readTree(generatedSpec());
+        var responses = spec.at("/paths").findValues("responses").stream()
+                .flatMap(byStatus -> byStatus.properties().stream())
+                .toList();
+
+        assertThat(responses).isNotEmpty().allSatisfy(response -> assertThat(response.getValue()
+                .at("/headers/" + RequestIdResponseFilter.HEADER + "/$ref").asString())
+                .as("resposta %s", response.getKey())
+                .isEqualTo("#/components/headers/RequestId"));
+        assertThat(spec.at("/components/schemas/ProblemDetail/properties/requestId/pattern").asString())
+                .isEqualTo("^[0-9a-f]{32}$");
+    }
+
     /** A conta de quem chama vem do token ou da sessão; um parâmetro na spec convidaria o cliente a mandá-la. */
     @Test
     void noOperationAsksTheClientForTheCallersAccount() throws Exception {
