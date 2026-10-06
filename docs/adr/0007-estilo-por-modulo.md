@@ -44,6 +44,12 @@ nas regras que diferenciam o produto, e não em cerimônia no CRUD.
   é reclassificado como core, com refactor e nova revisão desta ADR.
 - Comunicação entre módulos e o acesso a tabelas de outro módulo ainda não têm regra no ArchUnit;
   ela entra junto com o segundo módulo.
+- Exceção em `config`: o `CurrentUserController` (`GET /api/me`) e o seu DTO de resposta moram lá
+  por ora, porque só leem as claims da sessão ou do token e não há módulo de usuário. É camada de
+  entrega dentro da infraestrutura, e o `ArchitectureTest` não a vê, porque `config` não tem
+  camadas. **Gatilho de saída:** o endpoint vai para `profiles/api` no commit que criar o módulo
+  `profiles`, e esta exceção sai da ADR. Nenhum outro controller entra em `config`, salvo o
+  `ProblemDetailErrorController`, que é infraestrutura de erro compartilhada por todas as rotas.
 
 ## Compliance
 
