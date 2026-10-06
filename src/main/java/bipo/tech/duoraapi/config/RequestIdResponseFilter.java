@@ -14,7 +14,7 @@ import io.micrometer.tracing.Tracer;
 
 /**
  * Devolve ao cliente o correlation ID da requisição: o trace id W3C, o mesmo que vai em cada linha
- * de log (docs/adr/0011). Quem reporta um erro informa esse valor, e o suporte acha o log.
+ * de log (docs/adr/0013). Quem reporta um erro informa esse valor, e o suporte acha o log.
  * Roda depois da observação HTTP, que abre o trace, e antes da segurança, para que as recusas
  * também levem o header.
  */

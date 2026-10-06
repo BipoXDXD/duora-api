@@ -1,4 +1,4 @@
-# 0011. Logs em JSON (ECS) e o trace id W3C como correlation ID
+# 0013. Logs em JSON (ECS) e o trace id W3C como correlation ID
 
 - **Status:** Aceita. Decidido na sessão autônoma de 2026-10-05; revisar com o usuário.
 - **Data:** 2026-10-05

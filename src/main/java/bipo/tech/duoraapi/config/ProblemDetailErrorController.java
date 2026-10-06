@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
  * Responde em {@code ProblemDetail} o que o Tomcat encaminha para /error (exceção não tratada,
  * {@code sendError}), como o resto da API (docs/adr/0005). Substitui o BasicErrorController do Boot,
  * que responde {@code application/json} em outro formato. Só status, título e o correlation ID
- * (docs/adr/0011): a causa fica no log, na linha com o mesmo id.
+ * (docs/adr/0013): a causa fica no log, na linha com o mesmo id.
  */
 @RestController
 class ProblemDetailErrorController implements ErrorController {

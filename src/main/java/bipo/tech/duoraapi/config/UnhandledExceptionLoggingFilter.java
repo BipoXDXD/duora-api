@@ -15,7 +15,7 @@ import org.springframework.web.filter.ServerHttpObservationFilter;
 
 /**
  * Registra a exceção que escapou de toda a aplicação ainda dentro do trace da requisição, para que o
- * stack trace saia no log com o correlation ID (docs/adr/0011). Sem isto, quem a registraria é o
+ * stack trace saia no log com o correlation ID (docs/adr/0013). Sem isto, quem a registraria é o
  * Tomcat, depois que o trace já fechou. Em seguida responde 500 pelo /error, que monta o
  * {@code ProblemDetail} sem a causa.
  */

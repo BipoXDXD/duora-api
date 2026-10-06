@@ -155,7 +155,7 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 
 Os logs vão para o stdout em JSON no formato ECS (Elastic Common Schema), uma linha por evento; o
 Container Apps os leva ao Log Analytics. Cada linha de uma requisição traz `traceId` e `spanId`
-([ADR 0011](docs/adr/0011-logs-estruturados-e-correlation-id.md)).
+([ADR 0013](docs/adr/0013-logs-estruturados-e-correlation-id.md)).
 
 - O correlation ID é o trace id W3C. Toda resposta o devolve no header `X-Request-Id`, e o
   `ProblemDetail` de um erro inesperado (`500`) o repete em `requestId`. Quem reportar um erro informa esse
@@ -239,7 +239,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0009](docs/adr/0009-outbox-e-eventos.md) | Outbox próprio, eventos por chave, partição por limiar |
 | [0010](docs/adr/0010-sem-refresh-token.md) | Login web sem refresh token |
 | [0011](docs/adr/0011-conta-e-perfil.md) | Conta por emissor + `oid`; perfil singular com `If-Match`; regras 18+ |
-| [0011](docs/adr/0011-logs-estruturados-e-correlation-id.md) | Logs em JSON (ECS); trace id W3C como correlation ID |
+| [0013](docs/adr/0013-logs-estruturados-e-correlation-id.md) | Logs em JSON (ECS); trace id W3C como correlation ID |
 
 ## Segurança
 
