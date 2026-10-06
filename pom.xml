@@ -32,6 +32,7 @@
         <archunit.version>1.5.1</archunit.version>
         <bucket4j.version>8.21.0</bucket4j.version>
         <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
+        <springdoc-openapi.version>3.1.1</springdoc-openapi.version>
     </properties>
     <dependencies>
 
@@ -94,6 +95,14 @@
             <groupId>com.bucket4j</groupId>
             <artifactId>bucket4j_jdk17-postgresql</artifactId>
             <version>${bucket4j.version}</version>
+        </dependency>
+
+        <!-- Spec OpenAPI e Swagger UI, só com o perfil api-docs e só para ADMIN (ADR 0011).
+             A linha 3.x é a do Spring Boot 4. -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc-openapi.version}</version>
         </dependency>
 
         <!-- Health / métricas -->

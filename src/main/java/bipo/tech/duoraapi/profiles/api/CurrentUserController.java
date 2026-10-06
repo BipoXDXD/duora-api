@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import bipo.tech.duoraapi.identity.AccountId;
 import bipo.tech.duoraapi.profiles.application.ProfileService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * Quem está logado, para o front web saber se há sessão, o que exibir e se falta completar o perfil
@@ -16,6 +18,7 @@ import bipo.tech.duoraapi.profiles.application.ProfileService;
  * costuma ser aberta (docs/adr/0011).
  */
 @RestController
+@Tag(name = "session", description = "Sessão do usuário logado")
 class CurrentUserController {
 
     private final ProfileService profiles;
@@ -26,6 +29,9 @@ class CurrentUserController {
 
     /** errorOnInvalidType: outro tipo de principal falha aqui, com a causa, em vez de chegar como null. */
     @GetMapping("/api/me")
+    @Operation(operationId = "getCurrentUser", summary = "Quem está logado",
+            description = "O front usa para saber se há sessão: 200 com o nome de exibição e se o perfil está "
+                    + "completo, ou 401 sem sessão.")
     CurrentUserResponse currentUser(@AuthenticationPrincipal(errorOnInvalidType = true) ClaimAccessor user,
             AccountId account) {
         return new CurrentUserResponse(user.getClaimAsString(StandardClaimNames.NAME),
