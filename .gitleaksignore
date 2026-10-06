@@ -3,3 +3,6 @@
 975068bfefb712bcc7a039ef3d30640157dbf7e5:infra/azure/modules/key-vault.bicep:generic-api-key:28
 # Senha canário fictícia do teste de configuração da migração.
 aa29fafcbf8e4469e3f9cf7e4d2f0eb8a302ddf1:src/test/java/bipo/tech/duoraapi/migration/DatabaseMigrationSettingsTest.java:generic-api-key:15
+# Ids públicos do Microsoft Graph e do scope da API no script de configuração do tenant, não são segredos.
+ed1d42cf6c1c6537bb03330903701bddc922d877:infra/entra/configure-tenant.sh:generic-api-key:24
+ed1d42cf6c1c6537bb03330903701bddc922d877:infra/entra/configure-tenant.sh:generic-api-key:26
