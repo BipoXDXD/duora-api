@@ -51,6 +51,7 @@ class AccountProvisioningIT {
 
     @BeforeEach
     void cleanDatabase() {
+        jdbcClient.sql("delete from profile").update();
         jdbcClient.sql("delete from account").update();
     }
 
