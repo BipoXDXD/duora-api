@@ -24,6 +24,10 @@ set -a; source ~/.config/duora/dev.env; set +a
 ./mvnw spring-boot:run
 ```
 
+Os logs saem em JSON (veja [Logs e correlation ID](#logs-e-correlation-id)); para lê-los em texto
+no terminal, acrescente `-Dspring-boot.run.profiles=plain-logs` (vale também para
+`spring-boot:test-run`).
+
 Sobe a aplicação em `http://localhost:8080` e, junto, o PostgreSQL do `compose.yaml` (suporte a
 Docker Compose do Spring Boot). Os dados ficam entre execuções: ao parar a aplicação o container
 é só parado. O Flyway aplica as migrations na subida.
@@ -90,6 +94,8 @@ o Web PubSub ou um serviço de e-mail.
 | Login web (BFF): sessão, cookie, CSRF, logout | `config/WebLoginIT` |
 | Subida sem configuração obrigatória | `config/RequiredAuthenticationSettingsIT`, `config/RequiredTrustedProxySettingsIT` |
 | HTTP real pelo Tomcat (`X-Forwarded-For`, `/error`) | `config/ForwardedClientAddressIT`, `config/UnexpectedErrorIT` |
+| Correlation ID (`X-Request-Id`, `traceparent`) | `config/RequestCorrelationIT` |
+| Canário de dados sensíveis no log | `config/SensitiveDataLoggingIT` |
 | `@DataJpaTest` + PostgreSQL | `waitlist/domain/WaitlistEntryRepositoryIT` |
 | Migrations Flyway | `FlywayMigrationIT` |
 | Regras de arquitetura (ArchUnit) | `ArchitectureTest`, `ArchitectureRulesTest` |
@@ -144,6 +150,26 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 | `GET` | `/api/me/profile` | Autenticado | `200` com `{displayName, birthDate, bio, region, complete}` e `ETag` com a versão (`"0"` antes da primeira edição) |
 | `PATCH` | `/api/me/profile` | Autenticado | Edição parcial: campo ausente não muda, `null` apaga. Exige `If-Match` com o `ETag` lido: sem ele `428`, desatualizado `412`. `200` com o perfil e o `ETag` novo; `400` para valor inválido ou campo desconhecido; `409` ao trocar a data de nascimento |
 | `GET` | `/actuator/health` | Público | Estado da aplicação |
+
+## Logs e correlation ID
+
+Os logs vão para o stdout em JSON no formato ECS (Elastic Common Schema), uma linha por evento; o
+Container Apps os leva ao Log Analytics. Cada linha de uma requisição traz `traceId` e `spanId`
+([ADR 0013](docs/adr/0013-logs-estruturados-e-correlation-id.md)).
+
+- O correlation ID é o trace id W3C. Toda resposta o devolve no header `X-Request-Id`, e o
+  `ProblemDetail` de um erro inesperado (`500`) o repete em `requestId`. Quem reportar um erro informa esse
+  valor; no Log Analytics, basta filtrar pelo `traceId`.
+- Um `traceparent` válido enviado pelo cliente é aproveitado; qualquer outro valor é ignorado e o
+  servidor gera um id. O `X-Request-Id` enviado pelo cliente não é usado.
+- Exceção não tratada: uma linha `ERROR` com o stack trace e o `traceId`; o cliente recebe só
+  status, título e `requestId`.
+- Nunca vão para o log: e-mail, `Authorization`, cookies, tokens, `code` do login, query string
+  (testado por `SensitiveDataLoggingIT`).
+
+O envio de traces por OTLP (para o Application Insights) fica desligado até existir endpoint. Para
+ligar, defina `OTEL_EXPORTER_OTLP_ENDPOINT` (ou `MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT`)
+no deploy.
 
 ## Autenticação
 
@@ -213,6 +239,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0009](docs/adr/0009-outbox-e-eventos.md) | Outbox próprio, eventos por chave, partição por limiar |
 | [0010](docs/adr/0010-sem-refresh-token.md) | Login web sem refresh token |
 | [0011](docs/adr/0011-conta-e-perfil.md) | Conta por emissor + `oid`; perfil singular com `If-Match`; regras 18+ |
+| [0013](docs/adr/0013-logs-estruturados-e-correlation-id.md) | Logs em JSON (ECS); trace id W3C como correlation ID |
 
 ## Segurança
 

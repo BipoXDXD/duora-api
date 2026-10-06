@@ -28,4 +28,10 @@ public record EmailAddress(String value) {
         }
     }
 
+    /** Dado pessoal: não vai para log nem mensagem de erro que imprima o objeto. */
+    @Override
+    public String toString() {
+        return "EmailAddress[value=<redacted>]";
+    }
+
 }

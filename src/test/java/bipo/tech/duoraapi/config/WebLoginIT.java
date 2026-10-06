@@ -1,7 +1,6 @@
 package bipo.tech.duoraapi.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -28,11 +27,14 @@ import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
@@ -69,6 +71,7 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
+@ExtendWith(OutputCaptureExtension.class)
 class WebLoginIT {
 
     private static final String SESSION_COOKIE = "__Host-DUORA_SESSION";
@@ -203,11 +206,18 @@ class WebLoginIT {
                         """, JsonCompareMode.STRICT));
     }
 
-    /** Principal sem claims é defeito de configuração: falha com a causa, e não com um NPE adiante. */
+    /**
+     * Principal sem claims é defeito de configuração: responde 500 e o log registra a causa, e não um
+     * NPE adiante.
+     */
     @Test
-    void currentUserWithPrincipalWithoutClaimsFailsWithTheCause() {
-        assertThatThrownBy(() -> mockMvc.perform(get(CURRENT_USER_PATH).with(user("ana"))))
-                .hasRootCauseInstanceOf(ClassCastException.class);
+    void currentUserWithPrincipalWithoutClaimsFailsWithTheCause(CapturedOutput output) throws Exception {
+        mockMvc.perform(get(CURRENT_USER_PATH).with(user("ana")))
+                .andExpect(status().isInternalServerError());
+
+        assertThat(output.getOut())
+                .contains("java.lang.ClassCastException")
+                .doesNotContain("java.lang.NullPointerException");
     }
 
     @Test
