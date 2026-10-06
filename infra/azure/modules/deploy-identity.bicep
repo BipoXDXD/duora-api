@@ -1,6 +1,7 @@
 // Identidade que o GitHub Actions assume por OIDC para implantar neste ambiente: credencial federada
-// só para o environment do GitHub correspondente, sem segredo de longa duração. Pode trocar a imagem
-// do app e do job e disparar o job; não lê o Key Vault nem mexe no resto do resource group.
+// só para o environment do GitHub correspondente, sem segredo de longa duração. Um papel próprio, no
+// resource group do ambiente, permite trocar a imagem do app e do job e disparar o job; não permite
+// criar nem apagar recursos, nem ler o Key Vault.
 
 param namePrefix string
 
@@ -11,17 +12,6 @@ param githubRepository string
 
 @description('Environment do GitHub cujo token esta identidade aceita (homologacao ou producao).')
 param githubEnvironment string
-
-param environmentName string
-
-param migrationJobName string
-
-@description('Vazio quando o app ainda não existe (primeiro apply em duas etapas).')
-param apiAppName string
-
-// Contributor só nestes três recursos: atualizar o app exige permissão de "join" no ambiente.
-var contributorRoleId = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
-var contributorRole = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', contributorRoleId)
 
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
   name: 'id-${namePrefix}-deploy'
@@ -38,43 +28,44 @@ resource githubFederation 'Microsoft.ManagedIdentity/userAssignedIdentities/fede
   }
 }
 
-resource environment 'Microsoft.App/managedEnvironments@2025-07-01' existing = {
-  name: environmentName
-}
-
-resource migrationJob 'Microsoft.App/jobs@2025-07-01' existing = {
-  name: migrationJobName
-}
-
-resource api 'Microsoft.App/containerApps@2025-07-01' existing = if (!empty(apiAppName)) {
-  name: apiAppName
-}
-
-resource joinsEnvironment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(environment.id, identity.id, contributorRoleId)
-  scope: environment
+// O que infra/azure/deploy.sh usa. "join" no ambiente e "assign" nas identidades são exigidos pelo
+// Azure ao reenviar app e job que usam o ambiente e identidades gerenciadas; listSecrets, porque o
+// az containerapp update relê a configuração de segredos (aqui, só referências ao Key Vault).
+resource deployerRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
+  name: guid(resourceGroup().id, 'duora-deployer')
   properties: {
-    roleDefinitionId: contributorRole
-    principalId: identity.properties.principalId
-    principalType: 'ServicePrincipal'
+    roleName: 'Duora deployer (${resourceGroup().name})'
+    description: 'Troca a imagem da API e do job de migração e dispara o job; sem criar nem apagar recursos.'
+    type: 'CustomRole'
+    assignableScopes: [resourceGroup().id]
+    permissions: [
+      {
+        actions: [
+          'Microsoft.Resources/subscriptions/resourceGroups/read'
+          'Microsoft.App/managedEnvironments/read'
+          'Microsoft.App/managedEnvironments/join/action'
+          'Microsoft.App/containerApps/read'
+          'Microsoft.App/containerApps/write'
+          'Microsoft.App/containerApps/listSecrets/action'
+          'Microsoft.App/containerApps/revisions/read'
+          'Microsoft.App/jobs/read'
+          'Microsoft.App/jobs/write'
+          'Microsoft.App/jobs/start/action'
+          'Microsoft.App/jobs/listSecrets/action'
+          'Microsoft.App/jobs/executions/read'
+          'Microsoft.ManagedIdentity/userAssignedIdentities/read'
+          'Microsoft.ManagedIdentity/userAssignedIdentities/assign/action'
+        ]
+        notActions: []
+      }
+    ]
   }
 }
 
-resource updatesMigrationJob 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(migrationJob.id, identity.id, contributorRoleId)
-  scope: migrationJob
+resource deployerAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(resourceGroup().id, identity.id, deployerRole.id)
   properties: {
-    roleDefinitionId: contributorRole
-    principalId: identity.properties.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-resource updatesApi 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(apiAppName)) {
-  name: guid(api.id, identity.id, contributorRoleId)
-  scope: api
-  properties: {
-    roleDefinitionId: contributorRole
+    roleDefinitionId: deployerRole.id
     principalId: identity.properties.principalId
     principalType: 'ServicePrincipal'
   }

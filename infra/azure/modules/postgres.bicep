@@ -75,6 +75,8 @@ resource database 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2025-08-0
 // Nenhuma transação fica parada segurando locks e conexão (regra SQL 13): 60 s bastam para a API.
 resource idleInTransactionTimeout 'Microsoft.DBforPostgreSQL/flexibleServers/configurations@2025-08-01' = {
   parent: server
+  // O servidor recusa duas operações ao mesmo tempo; o banco é criado antes.
+  dependsOn: [database]
   name: 'idle_in_transaction_session_timeout'
   properties: {
     value: '60000'

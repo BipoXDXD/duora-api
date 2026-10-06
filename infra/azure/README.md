@@ -60,7 +60,13 @@ az deployment group create --resource-group duora-shared --name shared \
   --query properties.outputs
 ```
 
-Guarde as saídas `registryName`, `registryLoginServer` e `publisherClientId`.
+Guarde as saídas `registryName`, `registryLoginServer` e `publisherClientId`. Confira que o registry
+ficou no modo de permissões **RBAC Registry Permissions** (os papéis `AcrPull` e `AcrPush` não valem
+no modo ABAC):
+
+```bash
+az acr show --name <registryName> --query roleAssignmentMode --output tsv   # LegacyRegistryPermissions
+```
 
 ### 4. Primeira imagem
 
@@ -90,6 +96,7 @@ DUORA_PG_ADMIN_PASSWORD=$(openssl rand -base64 33)
 DUORA_PG_APP_PASSWORD=$(openssl rand -base64 33)
 DUORA_ENTRA_WEB_CLIENT_SECRET=<segredo do cliente duora-web para este ambiente>
 DUORA_ALERT_EMAIL=<e-mail que recebe orçamento e alertas>
+DUORA_BUDGET_START_DATE=$(date +%Y-%m-01)
 EOF
 ```
 

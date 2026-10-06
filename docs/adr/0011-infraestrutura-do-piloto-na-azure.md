@@ -84,9 +84,13 @@ papéis por `pgaadauth_create_principal`; fica como evolução (pendência abaix
     `java -cp app.jar bipo.tech.duoraapi.migration.DatabaseMigration`, uma nova tentativa e 10 minutos
     de teto.
   - Identidade de deploy `id-duora-<env>-deploy` com credencial federada só para o environment do
-    GitHub (`homologacao` ou `producao`) e `Contributor` só no ambiente, no app e no job.
-  - Alertas: orçamento do resource group com aviso em 70%, 90% e 100% (plano §6) e reinícios da API
-    acima de 3 em 30 minutos (pendência da ADR 0008).
+    GitHub (`homologacao` ou `producao`) e um papel próprio no resource group (`Duora deployer`): ler
+    e atualizar o app e o job, disparar o job e ler execuções e revisões, mais o `join` no ambiente e
+    o `assign` nas identidades que o Azure exige ao reenviar app e job. Sem `delete`, sem Key Vault.
+    `Contributor` foi descartado porque permite apagar o ambiente e mudar ingress e logs.
+  - Alertas: orçamento do resource group com aviso em 70%, 90% e 100% (plano §6) e réplica da API com
+    mais de 3 reinícios (pendência da ADR 0008). A métrica `RestartCount` é acumulada por réplica, então
+    o alerta usa o máximo, não a soma da janela.
 - **Credenciais do banco** (plano §7: "aplicação acessa banco sem privilégios de administrador;
   migrações têm credencial separada"): o job conecta com o login de administração, garante o papel
   `duora_app` com a senha atual (hash SCRAM calculado no cliente pelo driver), roda o Flyway e
@@ -203,7 +207,9 @@ US$ 220. O que mais pesa é o PostgreSQL e a réplica sempre ligada de produçã
    plano §6) e registrar os redirect URIs do FQDN de cada ambiente no tenant.
 4. Domínio próprio para API e front no mesmo site, antes do login web valer fora de homologação (o
    cookie `SameSite=Lax` da ADR 0002 depende disso).
-5. Verificar no primeiro deploy a faixa de `DUORA_TRUSTED_PROXIES` e o TLS `verify-full` (README).
+5. Verificar no primeiro deploy a faixa de `DUORA_TRUSTED_PROXIES`, o TLS `verify-full` e se o papel
+   `Duora deployer` cobre todos os comandos do `deploy.sh` (a lista de actions foi montada pela
+   documentação, sem teste contra a Azure; um `AuthorizationFailed` diz qual action falta).
 6. Avaliar a autenticação do banco pelo Entra com identidade gerenciada, que elimina as duas senhas.
 7. Instrumentar a API para o Application Insights (agente Java ou OpenTelemetry); hoje o recurso
    existe, mas não recebe telemetria.

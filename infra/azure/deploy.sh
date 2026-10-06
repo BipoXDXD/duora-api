@@ -10,7 +10,8 @@ app="${2:?container app}"
 job="${3:?job de migração}"
 image="${4:?imagem}"
 
-migration_timeout_seconds=900
+# Acima do pior caso do job: replicaTimeout de 600 s com uma nova tentativa.
+migration_timeout_seconds=1300
 revision_timeout_seconds=600
 # Homologação escala a zero: a primeira requisição espera a JVM subir.
 readiness_timeout_seconds=240

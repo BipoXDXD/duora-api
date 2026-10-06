@@ -43,7 +43,8 @@ param logDailyQuotaGb = '0.5'
 param alertEmail = readEnvironmentVariable('DUORA_ALERT_EMAIL')
 // Na moeda de cobrança da assinatura: ajuste se não for dólar (docs/adr/0011, custos).
 param monthlyBudget = 150
-param budgetStartDate = '2026-10-01'
+// Fixado no primeiro apply (primeiro dia daquele mês) e mantido: a API recusa início antigo demais.
+param budgetStartDate = readEnvironmentVariable('DUORA_BUDGET_START_DATE')
 
 param githubRepository = 'BipoXDXD/duora-api'
 param githubEnvironment = 'producao'

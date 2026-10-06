@@ -1,5 +1,5 @@
-// Alertas mínimos do piloto: orçamento do resource group (70%, 90% e 100%, plano §6) e reinícios
-// frequentes da API (docs/adr/0008: um supervisor que reinicia demais esconde o problema).
+// Alertas mínimos do piloto: orçamento do resource group (70%, 90% e 100%, plano §6) e réplica da
+// API reiniciando demais (docs/adr/0008: um supervisor que reinicia demais esconde o problema).
 // Orçamento avisa, não bloqueia consumo.
 
 param namePrefix string
@@ -72,12 +72,15 @@ resource frequentRestarts 'Microsoft.Insights/metricAlerts@2026-01-01' = if (!em
   name: 'alert-${namePrefix}-api-restarts'
   location: 'global'
   properties: {
-    description: 'A API reiniciou mais de 3 vezes em 30 minutos (liveness falhando, OOM ou queda).'
+    // RestartCount é acumulado por réplica desde a criação: o máximo passar de 3 indica uma réplica
+    // presa em ciclo de reinício (liveness falhando, OOM ou queda). Somar (Total) contaria o mesmo
+    // reinício a cada minuto da janela.
+    description: 'Uma réplica da API passou de 3 reinícios (liveness falhando, OOM ou queda).'
     severity: 2
     enabled: true
     scopes: [apiAppId]
     evaluationFrequency: 'PT5M'
-    windowSize: 'PT30M'
+    windowSize: 'PT15M'
     criteria: {
       'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
       allOf: [
@@ -88,7 +91,7 @@ resource frequentRestarts 'Microsoft.Insights/metricAlerts@2026-01-01' = if (!em
           metricName: 'RestartCount'
           operator: 'GreaterThan'
           threshold: 3
-          timeAggregation: 'Total'
+          timeAggregation: 'Maximum'
         }
       ]
     }

@@ -13,6 +13,7 @@ export DUORA_PG_ADMIN_PASSWORD=validate-only
 export DUORA_PG_APP_PASSWORD=validate-only
 export DUORA_ENTRA_WEB_CLIENT_SECRET=validate-only
 export DUORA_ALERT_EMAIL=alerts@example.com
+export DUORA_BUDGET_START_DATE=2026-10-01
 
 for template in main.bicep shared.bicep; do
   az bicep build --file "$template" --stdout >/dev/null

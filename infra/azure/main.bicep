@@ -227,9 +227,6 @@ module deployIdentity 'modules/deploy-identity.bicep' = {
     location: location
     githubRepository: githubRepository
     githubEnvironment: githubEnvironment
-    environmentName: containerAppsEnvironment.outputs.environmentName
-    migrationJobName: migrationJob.outputs.jobName
-    apiAppName: deployApi ? api!.outputs.appName : ''
   }
 }
 
