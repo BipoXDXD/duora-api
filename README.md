@@ -58,6 +58,16 @@ imagens base são fixadas por digest. O smoke test sobe a imagem com um PostgreS
 confere health, usuário e encerramento por SIGTERM. O CI faz os dois a cada push
 ([ADR 0008](docs/adr/0008-imagem-e-let-it-crash.md)).
 
+A imagem liga o perfil `behind-proxy`, porque só roda atrás do ingress do Container Apps. Além das
+variáveis do Entra (abaixo), ela exige esta, e não sobe sem ela ou com ela em branco:
+
+| Variável | Valor |
+|---|---|
+| `DUORA_TRUSTED_PROXIES` | Faixa de onde o ingress conecta à aplicação, em CIDR separados por vírgula (ex.: a subnet de infraestrutura do ambiente) |
+
+Quem definir `SPRING_PROFILES_ACTIVE` no deploy mantém `behind-proxy` na lista
+([ADR 0006](docs/adr/0006-rate-limit-no-postgresql.md)).
+
 ## Testes
 
 | Comando | O que roda | Precisa de Docker |
@@ -78,7 +88,8 @@ o Web PubSub ou um serviço de e-mail.
 | Spring Security (401/403) | `waitlist/WaitlistSecurityIT` |
 | Validação de JWT (tokens reais, JWKS local) | `config/BearerTokenValidationIT` |
 | Login web (BFF): sessão, cookie, CSRF, logout | `config/WebLoginIT` |
-| Subida sem configuração obrigatória | `config/RequiredAuthenticationSettingsIT` |
+| Subida sem configuração obrigatória | `config/RequiredAuthenticationSettingsIT`, `config/RequiredTrustedProxySettingsIT` |
+| HTTP real pelo Tomcat (`X-Forwarded-For`, `/error`) | `config/ForwardedClientAddressIT`, `config/UnexpectedErrorIT` |
 | `@DataJpaTest` + PostgreSQL | `waitlist/domain/WaitlistEntryRepositoryIT` |
 | Migrations Flyway | `FlywayMigrationIT` |
 | Regras de arquitetura (ArchUnit) | `ArchitectureTest` |
@@ -196,7 +207,8 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 - **Waitlist sem vazamento:** o `POST` responde igual para e-mail novo ou já inscrito.
 - **Rate limit:** 10 inscrições por hora por IPv4 ou rede IPv6 /64 (`duora.waitlist.join-rate-limit.*`), com `429` e
   `Retry-After` acima disso. Os buckets ficam no PostgreSQL, então o limite vale para todas as
-  réplicas juntas ([ADR 0006](docs/adr/0006-rate-limit-no-postgresql.md)). O limite usa o IP da
-  conexão; atrás de proxy, é preciso configurar `server.forward-headers-strategy`.
+  réplicas juntas ([ADR 0006](docs/adr/0006-rate-limit-no-postgresql.md)). Localmente, o limite
+  usa o IP da conexão. Atrás do ingress (perfil `behind-proxy`, ligado na imagem), usa o
+  `X-Forwarded-For` só quando a conexão vem da faixa `DUORA_TRUSTED_PROXIES`.
 - **Entrada estrita:** campos JSON desconhecidos são rejeitados com `400`.
 - **CI:** o gitleaks varre o histórico em busca de segredos a cada push e pull request.

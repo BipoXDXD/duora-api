@@ -24,6 +24,9 @@ COPY --from=build /workspace/extracted/snapshot-dependencies/ ./
 COPY --from=build /workspace/extracted/application/ ./
 USER 10001
 EXPOSE 8080
+# A imagem só roda atrás do ingress do Container Apps: o perfil exige DUORA_TRUSTED_PROXIES e não
+# sobe sem ela (docs/adr/0006). Quem definir outros perfis no deploy mantém behind-proxy na lista.
+ENV SPRING_PROFILES_ACTIVE=behind-proxy
 # Forma exec: a JVM é o PID 1 e recebe o SIGTERM do graceful shutdown.
 # MaxRAMPercentage: heap pelo limite de memória do container, com folga para metaspace e threads.
 # ExitOnOutOfMemoryError: sem heap, o processo cai e a plataforma repõe a réplica (let it crash).

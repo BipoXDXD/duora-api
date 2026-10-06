@@ -51,14 +51,31 @@ não puder ser multiplicado.
 - O IP do cliente fica gravado na chave até a reposição completa mais um minuto (no máximo cerca de
   uma hora na waitlist). É dado pessoal pela LGPD: entra no registro de operações de tratamento,
   com finalidade de segurança e retenção curta.
-- **Pendente, bloqueia o primeiro deploy:** o cliente ainda é identificado pelo IP da conexão.
-  Atrás do proxy do Container Apps é preciso configurar `server.forward-headers-strategy`, restrito
-  à faixa do ingress (`internalProxies`) para o cliente não forjar o IP. Sem isso, todos os
-  visitantes dividem o IP do proxy e um único bucket: 10 inscrições por hora para o sistema
-  inteiro, já que o estado agora é compartilhado entre réplicas. Nada impede hoje o deploy sem a
-  configuração; a trava (propriedade obrigatória no perfil de deploy ou passo no smoke test que
-  confira chaves distintas por `X-Forwarded-For`) é decisão do usuário, junto com a do proxy
-  confiável.
+- **Cliente atrás do proxy (decidido em 2026-10-05):** sem tratar o proxy, todos os visitantes
+  dividiriam o IP do ingress do Container Apps e um único bucket: 10 inscrições por hora para o
+  sistema inteiro, já que o estado é compartilhado entre réplicas. A trava escolhida é uma
+  propriedade obrigatória no modo de deploy, e não um passo no smoke test:
+  - O perfil `behind-proxy` (nome da funcionalidade, não do ambiente) liga
+    `server.forward-headers-strategy=native` e lê `server.tomcat.remoteip.internal-proxies` de
+    `DUORA_TRUSTED_PROXIES`, a faixa de onde o ingress conecta (CIDR separados por vírgula). O
+    Tomcat só troca o IP da conexão pelo do `X-Forwarded-For` quando ela vem dessa faixa, e pega o
+    endereço mais à direita que não é proxy: o que o cliente escreve antes no header não escolhe o
+    bucket. O `X-Forwarded-Proto` passa a valer junto, o que o login web precisa para montar o
+    `redirect_uri` em `https` atrás do TLS do ingress.
+  - Com o perfil, a aplicação não sobe sem a variável (placeholder sem valor) nem com ela em branco
+    (`TrustedProxyProperties`, `@NotBlank` sobre a mesma chave do Boot). Em branco é o caso
+    perigoso: o Tomcat confiaria em qualquer conexão e o cliente escolheria o próprio IP.
+  - O `Dockerfile` define `SPRING_PROFILES_ACTIVE=behind-proxy`: a imagem é o artefato de deploy e
+    só roda atrás do ingress, então a trava não depende de lembrar o perfil na configuração do
+    Container Apps. Quem definir `SPRING_PROFILES_ACTIVE` no deploy precisa manter `behind-proxy`
+    na lista. Desenvolvimento local e testes não ligam o perfil e sobem sem configurar nada.
+  - Alternativas: ativar o perfil só na configuração do Container Apps (a imagem ficaria neutra,
+    mas esquecer o perfil voltaria ao bucket único sem erro nenhum); detectar o Container Apps pela
+    variável `CONTAINER_APP_NAME` (automático, mas acopla o código à plataforma e não tem teste
+    fora dela); passo no smoke test conferindo chaves distintas por `X-Forwarded-For` (pega a
+    imagem, não a configuração do deploy real).
+  - O valor de `DUORA_TRUSTED_PROXIES` depende da rede do ambiente do Container Apps (subnet de
+    infraestrutura) e entra junto com a infraestrutura do deploy.
 - O Caffeine saiu do `pom.xml`.
 - Se a latência medida no k6 pesar, o caminho é Redis com o mesmo Bucket4j, trocando só o
   `ProxyManager`.
@@ -75,5 +92,13 @@ não puder ser multiplicado.
   e timeout).
 - `JoinWaitlistIT.joiningAboveRateLimitIsRejectedWithoutWriting`: acima do limite, `429` com
   `Retry-After` e nada gravado.
+- `RequiredTrustedProxySettingsIT`: com o perfil `behind-proxy`, a aplicação não sobe sem
+  `DUORA_TRUSTED_PROXIES` nem com ela em branco.
+- `ForwardedClientAddressIT`, com HTTP real pelo Tomcat: vindo de proxy confiável, cada
+  `X-Forwarded-For` tem o próprio limite (`forwardedClientsGetSeparateLimits`), que continua valendo
+  (`forwardedClientIsStillLimited`), e o que o cliente põe antes no header não troca o bucket
+  (`clientCannotChooseItsAddressThroughForwardedChain`); vindo de fora da faixa, o header é ignorado
+  (`forwardedHeaderDoesNotChangeTheClient`).
+- `infra/docker/smoke-test.sh` sobe a imagem, que liga o perfil, com `DUORA_TRUSTED_PROXIES`.
 - `ExpiredRateLimitBucketCleanerIT`: o `expires_at` gravado é a reposição completa mais a folga, a
   limpeza apaga só o que venceu e continua enquanto houver lote cheio, e a métrica conta os buckets.
