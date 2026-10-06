@@ -1,5 +1,9 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.config.ProblemDetailSecurityResponses.forbidden;
+import static bipo.tech.duoraapi.config.ProblemDetailSecurityResponses.problemAccessDeniedHandler;
+import static bipo.tech.duoraapi.config.ProblemDetailSecurityResponses.problemEntryPoint;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -25,6 +29,8 @@ import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimNames;
 import org.springframework.security.oauth2.jwt.JwtClaimValidator;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
+import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
@@ -40,7 +46,7 @@ import org.springframework.util.StringUtils;
  * <li>web (docs/adr/0002): o resto. O Spring faz o login no Entra External ID e o navegador só
  * recebe o cookie de sessão; mutações exigem o token CSRF.
  * </ul>
- * Sem credencial válida, 401; sem o papel exigido, 403.
+ * Sem credencial válida, 401; sem o papel exigido ou sem o token CSRF, 403. Os dois em ProblemDetail.
  */
 @Configuration(proxyBeanMethods = false)
 @Import(WebLoginConfiguration.class)
@@ -68,7 +74,10 @@ public class SecurityConfiguration {
                 // Sem sessão nem cookie: não há o que o CSRF proteger.
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(Customizer.withDefaults())
+                        .authenticationEntryPoint(problemEntryPoint(new BearerTokenAuthenticationEntryPoint()))
+                        .accessDeniedHandler(problemAccessDeniedHandler(new BearerTokenAccessDeniedHandler())))
                 .build();
     }
 
@@ -91,7 +100,9 @@ public class SecurityConfiguration {
                 .csrf(csrf -> csrf.spa().ignoringRequestMatchers(JOIN_WAITLIST))
                 // A API responde 401 em vez de redirecionar para o login; o front decide quando levar ao login.
                 .exceptionHandling(errors -> errors
-                        .defaultAuthenticationEntryPointFor(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED), API))
+                        .defaultAuthenticationEntryPointFor(
+                                problemEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)), API)
+                        .accessDeniedHandler(problemAccessDeniedHandler(forbidden())))
                 .build();
     }
 

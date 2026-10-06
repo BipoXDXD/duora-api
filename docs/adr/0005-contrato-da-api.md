@@ -33,7 +33,8 @@ Mistura deliberada, escolhida tema a tema:
   recurso de outro usuário continua 404.
 - **URLs em kebab-case** (`/game-sessions`).
 - **Erros em `ProblemDetail`** (`application/problem+json`), sem stack trace, SQL nem nome de
-  classe.
+  classe. Vale também para as recusas da segurança (401, 403) e para o que o servidor encaminha a
+  `/error`; nas recusas, sem `detail`, para não dizer ao cliente por que o token falhou.
 - **Listas:** envelope `{items, nextPageToken}` com cursor opaco e sem total. Cada item traz a
   referência (id) e um resumo mínimo do relacionado (nome de exibição, foto aprovada), montado na
   própria query e respeitando bloqueio e moderação na hora da leitura.
@@ -63,6 +64,8 @@ query evita vazar perfil de quem bloqueou.
   (sem verbo, verbo desconhecido, segmento extra), responde 400 para id vazio ou inválido, e o
   matcher do Spring Security trata o `:` e o `%3A` como o controller.
 - `JoinWaitlistIT`: erros de entrada respondem `application/problem+json`.
+- `WaitlistSecurityIT`, `BearerTokenValidationIT` e `WebLoginIT`: 401 e 403 nas duas portas
+  respondem `application/problem+json` com o conjunto exato de chaves.
 - `UnexpectedErrorIT`: com HTTP real, uma exceção não tratada numa rota pública chega a `/error`
   e responde `500` em `application/problem+json`, sem nome de classe, SQL nem stack trace.
 - Revisão de PR: status, header e envelope de cada endpoint novo seguem esta ADR.

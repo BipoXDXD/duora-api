@@ -202,14 +202,22 @@ class WebLoginIT {
         mockMvc.perform(get(CURRENT_USER_PATH))
                 .andExpect(status().isUnauthorized())
                 .andExpect(header().doesNotExist(HttpHeaders.LOCATION))
-                .andExpect(content().string(""));
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(content().json("""
+                        {"type": "about:blank", "title": "Unauthorized", "status": 401}
+                        """, JsonCompareMode.STRICT));
     }
 
     @Test
     void logoutWithoutCsrfTokenIsRejectedAndKeepsSession() throws Exception {
         var session = logIn();
 
-        mockMvc.perform(post("/logout").cookie(session)).andExpect(status().isForbidden());
+        mockMvc.perform(post("/logout").cookie(session))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(content().json("""
+                        {"type": "about:blank", "title": "Forbidden", "status": 403}
+                        """, JsonCompareMode.STRICT));
 
         mockMvc.perform(get(ADMIN_ONLY_PATH).cookie(session)).andExpect(status().isOk());
     }

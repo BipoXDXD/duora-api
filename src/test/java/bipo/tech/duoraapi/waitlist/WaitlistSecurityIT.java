@@ -15,6 +15,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -52,14 +53,20 @@ class WaitlistSecurityIT {
     void anonymousCannotReadStats() throws Exception {
         mockMvc.perform(get(STATS_PATH))
                 .andExpect(status().isUnauthorized())
-                .andExpect(content().string(""));
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(content().json("""
+                        {"type": "about:blank", "title": "Unauthorized", "status": 401}
+                        """, JsonCompareMode.STRICT));
     }
 
     @Test
     void regularUserCannotReadStats() throws Exception {
         mockMvc.perform(get(STATS_PATH).with(jwt()))
                 .andExpect(status().isForbidden())
-                .andExpect(content().string(""));
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(content().json("""
+                        {"type": "about:blank", "title": "Forbidden", "status": 403}
+                        """, JsonCompareMode.STRICT));
     }
 
     @Test
