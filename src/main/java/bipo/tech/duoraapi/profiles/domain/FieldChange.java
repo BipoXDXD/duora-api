@@ -1,6 +1,7 @@
 package bipo.tech.duoraapi.profiles.domain;
 
 import java.util.Objects;
+import java.util.function.Function;
 
 /**
  * O que uma edição parcial faz com um campo: nada (campo ausente no pedido), apagar (null) ou trocar
@@ -18,6 +19,15 @@ public sealed interface FieldChange<T> {
 
     static <T> FieldChange<T> setTo(T value) {
         return new SetTo<>(value);
+    }
+
+    /** Converte o valor novo, se houver; manter e apagar continuam como estão. */
+    default <R> FieldChange<R> map(Function<? super T, ? extends R> mapper) {
+        return switch (this) {
+            case Keep<T> _ -> keep();
+            case Clear<T> _ -> clear();
+            case SetTo<T>(T value) -> setTo(mapper.apply(value));
+        };
     }
 
     record Keep<T>() implements FieldChange<T> {

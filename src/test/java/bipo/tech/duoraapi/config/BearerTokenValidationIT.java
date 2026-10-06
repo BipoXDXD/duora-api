@@ -121,13 +121,13 @@ class BearerTokenValidationIT {
 
     /** A porta bearer responde o mesmo contrato da sessão web, com o nome vindo do access token. */
     @Test
-    void currentUserFromBearerTokenExposesOnlyTheDisplayName() throws Exception {
+    void currentUserFromBearerTokenExposesOnlyDisplayNameAndProfileStatus() throws Exception {
         var token = signed(userClaims().claim("name", "Ana Souza").claim("email", "ana@example.com").build());
 
         mockMvc.perform(get("/api/me").header(HttpHeaders.AUTHORIZATION, bearer(token)))
                 .andExpect(status().isOk())
                 .andExpect(content().json("""
-                        {"displayName": "Ana Souza"}
+                        {"displayName": "Ana Souza", "profileComplete": false}
                         """, JsonCompareMode.STRICT));
     }
 
