@@ -6,6 +6,13 @@ decisões, as alternativas e a **estimativa de custo** estão na
 
 > **Antes do primeiro apply:** aprovar o custo da ADR 0014. Nada aqui foi aplicado ainda; só a
 > validação offline roda no CI.
+>
+> **Só homologação por enquanto** (ADR 0014, revisão de 2026-10-06): o primeiro apply cria apenas
+> `duora-shared` e `duora-hml`. A produção (`prod.bicepparam`, `duora-prod`, job `deploy-producao`)
+> fica no repositório, sem apply, até haver usuários reais. A região é **North Central US**
+> (`northcentralus`), uma das cinco que a política da assinatura Azure for Students permite,
+> escolhida pela latência e pela maturidade dos serviços. O Bicep não fixa região: todos os recursos herdam a do
+> resource group (`resourceGroup().location`), então ela é escolhida no passo 2.
 
 | Arquivo | O que cria | Onde |
 |---|---|---|
@@ -45,8 +52,9 @@ O login é o da assinatura (conta da Azure), não o do tenant `duoraapp` do Entr
 ### 2. Resource groups
 
 ```bash
-for group in duora-shared duora-hml duora-prod; do
-  az group create --name "$group" --location brazilsouth
+# Só shared e hml. Produção (duora-prod) fica para quando houver usuários reais.
+for group in duora-shared duora-hml; do
+  az group create --name "$group" --location northcentralus
 done
 ```
 
@@ -139,8 +147,9 @@ az deployment group create --resource-group duora-hml --name hml \
   --query properties.outputs
 ```
 
-Guarde as saídas `deployClientId`, `apiAppName`, `migrationJobName` e `apiFqdn`. Repita com
-`duora-prod`, `prod.env` e `prod.bicepparam`.
+Guarde as saídas `deployClientId`, `apiAppName`, `migrationJobName` e `apiFqdn`. Produção, mais
+tarde: crie o resource group `duora-prod` em `northcentralus` e repita este passo com `prod.env` e
+`prod.bicepparam`.
 
 Se o primeiro apply falhar ao ler um segredo do Key Vault, é a atribuição de papel recém-criada ainda
 se propagando: espere alguns minutos e rode o `create` de novo.
@@ -154,17 +163,16 @@ gh variable set AZURE_SUBSCRIPTION_ID --repo "$repo" --body "$(az account show -
 gh variable set DUORA_REGISTRY_NAME --repo "$repo" --body "<registryName>"
 gh variable set DUORA_PUBLISHER_CLIENT_ID --repo "$repo" --body "<publisherClientId>"
 
-for environment in homologacao producao; do
-  gh api --method PUT "repos/$repo/environments/$environment" >/dev/null
-done
+# Só homologacao por enquanto; o environment producao (e o apply de produção) fica para depois.
+gh api --method PUT "repos/$repo/environments/homologacao" >/dev/null
 gh variable set AZURE_CLIENT_ID --repo "$repo" --env homologacao --body "<deployClientId de hml>"
 gh variable set DUORA_RESOURCE_GROUP --repo "$repo" --env homologacao --body duora-hml
 gh variable set DUORA_CONTAINER_APP --repo "$repo" --env homologacao --body ca-duora-hml-api
 gh variable set DUORA_MIGRATION_JOB --repo "$repo" --env homologacao --body caj-duora-hml-migrate
-# o mesmo para producao, com os valores de duora-prod
+# producao, quando for criada: o mesmo, com os valores de duora-prod
 ```
 
-No environment `producao`, ligue **Required reviewers** (Settings → Environments) e restrinja a
+Quando o environment `producao` existir, ligue **Required reviewers** (Settings → Environments) e restrinja a
 branch a `main`: é a aprovação de produção do plano §9.
 
 Nenhum desses valores é segredo: o login no Azure é por OIDC, com credenciais federadas que só aceitam
@@ -180,14 +188,15 @@ tokens da `main` (publicação) e do environment correspondente (deploy).
   diferentes: o 11º recebe `429`. Logo depois, de outra rede (o celular fora do Wi-Fi), um `POST` tem de
   receber `202`. Se receber `429`, o ingress não conecta a partir da subnet, todos os clientes estão no
   mesmo bucket e a faixa precisa mudar (ADR 0006 e 0014).
-- **Orçamento:** confira em Cost Management que os orçamentos `budget-duora-hml` e
-  `budget-duora-prod` existem, na moeda da assinatura.
+- **Orçamento:** confira em Cost Management que o orçamento `budget-duora-hml` existe (R$ 55 por
+  mês, a moeda de cobrança da assinatura). Se a assinatura Azure for Students não aceitar orçamentos,
+  o apply falha neste recurso: acompanhe o crédito em Cost Management e o e-mail de alertas.
 
 ## Deploy de cada commit
 
 Pelo workflow **Deploy** (Actions → Deploy → Run workflow), na `main`, com o CI verde no commit.
-`target: homologacao` publica a imagem e implanta em homologação; `target: producao` faz o mesmo e,
-depois da aprovação do environment, implanta em produção. A ordem em cada ambiente é: job de migração
+`target: homologacao` publica a imagem e implanta em homologação; `target: producao` (não use até
+produzir o ambiente) faz o mesmo e, depois da aprovação do environment, implanta em produção. A ordem em cada ambiente é: job de migração
 → revisão nova da API → readiness pelo ingress (`infra/azure/deploy.sh`).
 
 ## Reaplicar o Bicep depois do primeiro deploy

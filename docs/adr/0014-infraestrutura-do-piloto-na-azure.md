@@ -2,6 +2,7 @@
 
 - **Status:** Proposta. Decidido na sessão autônoma de 2026-10-05; revisar com o usuário.
   **Pendente com o usuário: aprovar custo antes do primeiro apply.**
+  Revista em 2026-10-06 (região, assinatura, só homologação): ver "Revisão de 2026-10-06" no fim.
 - **Data:** 2026-10-05
 - **Relacionadas:** [ADR 0001](0001-autenticacao-entra-external-id.md), [0002](0002-front-web-com-bff.md),
   [0006](0006-rate-limit-no-postgresql.md) (proxy confiável), [0007](0007-estilo-por-modulo.md),
@@ -148,7 +149,8 @@ roda o fluxo inteiro, com orçamento e teto de logs, até o piloto medir carga.
 
 ### Custo mensal estimado
 
-Preços de varejo em **US$** para **Brazil South**, consultados em **2026-10-05** na
+Preços de varejo em **US$** para **Brazil South** (região original, revista em 2026-10-06; a
+estimativa vigente está na revisão no fim), consultados em **2026-10-05** na
 [Azure Retail Prices API](https://prices.azure.com/api/retail/prices) (a mesma base da
 [calculadora](https://azure.microsoft.com/pricing/calculator/)), com 730 horas no mês. Sem impostos,
 sem descontos e sem o crédito gratuito de conta nova. **Pendente com o usuário: aprovar custo antes do
@@ -185,7 +187,8 @@ US$ 220. O que mais pesa é o PostgreSQL e a réplica sempre ligada de produçã
   (`az postgres flexible-server stop`; volta sozinho depois de 7 dias), economizando os US$ 25,55 do
   compute nesse período.
 - O orçamento do Bicep (US$ 50 em homologação e US$ 150 em produção) está em unidades da moeda de
-  cobrança da assinatura; se ela for real, o valor precisa mudar.
+  cobrança da assinatura; se ela for real, o valor precisa mudar. (Revisto em 2026-10-06: R$ 55 em
+  homologação e R$ 800 em produção; ver a revisão no fim.)
 - Itens cobrados só quando ligados, e deixados de fora: private endpoint do Key Vault e do ambiente
   (o "Environment Private Endpoint" e o planned maintenance do Container Apps custam US$ 0,20/h cada),
   HA do banco, perfil Dedicated.
@@ -214,9 +217,10 @@ US$ 220. O que mais pesa é o PostgreSQL e a réplica sempre ligada de produçã
 ### Pendências com o usuário
 
 1. **Aprovar o custo** acima antes do primeiro apply (decisão crítica).
-2. Confirmar **Brazil South** e a residência dos dados: banco, logs e backups ficam no Brasil; o
-   tenant do Entra está nos EUA (ADR 0001). Confirmar no primeiro `what-if` que o PostgreSQL 18 está
-   disponível na região.
+2. ~~Confirmar **Brazil South** e a residência dos dados: banco, logs e backups ficam no Brasil; o
+   tenant do Entra está nos EUA (ADR 0001).~~ **Revista em 2026-10-06:** região North Central US e
+   dados nos EUA (ver a revisão no fim). Continua valendo confirmar no primeiro `what-if` que o
+   PostgreSQL 18 está disponível na região.
 3. Criar o segredo do cliente web por ambiente (ou registros separados para homologação, como pede o
    plano §6) e registrar os redirect URIs do FQDN de cada ambiente no tenant.
 4. Domínio próprio para API e front no mesmo site, antes do login web valer fora de homologação (o
@@ -246,3 +250,54 @@ US$ 220. O que mais pesa é o PostgreSQL e a réplica sempre ligada de produçã
   usuário sem root e graceful shutdown.
 - `infra/azure/deploy.sh`: o deploy falha se a migração não terminar em `Succeeded`, se a revisão nova
   não ficar pronta ou se a readiness pelo ingress não responder `UP`.
+
+## Revisão de 2026-10-06
+
+Decisões do usuário, que revisam a região e o escopo desta ADR. O histórico acima fica como estava;
+onde conflita com esta seção, vale esta.
+
+- **Assinatura:** passa a ser **Azure for Students**, com US$ 100 de crédito válidos até 2027-09-02.
+  Quando o crédito ou o prazo acabam, os recursos param e não há cobrança. Moeda de cobrança: real.
+- **Região: North Central US (`northcentralus`)**, substituindo Brazil South. A política da assinatura
+  só permite `southafricanorth`, `northcentralus`, `mexicocentral`, `canadacentral` e `italynorth`
+  (não há região no Brasil). Motivo da escolha: latência a partir do Brasil e maturidade dos serviços
+  usados (Container Apps, PostgreSQL Flexible Server, Key Vault). O Bicep não fixa região: tudo
+  herda a do resource group (`az group create --location northcentralus`).
+- **LGPD:** banco, logs e backups passam a ficar nos EUA, uma transferência internacional de dados
+  pessoais (LGPD, arts. 33 a 36), como já ocorre com o tenant do Entra External ID (ADR 0001).
+  Entra no inventário de tratamento e na política de privacidade do piloto, com a base legal da
+  transferência a definir antes de haver usuários reais.
+- **Só homologação por enquanto.** O primeiro apply cria `duora-shared` e `duora-hml`. Produção
+  (`prod.bicepparam`, `duora-prod`, o job `deploy-producao` do `deploy.yml`) continua no repositório,
+  sem apply, até haver usuários reais. Nada de produção foi apagado; a região de produção, quando
+  for aplicada, também é a do resource group. O environment `producao` do GitHub não precisa existir
+  até lá.
+- **Orçamento de homologação: US$ 10 por mês.** O recurso `Microsoft.Consumption/budgets` usa a
+  moeda de cobrança da assinatura (real), então o Bicep registra **R$ 55** (cerca de US$ 10).
+  `prod.bicepparam` passa de 150 para **R$ 800** (cerca de US$ 150) pelo mesmo motivo: 150 em reais
+  seria só cerca de US$ 27. O câmbio é aproximado; reveja os valores se ele mudar muito. Não
+  verifiquei se a oferta Azure for Students aceita orçamentos no Cost Management; se não aceitar, o
+  apply desse recurso falha e o controle passa a ser o saldo do crédito.
+- **Nova estimativa de custo (homologação, US$/mês, sem produção):** cerca de **US$ 5 a 15**.
+  - PostgreSQL B1ms: com Azure for Students, 750 h/mês de B1ms, 32 GB de disco e 32 GB de backup
+    ficam gratuitos por 12 meses
+    ([fonte](https://learn.microsoft.com/azure/postgresql/configure-maintain/how-to-deploy-on-azure-free-account)),
+    então os US$ 25,55 + US$ 6,99 da tabela acima saem do cálculo no período. Depois dos 12 meses,
+    voltam (cerca de US$ 32).
+  - Container Apps: a cota mensal gratuita (180 mil vCPU-s e 360 mil GiB-s) cobre a API que escala a
+    zero.
+  - Log Analytics: 5 GB/mês gratuitos, com teto diário de 0,2 GB (6 GB/mês no máximo).
+  - ACR Basic: cerca de **US$ 5**, o item que mais pesa. Zona DNS privada e o resto somam centavos.
+  - Os preços da tabela de custo acima eram de Brazil South; a região nova pode diferir, e a
+    estimativa não foi reconsultada na Retail Prices API.
+- **PostgreSQL em homologação dentro do free tier:** `postgresStorageSizeGB = 32` (limite gratuito de
+  32 GB) e retenção de backup de 7 dias. O backup não é cobrado até o tamanho provisionado, então os
+  7 dias cabem nos 32 GB enquanto o banco for pequeno. O `autoGrow` continua ligado, porque disco
+  cheio deixa o banco só leitura; se o banco passar de 32 GB, ele sobe para 64 GB e sai do free tier.
+  Só um servidor B1ms cabe nas 750 h gratuitas: produção, quando aplicada, paga o dela.
+- **Risco: a assinatura pode morar no tenant da universidade.** Azure for Students costuma ser
+  vinculada ao diretório da instituição. Se o vínculo acabar (formatura, fim do e-mail acadêmico), a
+  assinatura e os recursos podem ser perdidos sem aviso, e o administrador do tenant da universidade
+  pode ter políticas e visibilidade sobre eles. Mitigação: tudo é recriável a partir do repositório
+  (Bicep), os segredos têm cópia local, e o piloto é só homologação. Antes de produção, migrar para
+  uma assinatura própria (pay-as-you-go) fora do tenant da universidade.

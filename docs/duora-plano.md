@@ -119,7 +119,7 @@ Outbox com tentativas limitadas, atraso progressivo, falhas reprocessáveis e co
 
 | Recurso | Configuração proposta |
 |---|---|
-| Região e ambientes | Preferência por **Brazil South**, confirmando serviços/SKUs. Resource groups separados para homologação/produção; verificar residência de identidade, telemetria e serviços globais. |
+| Região e ambientes | ~~Preferência por **Brazil South**~~ revisto em 2026-10-06: **North Central US** (política da assinatura Azure for Students; ver ADR 0014), só homologação por ora. Resource groups separados para homologação/produção; verificar residência de identidade, telemetria e serviços globais. |
 | [Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/overview) | Frontend estático com domínio e HTTPS; Free na homologação e Standard na produção. API publicada separadamente. |
 | [Container Apps](https://learn.microsoft.com/en-us/azure/container-apps/java-overview) | Perfil Consumption; ponto inicial de **1 vCPU, 2 GiB e 1–3 réplicas** na produção. Health checks de startup, readiness e liveness. |
 | [PostgreSQL Flexible Server](https://learn.microsoft.com/en-us/azure/postgresql/compute-storage/concepts-compute) | Burstable B2s e 32 GiB como hipótese para o piloto; monitorar créditos de CPU e conexões. Sem HA inicialmente, aceitando o risco de indisponibilidade. |
