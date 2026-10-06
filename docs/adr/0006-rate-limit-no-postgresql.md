@@ -51,8 +51,14 @@ não puder ser multiplicado.
 - O IP do cliente fica gravado na chave até a reposição completa mais um minuto (no máximo cerca de
   uma hora na waitlist). É dado pessoal pela LGPD: entra no registro de operações de tratamento,
   com finalidade de segurança e retenção curta.
-- O cliente ainda é identificado pelo IP da conexão. Atrás do proxy do Container Apps é preciso
-  configurar `server.forward-headers-strategy`, senão todos os clientes dividem o IP do proxy.
+- **Pendente, bloqueia o primeiro deploy:** o cliente ainda é identificado pelo IP da conexão.
+  Atrás do proxy do Container Apps é preciso configurar `server.forward-headers-strategy`, restrito
+  à faixa do ingress (`internalProxies`) para o cliente não forjar o IP. Sem isso, todos os
+  visitantes dividem o IP do proxy e um único bucket: 10 inscrições por hora para o sistema
+  inteiro, já que o estado agora é compartilhado entre réplicas. Nada impede hoje o deploy sem a
+  configuração; a trava (propriedade obrigatória no perfil de deploy ou passo no smoke test que
+  confira chaves distintas por `X-Forwarded-For`) é decisão do usuário, junto com a do proxy
+  confiável.
 - O Caffeine saiu do `pom.xml`.
 - Se a latência medida no k6 pesar, o caminho é Redis com o mesmo Bucket4j, trocando só o
   `ProxyManager`.
