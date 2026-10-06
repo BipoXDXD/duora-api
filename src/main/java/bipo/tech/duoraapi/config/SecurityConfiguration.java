@@ -65,6 +65,9 @@ public class SecurityConfiguration {
 
     private static final RequestMatcher API = PathPatternRequestMatcher.withDefaults().matcher("/api/**");
 
+    /** Só ADMIN; a documentação da API também mora aqui (docs/adr/0011). */
+    static final String ADMIN_ROUTES = "/api/admin/**";
+
     @Bean
     @Order(1)
     SecurityFilterChain bearerTokenFilterChain(HttpSecurity http) {
@@ -116,7 +119,7 @@ public class SecurityConfiguration {
                 // Probes do Container Apps: a plataforma chama sem credencial e só lê o estado (docs/adr/0014).
                 .requestMatchers(HttpMethod.GET, "/actuator/health/liveness", "/actuator/health/readiness").permitAll()
                 .requestMatchers(JOIN_WAITLIST).permitAll()
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers(ADMIN_ROUTES).hasRole("ADMIN")
                 .anyRequest().authenticated();
     }
 
