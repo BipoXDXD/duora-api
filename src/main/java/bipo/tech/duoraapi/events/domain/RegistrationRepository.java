@@ -2,8 +2,10 @@ package bipo.tech.duoraapi.events.domain;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -13,8 +15,8 @@ import org.springframework.stereotype.Repository;
 import bipo.tech.duoraapi.identity.AccountId;
 
 /**
- * Inscrições em SQL direto: são pares (evento, conta) sem comportamento próprio, e a inscrição precisa
- * de "insert ... on conflict", que o JPA não tem. Roda na mesma transação do JPA, que expõe a conexão.
+ * Inscrições em SQL direto: são pares (evento, conta) sem comportamento próprio, lidos quase sempre
+ * junto com o evento. Roda na mesma transação do JPA, que expõe a conexão ao JDBC.
  */
 @Repository
 public class RegistrationRepository {
@@ -24,6 +26,22 @@ public class RegistrationRepository {
      * disso indica algo preso, e a resposta é 503 em vez de prender a conexão até o timeout do pool.
      */
     static final String LOCK_TIMEOUT = "2s";
+
+    /** Junta o evento à inscrição: o próprio módulo é dono das duas tabelas. */
+    private static final String CURRENT_OF = """
+            select r.event_id, e.title, e.starts_at, e.ends_at, e.status, r.registered_at
+              from registration r
+              join event e on e.id = r.event_id
+             where r.account_id = :accountId
+               and e.ends_at > :now
+            """;
+    private static final String AFTER_CURSOR = """
+               and (e.starts_at, e.id) > (:afterStartsAt, :afterId)
+            """;
+    private static final String IN_START_ORDER = """
+             order by e.starts_at, e.id
+             limit :limit
+            """;
 
     private final JdbcClient jdbcClient;
 
@@ -62,21 +80,19 @@ public class RegistrationRepository {
     }
 
     /**
-     * Idempotente: a chave primária (evento, conta) decide, sem "consultar e depois inserir". Com o
-     * evento travado, o conflito não acontece; o "on conflict" fica como última defesa.
-     *
-     * @return se a inscrição foi gravada agora
+     * Grava a inscrição. Chame com o evento travado, depois de conferir que ela não existe: com o lock,
+     * duas inscrições do mesmo par não chegam aqui juntas. Se chegarem, a chave primária (evento, conta)
+     * recusa a segunda, e a transação falha em vez de duplicar.
      */
-    public boolean insertIfAbsent(Registration registration) {
-        return jdbcClient.sql("""
+    public void insert(Registration registration) {
+        jdbcClient.sql("""
                         insert into registration (event_id, account_id, registered_at)
                         values (:eventId, :accountId, :registeredAt)
-                        on conflict (event_id, account_id) do nothing
                         """)
                 .param("eventId", registration.eventId())
                 .param("accountId", registration.account().value())
-                .param("registeredAt", OffsetDateTime.ofInstant(registration.registeredAt(), ZoneOffset.UTC))
-                .update() == 1;
+                .param("registeredAt", utc(registration.registeredAt()))
+                .update();
     }
 
     /** Apagar o que não existe também é sucesso: quem chama quer só que a inscrição não exista. */
@@ -85,6 +101,46 @@ public class RegistrationRepository {
                 .param("eventId", eventId)
                 .param("accountId", account.value())
                 .update();
+    }
+
+    /**
+     * As inscrições da pessoa em eventos que ainda não acabaram (inclusive cancelados e em andamento),
+     * por início do evento e, no empate, por id.
+     */
+    public List<RegisteredEvent> findCurrentOf(AccountId account, Instant now, int limit) {
+        return currentOf(account, now, CURRENT_OF + IN_START_ORDER)
+                .param("limit", limit)
+                .query(RegistrationRepository::toRegisteredEvent)
+                .list();
+    }
+
+    /** Como {@link #findCurrentOf}, a partir do par (afterStartsAt, afterId) exclusive: paginação por keyset. */
+    public List<RegisteredEvent> findCurrentOfAfter(AccountId account, Instant now, Instant afterStartsAt,
+            UUID afterId, int limit) {
+        return currentOf(account, now, CURRENT_OF + AFTER_CURSOR + IN_START_ORDER)
+                .param("afterStartsAt", utc(afterStartsAt))
+                .param("afterId", afterId)
+                .param("limit", limit)
+                .query(RegistrationRepository::toRegisteredEvent)
+                .list();
+    }
+
+    private JdbcClient.StatementSpec currentOf(AccountId account, Instant now, String sql) {
+        return jdbcClient.sql(sql)
+                .param("accountId", account.value())
+                .param("now", utc(now));
+    }
+
+    private static OffsetDateTime utc(Instant instant) {
+        return OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
+    }
+
+    private static RegisteredEvent toRegisteredEvent(ResultSet row, int rowNumber) throws SQLException {
+        return new RegisteredEvent(row.getObject("event_id", UUID.class), row.getString("title"),
+                row.getObject("starts_at", OffsetDateTime.class).toInstant(),
+                row.getObject("ends_at", OffsetDateTime.class).toInstant(),
+                EventStatus.valueOf(row.getString("status")),
+                row.getObject("registered_at", OffsetDateTime.class).toInstant());
     }
 
     private static Registration toRegistration(ResultSet row, int rowNumber) throws SQLException {
