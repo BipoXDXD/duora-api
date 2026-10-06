@@ -51,6 +51,8 @@ Quatro decisões, cada uma com alternativas:
   declara `security: []` no controller (`@SecurityRequirements`). Respostas que não saem do
   controller entram para toda operação: 401 (protegidas), 403 (ADMIN e mutações com sessão, pelo
   CSRF), 415 (com corpo) e 500, todas em `ProblemDetail`.
+  Toda resposta documenta o header `X-Request-Id`, e o `ProblemDetail` documenta o `requestId`
+  opcional do 500, os dois no formato do trace id W3C ([ADR 0013](0013-logs-estruturados-e-correlation-id.md)).
 - **Acesso:** `springdoc.api-docs.enabled` e `springdoc.swagger-ui.enabled` são `false` por padrão.
   O perfil `api-docs` liga os dois em `/api/admin/openapi` e `/api/admin/swagger-ui.html` (arquivos
   em `/api/admin/swagger-ui/`), sob a regra `/api/admin/**` que já exige ADMIN.

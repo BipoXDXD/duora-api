@@ -195,6 +195,11 @@ O CI confere o contrato de três jeitos ([ADR 0012](docs/adr/0012-contrato-opena
 | Breaking change contra a `main` (oasdiff) | `tools/contract/check-breaking.sh origin/main` |
 | Fuzzing com Schemathesis contra a imagem | `docker build -t duora-api:local . && infra/docker/contract-test.sh duora-api:local` |
 
+O fuzzing parte de uma seed: o CI de PR usa uma fixa, e o workflow semanal `contract-fuzz.yml`
+(também manual) usa uma aleatória e a imprime. Para repetir uma execução, rode o script com
+`SCHEMATHESIS_SEED=<seed>`. Toda resposta documenta o header `X-Request-Id`, e o `ProblemDetail` do
+`500` documenta `requestId`.
+
 Breaking change intencional: registre-a em [`docs/api-changelog.md`](docs/api-changelog.md) no
 mesmo PR, com o que o front precisa mudar; sem isso o CI recusa.
 
