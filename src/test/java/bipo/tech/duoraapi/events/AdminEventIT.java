@@ -17,11 +17,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Named;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -54,6 +60,8 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 @AutoConfigureMockMvc
 @Import({TestcontainersConfiguration.class, TestClockConfiguration.class})
 class AdminEventIT {
+
+    private static final int CONCURRENT_ACTIONS = 4;
 
     @Autowired
     private MockMvc mockMvc;
@@ -176,6 +184,34 @@ class AdminEventIT {
                 .andExpect(status().isConflict());
 
         assertThat(statusOf(id)).isEqualTo("CANCELLED");
+    }
+
+    /**
+     * Duas abas do ADMIN publicam ao mesmo tempo: uma publica, as outras recebem 409 (pela versão
+     * otimista ou pelo estado já publicado), nunca 500.
+     */
+    @RepeatedTest(3)
+    void concurrentPublishesPublishOnce() throws Exception {
+        String id = createDraft(mockMvc, eventJson());
+        var start = new CountDownLatch(1);
+        var futures = new ArrayList<Future<Integer>>();
+
+        try (var executor = Executors.newFixedThreadPool(CONCURRENT_ACTIONS)) {
+            for (int i = 0; i < CONCURRENT_ACTIONS; i++) {
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    return mockMvc.perform(post(adminEventPath(id) + ":publish").with(admin()))
+                            .andReturn().getResponse().getStatus();
+                }));
+            }
+            start.countDown();
+            var statuses = new ArrayList<Integer>();
+            for (var future : futures) {
+                statuses.add(future.get(30, TimeUnit.SECONDS));
+            }
+            assertThat(statuses).containsOnly(200, 409).containsOnlyOnce(200);
+        }
+        assertThat(statusOf(id)).isEqualTo("PUBLISHED");
     }
 
     @ParameterizedTest
