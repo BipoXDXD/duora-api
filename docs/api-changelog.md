@@ -9,5 +9,5 @@ Toda **breaking change** entra aqui no mesmo PR que a introduz: sem a entrada, o
 
 ## 0.1.0 (2026-10-05)
 
-Primeira versão publicada da spec: `POST /api/waitlist`, `GET /api/me` e
-`GET /api/admin/waitlist/stats`.
+Primeira versão publicada da spec: `POST /api/waitlist`, `GET /api/me`,
+`GET /api/admin/waitlist/stats` e `GET`/`PATCH /api/me/profile` (edição com `If-Match`).

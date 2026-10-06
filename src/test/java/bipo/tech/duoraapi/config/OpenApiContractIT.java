@@ -67,6 +67,36 @@ class OpenApiContractIT {
                 .isEqualTo(jsonMapper.readTree(generated));
     }
 
+    /** A conta de quem chama vem do token ou da sessão; um parâmetro na spec convidaria o cliente a mandá-la. */
+    @Test
+    void noOperationAsksTheClientForTheCallersAccount() throws Exception {
+        JsonNode spec = jsonMapper.readTree(generatedSpec());
+
+        assertThat(spec.findValues("parameters").stream()
+                .flatMap(parameters -> parameters.valueStream())
+                .map(parameter -> parameter.path("name").asString()))
+                .doesNotContain("account");
+        assertThat(spec.at("/components/schemas").has("AccountId")).isFalse();
+    }
+
+    /** Edição do perfil (docs/adr/0011): o contrato de concorrência aparece inteiro na spec. */
+    @Test
+    void profileEditDocumentsTheConcurrencyContract() throws Exception {
+        JsonNode spec = jsonMapper.readTree(generatedSpec());
+        JsonNode read = spec.at("/paths/~1api~1me~1profile/get");
+        JsonNode edit = spec.at("/paths/~1api~1me~1profile/patch");
+
+        assertThat(read.at("/responses/200/headers/ETag/required").asBoolean()).isTrue();
+        assertThat(edit.at("/responses/200/headers/ETag/required").asBoolean()).isTrue();
+        assertThat(edit.get("parameters").valueStream()
+                .filter(parameter -> parameter.path("name").asString().equals("If-Match"))
+                .map(parameter -> parameter.path("in").asString() + ":" + parameter.path("required").asBoolean()))
+                .containsExactly("header:true");
+        for (int status : new int[] {400, 409, 412, 428}) {
+            assertThat(documentsProblem(edit, status)).as("PATCH do perfil documenta o %d", status).isTrue();
+        }
+    }
+
     /**
      * Operação pública declara {@code security: []}; as outras declaram a resposta 401 e recebem 401
      * sem credencial. Assim a spec não promete acesso que a segurança nega, nem o contrário.
