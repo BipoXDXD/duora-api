@@ -12,7 +12,7 @@ public enum ReportReason {
     VIOLENCE_OR_THREAT,
     SCAM_OR_SPAM,
     FAKE_PROFILE,
-    /** Suspeita de menor de idade. O fluxo de proteção ainda está pendente (docs/adr/0012). */
+    /** Suspeita de menor de idade. O fluxo de proteção ainda está pendente (docs/adr/0015). */
     SUSPECTED_MINOR,
     /** Exige descrição: sozinho não diz nada à moderação. */
     OTHER
