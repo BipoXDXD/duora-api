@@ -1,4 +1,4 @@
-package bipo.tech.duoraapi.config;
+package bipo.tech.duoraapi.profiles.api;
 
 /**
  * Só o que o front exibe: e-mail, oid e papéis ficam no servidor. displayName é null quando o

@@ -46,7 +46,8 @@ public class WebLoginConfiguration {
 
     static final String REGISTRATION_ID = "entra";
     static final String LOGIN_PATH = "/oauth2/authorization/" + REGISTRATION_ID;
-    static final String OBJECT_ID_CLAIM = "oid";
+    /** A identidade do usuário nas duas portas de entrada (docs/adr/0002). */
+    public static final String OBJECT_ID_CLAIM = "oid";
     private static final String END_SESSION_ENDPOINT = "end_session_endpoint";
 
     /**
