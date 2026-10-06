@@ -63,7 +63,17 @@ Quatro decisões, cada uma com alternativas:
     da branch base (`tools/contract/check-breaking.sh`), que só aceita a quebra registrada em
     `docs/api-changelog.md` no mesmo PR;
   - job *Imagem Docker*: depois do smoke test, `infra/docker/contract-test.sh` sobe a imagem e roda
-    Schemathesis `--checks all` com um token ADMIN.
+    Schemathesis `--checks all` com um token ADMIN e **seed fixa** (`SCHEMATHESIS_SEED`): o resultado
+    só muda quando muda a API ou a spec, e um PR não falha por sorte.
+- **Fuzzing com seed aleatória** fica no workflow `contract-fuzz.yml`, semanal (segunda, 06:17 UTC)
+  e manual (`workflow_dispatch`, com seed opcional para repetir). A seed sai no log e no resumo da
+  execução; o defeito achado vira teste e correção num PR próprio.
+
+  | Opção | Prós | Contras |
+  |---|---|---|
+  | Seed aleatória em todo PR | Explora mais a cada execução | Um PR sem relação com a API falha por um defeito antigo |
+  | **Seed fixa no PR, aleatória semanal** | PR reproduzível; a busca continua | Um defeito novo pode levar até uma semana para aparecer |
+  | Só seed fixa | Simples | A mesma amostra para sempre: o que ela não alcança nunca aparece |
 - **Regras OWASP desligadas**, com o motivo no ruleset: `rate-limit` (headers `RateLimit-*` que a API
   não manda; o limite existe onde há abuso, e o 429 com `Retry-After` está documentado),
   `define-cors-origin` (sem CORS, mesmo site) e `write-restricted` só no `POST /api/waitlist`,
@@ -90,8 +100,12 @@ não no navegador do usuário, quando o contrato muda, e uma quebra só entra de
   - cookie `__Host-DUORA_SESSION` com NUL no id, que chegava à consulta do Spring Session no
     PostgreSQL. Agora só id no formato UUID chega ao repositório; o resto vale como sessão ausente
     (`WellFormedSessionIdCookieSerializer`).
-- O Schemathesis gera dados aleatórios a cada execução: um PR sem relação com a API pode falhar
-  por um defeito antigo que só agora apareceu. O log traz a seed e o comando para reproduzir.
+- A seed fixa do PR cobre sempre a mesma amostra; o que só a busca semanal acha chega como falha
+  do workflow agendado, que precisa de alguém olhando (notificação de falha do GitHub Actions).
+- Algumas regras de negócio não cabem no schema (maior de idade, data de nascimento que não muda,
+  texto sem invisíveis). No `PATCH /api/me/profile`, o Schemathesis aceita 400 para corpo válido
+  pelo schema (`tools/contract/schemathesis.toml`); os outros checks continuam valendo, e as regras
+  têm testes próprios (`ProfileIT`). 412 e 428 são aceitos como as recusas do `If-Match`.
 - Imagens do oasdiff, do Schemathesis e do busybox (JWKS) ficam fixadas por digest em scripts, fora
   do alcance do Dependabot; atualizar à mão. Spectral e o ruleset seguem o `package-lock.json`, que
   o Dependabot atualiza.
