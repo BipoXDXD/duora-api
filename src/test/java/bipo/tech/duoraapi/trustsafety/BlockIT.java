@@ -260,7 +260,7 @@ class BlockIT {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"0", "-1", "101", "abc", "99999999999"})
+    @ValueSource(strings = {"0", "-1", "101", "abc", "99999999999", "", " "})
     void pageSizeOutsideTheLimitsIsRejected(String maxPageSize) throws Exception {
         listBlocked(ana(), "?maxPageSize=" + maxPageSize)
                 .andExpect(status().isBadRequest())

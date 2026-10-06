@@ -16,6 +16,10 @@ import bipo.tech.duoraapi.trustsafety.domain.BlockPosition;
  */
 final class BlockPageToken {
 
+    /** Folga sobre os cerca de 90 caracteres de um token gerado. */
+    static final int MAX_LENGTH = 200;
+    static final String PATTERN = "^[A-Za-z0-9_-]+$";
+
     private static final String SEPARATOR = "|";
 
     private BlockPageToken() {
@@ -28,6 +32,9 @@ final class BlockPageToken {
 
     /** @throws InvalidPageTokenException se o token não foi gerado por {@link #encode} */
     static BlockPosition decode(String token) {
+        if (token.length() > MAX_LENGTH) {
+            throw new InvalidPageTokenException();
+        }
         try {
             String plain = new String(Base64.getUrlDecoder().decode(token), StandardCharsets.UTF_8);
             int separator = plain.indexOf(SEPARATOR);

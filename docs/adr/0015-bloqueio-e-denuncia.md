@@ -163,5 +163,15 @@ STRIDE do fluxo (dado sensível: quem bloqueou quem e o relato da denúncia):
 | Denial of service: entrada grande ou inválida vira 500 | Limites na descrição e no `maxPageSize`; 400 sem gravar | `ReportIT.invalidInputIsRejectedWithoutWriting`, `descriptionOfAThousandCharactersIsAccepted`, `BlockIT.pageSizeOutsideTheLimitsIsRejected`, `malformedPageTokenIsRejected`, `ReportDescriptionTest` |
 | Elevation of privilege: rota nova pública por engano | Negar por padrão | `DenyByDefaultIT` (inclui as cinco rotas), `BlockIT.anonymousCannotBlock`, `ReportIT.anonymousCannotReportNorRead` |
 
+Contrato ([ADR 0012](0012-contrato-openapi.md)): `OpenApiContractIT.blockAndReportDocumentTheirContract`
+confere na spec os erros, a cota (429 + `Retry-After`), o `Location`, a paginação e a lista de motivos.
+No Spectral, a regra `owasp:api2:2023-no-credentials-in-url` fica desligada só para `pageToken`, que é
+cursor e não credencial. No Schemathesis, a cota de denúncias sobe em `infra/docker/contract-test.sh`
+(senão o fuzzing pararia no 429), e o 400 entra entre as respostas esperadas para corpo válido em
+`POST /api/reports` (motivo `OTHER` sem descrição, caracteres invisíveis) e em
+`GET /api/me/blocked-accounts` (pageToken que a API não gerou). O fuzzing achou dois defeitos, corrigidos
+com teste: `?=null` virava 500 e um id inválido voltava inteiro no `detail` e no `instance`
+(`MalformedRequestInputIT`), e `maxPageSize=` vazio valia o padrão (`BlockIT.pageSizeOutsideTheLimitsIsRejected`).
+
 Fronteira entre módulos: `ArchitectureTest` (core: domínio sem Spring, aplicação por portas; outros
 módulos só usam `trustsafety.Blocking`). A consulta publicada: `BlockIT.blockingIsSeenFromBothSidesUntilUnblocked`.
