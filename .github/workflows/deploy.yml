@@ -1,0 +1,182 @@
+name: Deploy
+
+# Desligado por padrão: só roda quando alguém dispara à mão, e falha no primeiro job se as variáveis
+# do repositório e dos environments ainda não existirem (infra/azure/README.md). A infraestrutura em
+# si (infra/azure/*.bicep) é aplicada à mão, com o custo aprovado; este workflow só publica a imagem
+# do commit, migra o banco e troca a revisão.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Até onde implantar (produção passa antes por homologação)
+        type: choice
+        options: [homologacao, producao]
+        default: homologacao
+
+permissions:
+  contents: read
+
+# Um deploy por vez; um disparo novo espera o anterior em vez de cancelá-lo no meio de uma migração.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  IMAGE_REPOSITORY: duora-api
+
+jobs:
+  preflight:
+    name: Configuração e CI verde
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read # consulta o resultado do CI deste commit
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Variáveis do repositório
+        env:
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          DUORA_REGISTRY_NAME: ${{ vars.DUORA_REGISTRY_NAME }}
+          DUORA_PUBLISHER_CLIENT_ID: ${{ vars.DUORA_PUBLISHER_CLIENT_ID }}
+        run: infra/azure/require-variables.sh AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID DUORA_REGISTRY_NAME DUORA_PUBLISHER_CLIENT_ID
+
+      # A identidade que publica só aceita tokens da main (credencial federada em shared.bicep).
+      - name: Só a main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Deploy só a partir da main (disparado em ${GITHUB_REF})."
+          exit 1
+
+      - name: CI verde neste commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          conclusion="$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --branch main --event push \
+            --limit 1 --json conclusion --jq '.[0].conclusion // ""')"
+          if [[ "$conclusion" != "success" ]]; then
+            echo "::error::O CI do commit $GITHUB_SHA não terminou com sucesso (\"${conclusion:-sem execução}\")."
+            exit 1
+          fi
+
+  publish:
+    name: Imagem do commit
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # OIDC com o Entra, sem segredo guardado no GitHub
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.DUORA_PUBLISHER_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Nome da imagem
+        id: image
+        env:
+          REGISTRY_NAME: ${{ vars.DUORA_REGISTRY_NAME }}
+        run: |
+          login_server="$(az acr show --name "$REGISTRY_NAME" --query loginServer --output tsv)"
+          echo "image=$login_server/$IMAGE_REPOSITORY:$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+        run: docker build --tag "$IMAGE" .
+
+      # O mesmo smoke test do CI, agora na imagem que vai ser publicada.
+      - name: Smoke test
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+        run: infra/docker/smoke-test.sh "$IMAGE"
+
+      - name: Push
+        env:
+          REGISTRY_NAME: ${{ vars.DUORA_REGISTRY_NAME }}
+          IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          az acr login --name "$REGISTRY_NAME"
+          docker push "$IMAGE"
+
+  deploy-homologacao:
+    name: Homologação
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: homologacao
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Variáveis do environment
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          DUORA_RESOURCE_GROUP: ${{ vars.DUORA_RESOURCE_GROUP }}
+          DUORA_CONTAINER_APP: ${{ vars.DUORA_CONTAINER_APP }}
+          DUORA_MIGRATION_JOB: ${{ vars.DUORA_MIGRATION_JOB }}
+        run: infra/azure/require-variables.sh AZURE_CLIENT_ID DUORA_RESOURCE_GROUP DUORA_CONTAINER_APP DUORA_MIGRATION_JOB
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Migração e revisão nova
+        env:
+          RESOURCE_GROUP: ${{ vars.DUORA_RESOURCE_GROUP }}
+          CONTAINER_APP: ${{ vars.DUORA_CONTAINER_APP }}
+          MIGRATION_JOB: ${{ vars.DUORA_MIGRATION_JOB }}
+          IMAGE: ${{ needs.publish.outputs.image }}
+        run: |
+          az config set extension.use_dynamic_install=yes_without_prompt --only-show-errors
+          infra/azure/deploy.sh "$RESOURCE_GROUP" "$CONTAINER_APP" "$MIGRATION_JOB" "$IMAGE"
+
+  # A aprovação de produção fica nas regras do environment "producao" no GitHub (revisor obrigatório).
+  deploy-producao:
+    name: Produção
+    needs: [publish, deploy-homologacao]
+    if: inputs.target == 'producao'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: producao
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Variáveis do environment
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          DUORA_RESOURCE_GROUP: ${{ vars.DUORA_RESOURCE_GROUP }}
+          DUORA_CONTAINER_APP: ${{ vars.DUORA_CONTAINER_APP }}
+          DUORA_MIGRATION_JOB: ${{ vars.DUORA_MIGRATION_JOB }}
+        run: infra/azure/require-variables.sh AZURE_CLIENT_ID DUORA_RESOURCE_GROUP DUORA_CONTAINER_APP DUORA_MIGRATION_JOB
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Migração e revisão nova
+        env:
+          RESOURCE_GROUP: ${{ vars.DUORA_RESOURCE_GROUP }}
+          CONTAINER_APP: ${{ vars.DUORA_CONTAINER_APP }}
+          MIGRATION_JOB: ${{ vars.DUORA_MIGRATION_JOB }}
+          IMAGE: ${{ needs.publish.outputs.image }}
+        run: |
+          az config set extension.use_dynamic_install=yes_without_prompt --only-show-errors
+          infra/azure/deploy.sh "$RESOURCE_GROUP" "$CONTAINER_APP" "$MIGRATION_JOB" "$IMAGE"
