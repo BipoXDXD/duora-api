@@ -61,8 +61,11 @@ query evita vazar perfil de quem bloqueou.
 ## Compliance
 
 - `CustomActionRoutingTest`: o Spring MVC roteia cada `:verbo` para o seu handler, recusa variações
-  (sem verbo, verbo desconhecido, segmento extra), responde 400 para id vazio ou inválido, e o
-  matcher do Spring Security trata o `:` e o `%3A` como o controller.
+  (sem verbo, verbo desconhecido, segmento extra), responde 400 para id vazio ou inválido, e tanto
+  o controller quanto o matcher do Spring Security, isolados, reconhecem a ação escrita com `%3A`.
+- `CustomActionSecurityIT`: com HTTP real (Tomcat, firewall e cadeia de filtros), uma regra que
+  nega `POST /things/{id}:cancel` também nega `%3Acancel` e `%3acancel`, enquanto a ação vizinha
+  chega ao handler.
 - `JoinWaitlistIT`: erros de entrada respondem `application/problem+json`.
 - `WaitlistSecurityIT`, `BearerTokenValidationIT` e `WebLoginIT`: 401 e 403 nas duas portas
   respondem `application/problem+json` com o conjunto exato de chaves.
