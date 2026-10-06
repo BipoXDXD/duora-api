@@ -40,6 +40,7 @@ docker run -d --name "$api" --network "$network" -p 127.0.0.1::8080 \
   -e DUORA_AUTH_AUTHORITY=https://login.duora.test/tenant \
   -e DUORA_AUTH_WEB_CLIENT_ID=duora-web-smoke \
   -e DUORA_AUTH_WEB_CLIENT_SECRET=smoke-test-only \
+  -e DUORA_TRUSTED_PROXIES=192.0.2.0/24 \
   "$image" >/dev/null
 
 port="$(docker port "$api" 8080/tcp | head -1 | cut -d: -f2)"
