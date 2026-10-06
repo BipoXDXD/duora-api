@@ -32,6 +32,9 @@ build/
 ### VS Code ###
 .vscode/
 
+### Ferramentas do CI (tools/contract) ###
+node_modules/
+
 ### Local ###
 .DS_Store
 .claude/settings.local.json

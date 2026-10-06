@@ -1,0 +1,7 @@
+# Configuração do Schemathesis em infra/docker/contract-test.sh (docs/adr/0011).
+
+[phases.coverage]
+# Métodos fora da spec devem dar 405. QUERY e TRACE ficam de fora: o StrictHttpFirewall do Spring
+# Security os recusa com 400 antes do roteamento, porque não estão na allowlist de métodos dele.
+# A recusa é deliberada e não chega a nenhum handler.
+unexpected-methods = ["get", "put", "post", "delete", "options", "patch"]
