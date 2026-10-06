@@ -41,7 +41,10 @@ class PageTokenTest {
     @ParameterizedTest
     @ValueSource(strings = {"2026-11-01T22:00:00Z", "2026-11-01T22:00:00Z 1-1-1-1-1",
             "2026-11-01T22:00:00Z 01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b extra",
-            "ontem 01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b", " 01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b"})
+            "ontem 01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b", " 01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b",
+            "+999999999-12-31T23:59:59Z 01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b",
+            "+10000-01-01T00:00:00Z 01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b",
+            "1969-12-31T23:59:59.999999Z 01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b"})
     void rejectsWellEncodedTokenWithInvalidContent(String content) {
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(content.getBytes(StandardCharsets.UTF_8));
 
@@ -57,9 +60,19 @@ class PageTokenTest {
                 .hasMessage("pageToken is invalid");
     }
 
+    /** Fora de 1970 a 9999 não há evento: o instante nem chega ao banco, que o recusaria com erro. */
+    @Test
+    void acceptsTheEdgesOfThePlausibleRange() {
+        var earliest = new PageCursor(Instant.EPOCH, CURSOR.eventId());
+        var latest = new PageCursor(Instant.parse("9999-12-31T23:59:59.999999Z"), CURSOR.eventId());
+
+        assertThat(PageToken.decode(PageToken.encode(earliest))).isEqualTo(earliest);
+        assertThat(PageToken.decode(PageToken.encode(latest))).isEqualTo(latest);
+    }
+
     @Test
     void validTokenFitsTheMaximumLength() {
-        var latest = new PageCursor(Instant.parse("+999999999-12-31T23:59:59.999999Z"),
+        var latest = new PageCursor(Instant.parse("9999-12-31T23:59:59.999999Z"),
                 UUID.fromString("ffffffff-ffff-ffff-ffff-ffffffffffff"));
 
         assertThat(PageToken.encode(latest)).hasSizeLessThanOrEqualTo(PageToken.MAX_LENGTH);

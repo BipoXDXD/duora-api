@@ -51,6 +51,9 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 @Import({TestcontainersConfiguration.class, TestClockConfiguration.class})
 class EventCatalogIT {
 
+    /** Mais páginas que isso nos testes de paginação só aconteceria com o cursor repetindo itens. */
+    private static final int MAX_PAGES_TO_FOLLOW = 10;
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -153,8 +156,11 @@ class EventCatalogIT {
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
     }
 
+    /** Os dois últimos são cursores bem formados com anos que o timestamptz não guarda (+999999999, +200000). */
     @ParameterizedTest
-    @ValueSource(strings = {"", "não-é-token", "AAAA", "' OR '1'='1"})
+    @ValueSource(strings = {"", "não-é-token", "AAAA", "' OR '1'='1",
+            "Kzk5OTk5OTk5OS0xMi0zMVQyMzo1OTo1OVogMDE5NjZjNGUtN2QxYS03YzNlLTliNWYtM2YyYTFjMGQ5ZThi",
+            "KzIwMDAwMC0wMS0wMVQwMDowMDowMFogMDE5NjZjNGUtN2QxYS03YzNlLTliNWYtM2YyYTFjMGQ5ZThi"})
     void invalidPageTokenIsABadRequest(String pageToken) throws Exception {
         mockMvc.perform(get(EVENTS_PATH).param("pageToken", pageToken).with(user("ana")))
                 .andExpect(status().isBadRequest())
@@ -243,7 +249,11 @@ class EventCatalogIT {
     private List<String> pageThrough(int pageSize) throws Exception {
         List<String> seen = new ArrayList<>();
         String token = null;
+        int pages = 0;
         do {
+            pages++;
+            assertThat(pages).as("pages fetched; a keyset that repeats items would loop forever").isLessThanOrEqualTo(
+                    MAX_PAGES_TO_FOLLOW);
             var request = get(EVENTS_PATH).param("pageSize", Integer.toString(pageSize)).with(user("ana"));
             if (token != null) {
                 request.param("pageToken", token);
