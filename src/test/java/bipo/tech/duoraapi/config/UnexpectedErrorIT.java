@@ -10,9 +10,12 @@ import java.net.http.HttpResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
@@ -27,7 +30,10 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 @Import(TestcontainersConfiguration.class)
+@ExtendWith(OutputCaptureExtension.class)
 class UnexpectedErrorIT {
+
+    private static final String REQUEST_ID = "X-Request-Id";
 
     private static final String HIDDEN_TABLE = "waitlist_entry_unavailable";
 
@@ -51,15 +57,7 @@ class UnexpectedErrorIT {
 
     @Test
     void unexpectedFailureOnPublicRouteAnswersServerErrorAsProblemDetail() throws Exception {
-        jdbcClient.sql("alter table waitlist_entry rename to " + HIDDEN_TABLE).update();
-
-        var response = http.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/waitlist"))
-                        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                        .POST(HttpRequest.BodyPublishers.ofString("""
-                                {"email": "ana@example.com"}
-                                """))
-                        .build(),
-                HttpResponse.BodyHandlers.ofString());
+        var response = joinWhileTableIsMissing("ana@example.com");
 
         assertThat(response.statusCode()).isEqualTo(500);
         assertThat(response.headers().firstValue(HttpHeaders.CONTENT_TYPE))
@@ -67,6 +65,29 @@ class UnexpectedErrorIT {
         assertThat(response.body())
                 .contains("\"status\":500")
                 .doesNotContain("Exception", "SQL", "at ", "waitlist_entry", "bipo.tech", "trace");
+    }
+
+    /** O cliente recebe só o id; o stack trace fica no log, numa linha com o mesmo id. */
+    @Test
+    void unexpectedFailureIsLoggedWithStackTraceUnderTheRequestId(CapturedOutput output) throws Exception {
+        var response = joinWhileTableIsMissing("ana@example.com");
+
+        String requestId = response.headers().firstValue(REQUEST_ID).orElseThrow();
+        assertThat(response.body()).contains("\"requestId\":\"" + requestId + "\"");
+        assertThat(output.getOut().lines().filter(line -> line.contains(requestId)))
+                .anySatisfy(line -> assertThat(line)
+                        .contains("\"level\":\"ERROR\"", "\"stack_trace\":", "\\tat ", "PSQLException"));
+    }
+
+    private HttpResponse<String> joinWhileTableIsMissing(String email) throws Exception {
+        jdbcClient.sql("alter table waitlist_entry rename to " + HIDDEN_TABLE).update();
+        return http.send(HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/api/waitlist"))
+                        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .POST(HttpRequest.BodyPublishers.ofString("""
+                                {"email": "%s"}
+                                """.formatted(email)))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
 }
