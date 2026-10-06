@@ -1,6 +1,8 @@
 package bipo.tech.duoraapi.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -195,6 +197,13 @@ class WebLoginIT {
                 .andExpect(content().json("""
                         {"displayName": null}
                         """, JsonCompareMode.STRICT));
+    }
+
+    /** Principal sem claims é defeito de configuração: falha com a causa, e não com um NPE adiante. */
+    @Test
+    void currentUserWithPrincipalWithoutClaimsFailsWithTheCause() {
+        assertThatThrownBy(() -> mockMvc.perform(get(CURRENT_USER_PATH).with(user("ana"))))
+                .hasRootCauseInstanceOf(ClassCastException.class);
     }
 
     @Test
