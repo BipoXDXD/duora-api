@@ -3,6 +3,8 @@ package bipo.tech.duoraapi.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.io.IOException;
@@ -30,9 +32,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.util.UriComponents;
@@ -66,11 +70,14 @@ class WebLoginIT {
     private static final String CSRF_COOKIE = "XSRF-TOKEN";
     private static final String CSRF_HEADER = "X-XSRF-TOKEN";
     private static final String ADMIN_ONLY_PATH = "/api/admin/waitlist/stats";
+    private static final String CURRENT_USER_PATH = "/api/me";
 
     private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String WEB_CLIENT_ID = "duora-web-client-id";
     private static final String API_AUDIENCE = "duora-api-client-id";
     private static final String USER_OBJECT_ID = "user-object-id";
+    private static final String USER_DISPLAY_NAME = "Ana Souza";
+    private static final String USER_EMAIL = "ana@example.com";
     private static final String KEY_ID = "signing-key";
 
     private static final RSAKey SIGNING_KEY = generateRsaKey();
@@ -160,6 +167,40 @@ class WebLoginIT {
                 .contains("; Secure")
                 .contains("; SameSite=Lax")
                 .doesNotContainIgnoringCase("Domain=");
+    }
+
+    /** O front só precisa do nome para exibir; e-mail, oid e papéis ficam no servidor. */
+    @Test
+    void currentUserExposesOnlyTheDisplayName() throws Exception {
+        var session = logIn();
+
+        mockMvc.perform(get(CURRENT_USER_PATH).cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(content().json("""
+                        {"displayName": "Ana Souza"}
+                        """, JsonCompareMode.STRICT));
+    }
+
+    /** Usuário sem nome no Entra: a chave continua no JSON, para o contrato não mudar de forma. */
+    @Test
+    void currentUserWithoutNameInTheIdTokenHasNullDisplayName() throws Exception {
+        var session = sessionCookieOf(completeLogin(startLogin(),
+                claims -> claims.claim("name", null), UnaryOperator.identity()));
+
+        mockMvc.perform(get(CURRENT_USER_PATH).cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {"displayName": null}
+                        """, JsonCompareMode.STRICT));
+    }
+
+    @Test
+    void currentUserWithoutSessionIsUnauthorizedInsteadOfRedirectedToLogin() throws Exception {
+        mockMvc.perform(get(CURRENT_USER_PATH))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().doesNotExist(HttpHeaders.LOCATION))
+                .andExpect(content().string(""));
     }
 
     @Test
@@ -272,6 +313,8 @@ class WebLoginIT {
                 .issuer(ISSUER)
                 .subject("pairwise-subject")
                 .claim("oid", USER_OBJECT_ID)
+                .claim("name", USER_DISPLAY_NAME)
+                .claim("email", USER_EMAIL)
                 .issueTime(Date.from(now.minus(Duration.ofMinutes(1))))
                 .expirationTime(Date.from(now.plus(Duration.ofMinutes(10))));
     }

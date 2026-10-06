@@ -119,6 +119,7 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 |---|---|---|---|
 | `POST` | `/api/waitlist` | Público | `202`, para e-mail novo ou repetido |
 | `GET` | `/api/admin/waitlist/stats` | `ADMIN` | `200` com `{"total": n}` |
+| `GET` | `/api/me` | Autenticado | `200` com `{"displayName": "..."}` (`null` se o Entra não tiver nome); `401` sem sessão |
 | `GET` | `/actuator/health` | Público | Estado da aplicação |
 
 ## Autenticação
@@ -142,7 +143,7 @@ Para o front (repositório `duora-web`):
 |---|---|
 | Entrar | Navegar para `/oauth2/authorization/entra`; após o login, volta para `/` |
 | Sair | `POST /logout` com o header `X-XSRF-TOKEN`; o navegador segue para o logout do Entra |
-| Saber se está logado | Uma rota da API responde `401` sem sessão |
+| Saber se está logado | `GET /api/me`: `200` com o nome de exibição, ou `401` sem sessão |
 
 Em desenvolvimento, o Vite faz proxy da API, para front e API ficarem na mesma origem
 (`http://localhost:5173`).
