@@ -77,10 +77,29 @@ class DatabaseMigrationIT {
         DatabaseMigration.run(settings("app-password-1"));
 
         try (var connection = DriverManager.getConnection(jdbcUrl(), appRole, "app-password-1")) {
+            // Sem as tabelas na lista, a checagem seguinte passaria sem conferir nada.
+            assertThat(applicationTables(connection)).contains("waitlist_entry", "account", "profile");
             assertThat(applicationTablesWithout(connection, "SELECT,INSERT,UPDATE,DELETE")).isEmpty();
             try (var statement = connection.createStatement()) {
                 statement.execute("insert into waitlist_entry (email, joined_at) values ('ana@example.com', now())");
             }
+        }
+    }
+
+    /** Tabela criada depois do job pelo dono das migrations (uma migration nova, por exemplo). */
+    @Test
+    void appRoleReadsAndWritesTablesCreatedLaterByTheMigrator() throws SQLException {
+        DatabaseMigration.run(settings("app-password-1"));
+        try (var connection = DriverManager.getConnection(jdbcUrl(), MIGRATOR, MIGRATOR_PASSWORD);
+                var statement = connection.createStatement()) {
+            statement.execute("create table later_table (id bigint generated always as identity primary key, note text)");
+        }
+
+        try (var connection = DriverManager.getConnection(jdbcUrl(), appRole, "app-password-1");
+                var statement = connection.createStatement()) {
+            statement.execute("insert into later_table (note) values ('written by the app')");
+            statement.execute("update later_table set note = 'changed'");
+            statement.execute("delete from later_table");
         }
     }
 
@@ -130,6 +149,21 @@ class DatabaseMigrationIT {
 
     private String jdbcUrl() {
         return "jdbc:postgresql://" + POSTGRES.getHost() + ":" + POSTGRES.getMappedPort(5432) + "/" + database;
+    }
+
+    private static List<String> applicationTables(Connection connection) throws SQLException {
+        var sql = """
+                select relname from pg_class
+                where relnamespace = 'public'::regnamespace and relkind in ('r', 'p')
+                  and relname <> 'flyway_schema_history'
+                """;
+        var tables = new ArrayList<String>();
+        try (var statement = connection.createStatement(); var rows = statement.executeQuery(sql)) {
+            while (rows.next()) {
+                tables.add(rows.getString(1));
+            }
+        }
+        return tables;
     }
 
     /** Tabelas da aplicação (todas menos o histórico do Flyway) em que o papel conectado não tem os privilégios. */

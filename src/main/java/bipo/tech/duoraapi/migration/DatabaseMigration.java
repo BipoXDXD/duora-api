@@ -26,6 +26,9 @@ public final class DatabaseMigration {
             "grant usage on schema public to %I",
             "grant select, insert, update, delete on all tables in schema public to %I",
             "grant usage, select on all sequences in schema public to %I",
+            // Tabelas e sequências que o dono das migrations criar depois, mesmo fora deste job.
+            "alter default privileges in schema public grant select, insert, update, delete on tables to %I",
+            "alter default privileges in schema public grant usage, select on sequences to %I",
             // O histórico decide o que já foi migrado; a aplicação não tem por que lê-lo nem alterá-lo.
             "revoke all on table " + MIGRATION_HISTORY_TABLE + " from %I");
 
