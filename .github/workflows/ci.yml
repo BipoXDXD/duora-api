@@ -62,7 +62,7 @@ jobs:
       - name: Smoke test
         run: infra/docker/smoke-test.sh duora-api:${{ github.sha }}
 
-      # Schemathesis contra a imagem subida, a partir de docs/openapi.json (docs/adr/0011).
+      # Schemathesis contra a imagem subida, a partir de docs/openapi.json (docs/adr/0012).
       - name: Teste de contrato
         run: infra/docker/contract-test.sh duora-api:${{ github.sha }}
 

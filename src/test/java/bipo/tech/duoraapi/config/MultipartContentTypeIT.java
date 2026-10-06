@@ -23,7 +23,7 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 /**
  * A API não recebe multipart. Um {@code Content-Type: multipart/form-data} malformado (sem boundary)
  * respondia 500, porque o Spring tentava ler as partes antes de chegar ao handler; o Schemathesis
- * achou o caso (docs/adr/0011). HTTP de verdade: o MockMvc não lê partes.
+ * achou o caso (docs/adr/0012). HTTP de verdade: o MockMvc não lê partes.
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 @Import(TestcontainersConfiguration.class)

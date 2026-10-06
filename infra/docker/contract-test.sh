@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sobe a imagem da API e roda o Schemathesis (--checks all) contra ela, a partir da spec versionada
-# em docs/openapi.json, com a configuração de tools/contract/schemathesis.toml (docs/adr/0011):
+# em docs/openapi.json, com a configuração de tools/contract/schemathesis.toml (docs/adr/0012):
 # nenhum 500, status, headers e corpos dentro do contrato, entrada inválida recusada e autenticação
 # aplicada.
 #

@@ -1,7 +1,7 @@
 {
   "name": "duora-api-contract-tools",
   "private": true,
-  "description": "Ferramentas do CI para a spec OpenAPI (docs/adr/0011); versões fixadas pelo package-lock.json.",
+  "description": "Ferramentas do CI para a spec OpenAPI (docs/adr/0012); versões fixadas pelo package-lock.json.",
   "scripts": {
     "lint": "spectral lint ../../docs/openapi.json --ruleset .spectral.yaml --fail-severity error"
   },

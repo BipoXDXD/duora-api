@@ -27,7 +27,7 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 
 /**
  * Com o perfil api-docs, a spec e o Swagger UI existem, mas só para ADMIN, nas duas portas de entrada
- * (docs/adr/0011). O jwt() do MockMvc pula a validação do token, o que basta para testar papel.
+ * (docs/adr/0012). O jwt() do MockMvc pula a validação do token, o que basta para testar papel.
  */
 @SpringBootTest
 @AutoConfigureMockMvc

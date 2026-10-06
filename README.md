@@ -187,7 +187,7 @@ Em produção a documentação não existe. Com o perfil `api-docs`
 (`SPRING_PROFILES_ACTIVE=api-docs`), a spec fica em `/api/admin/openapi` (`.yaml` também) e o
 Swagger UI em `/api/admin/swagger-ui.html`, só para `ADMIN`.
 
-O CI confere o contrato de três jeitos ([ADR 0011](docs/adr/0011-contrato-openapi.md)):
+O CI confere o contrato de três jeitos ([ADR 0012](docs/adr/0012-contrato-openapi.md)):
 
 | Verificação | Rodar localmente |
 |---|---|
@@ -284,9 +284,9 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0007](docs/adr/0007-estilo-por-modulo.md) | Ports & adapters no core, camadas simples no supporting |
 | [0008](docs/adr/0008-imagem-e-let-it-crash.md) | Dockerfile multi-stage; queda só em estado irrecuperável |
 | [0009](docs/adr/0009-outbox-e-eventos.md) | Outbox próprio, eventos por chave, partição por limiar |
-| [0011](docs/adr/0011-contrato-openapi.md) | Spec OpenAPI gerada e versionada; Spectral, oasdiff e Schemathesis no CI |
 | [0010](docs/adr/0010-sem-refresh-token.md) | Login web sem refresh token |
 | [0011](docs/adr/0011-conta-e-perfil.md) | Conta por emissor + `oid`; perfil singular com `If-Match`; regras 18+ |
+| [0012](docs/adr/0012-contrato-openapi.md) | Spec OpenAPI gerada e versionada; Spectral, oasdiff e Schemathesis no CI |
 | [0013](docs/adr/0013-logs-estruturados-e-correlation-id.md) | Logs em JSON (ECS); trace id W3C como correlation ID |
 | [0014](docs/adr/0014-infraestrutura-do-piloto-na-azure.md) | Infraestrutura do piloto em Bicep, deploy por OIDC (proposta, custo pendente) |
 

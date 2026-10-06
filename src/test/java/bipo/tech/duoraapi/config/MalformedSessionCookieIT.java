@@ -23,7 +23,7 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 /**
  * Cookie de sessão com um id que a API nunca emitiria vale como sessão ausente. Antes, um id com NUL
  * chegava à consulta do Spring Session no PostgreSQL, que o recusa, e qualquer rota respondia 500 em
- * HTML; o Schemathesis achou o caso (docs/adr/0011). HTTP de verdade, para passar pelo Tomcat e pelo
+ * HTML; o Schemathesis achou o caso (docs/adr/0012). HTTP de verdade, para passar pelo Tomcat e pelo
  * encaminhamento a /error como em produção.
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)

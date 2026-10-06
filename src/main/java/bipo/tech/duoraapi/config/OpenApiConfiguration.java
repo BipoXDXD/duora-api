@@ -29,7 +29,7 @@ import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
 
 /**
- * O que a spec gerada pelo springdoc não sabe sozinha (docs/adr/0011): as duas portas de entrada como
+ * O que a spec gerada pelo springdoc não sabe sozinha (docs/adr/0012): as duas portas de entrada como
  * esquemas de segurança, exigidas por padrão, e as respostas que valem para toda operação e não saem
  * do controller (401 e 403 da segurança, 415, 500), em {@code ProblemDetail} (docs/adr/0005).
  * Operação pública declara {@code security: []} no próprio controller.

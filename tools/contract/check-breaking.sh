@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Falha se docs/openapi.json tiver breaking change em relação à spec de uma revisão base (no CI, a
-# main), salvo se a mudança também registrar a quebra em docs/api-changelog.md (docs/adr/0011).
+# main), salvo se a mudança também registrar a quebra em docs/api-changelog.md (docs/adr/0012).
 # Uso: tools/contract/check-breaking.sh [revisão-base]   (padrão: origin/main)
 set -euo pipefail
 

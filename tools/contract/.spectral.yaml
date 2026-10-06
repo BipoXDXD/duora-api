@@ -1,5 +1,5 @@
 # Lint da spec (docs/openapi.json) no CI: regras gerais do OpenAPI e o ruleset OWASP API Security
-# (docs/adr/0011). Erro quebra o build; aviso aparece no log para revisão. Cada regra desligada
+# (docs/adr/0012). Erro quebra o build; aviso aparece no log para revisão. Cada regra desligada
 # abaixo diz por quê: o ruleset é linha de base, não meta de zero.
 extends:
   - spectral:oas

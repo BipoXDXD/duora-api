@@ -53,7 +53,7 @@ query evita vazar perfil de quem bloqueou.
 
 - O contrato mistura AIP (ação, paginação) e REST (o resto); a mistura fica documentada aqui.
 - Antes do primeiro endpoint de ação em produção, conferir que o ingress do Container Apps preserva
-  o `:` no path. O springdoc o preserva (`OpenApiCustomActionIT`, [ADR 0011](0011-contrato-openapi.md)).
+  o `:` no path. O springdoc o preserva (`OpenApiCustomActionIT`, [ADR 0012](0012-contrato-openapi.md)).
 - Cada resumo embutido numa lista é mais um contrato: o teste confere o conjunto exato de chaves.
 - A idempotência segue a regra de segurança: chave escopada por usuário, fingerprint do corpo e
   reserva atômica.

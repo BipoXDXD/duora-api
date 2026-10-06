@@ -17,7 +17,7 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 
 /**
  * Sem o perfil api-docs, como em produção, a documentação nem existe: nem um ADMIN a encontra
- * (docs/adr/0011).
+ * (docs/adr/0012).
  */
 @SpringBootTest
 @AutoConfigureMockMvc

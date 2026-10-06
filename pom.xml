@@ -97,7 +97,7 @@
             <version>${bucket4j.version}</version>
         </dependency>
 
-        <!-- Spec OpenAPI e Swagger UI, só com o perfil api-docs e só para ADMIN (ADR 0011).
+        <!-- Spec OpenAPI e Swagger UI, só com o perfil api-docs e só para ADMIN (ADR 0012).
              A linha 3.x é a do Spring Boot 4. -->
         <dependency>
             <groupId>org.springdoc</groupId>

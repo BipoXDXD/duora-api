@@ -33,7 +33,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * A spec versionada em docs/openapi.json é a que a aplicação gera (sem drift), e o que ela declara
- * sobre autenticação é o que a segurança aplica (docs/adr/0011). O front gera os tipos dela.
+ * sobre autenticação é o que a segurança aplica (docs/adr/0012). O front gera os tipos dela.
  */
 @SpringBootTest
 @AutoConfigureMockMvc

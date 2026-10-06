@@ -1,7 +1,7 @@
 # Changelog da API
 
 Mudanças no contrato publicado em [`openapi.json`](openapi.json), da mais recente para a mais
-antiga ([ADR 0011](adr/0011-contrato-openapi.md)).
+antiga ([ADR 0012](adr/0012-contrato-openapi.md)).
 
 Toda **breaking change** entra aqui no mesmo PR que a introduz: sem a entrada, o CI
 (`tools/contract/check-breaking.sh`) recusa a mudança. Diga o que quebra, por quê e o que o

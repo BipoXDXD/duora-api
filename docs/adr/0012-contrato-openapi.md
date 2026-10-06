@@ -1,4 +1,4 @@
-# 0011. Contrato OpenAPI gerado, versionado e verificado no CI
+# 0012. Contrato OpenAPI gerado, versionado e verificado no CI
 
 - **Status:** Proposta. Decidido na sessão autônoma de 2026-10-05; revisar com o usuário
 - **Data:** 2026-10-05

@@ -1,4 +1,4 @@
-# Configuração do Schemathesis em infra/docker/contract-test.sh (docs/adr/0011).
+# Configuração do Schemathesis em infra/docker/contract-test.sh (docs/adr/0012).
 
 [phases.coverage]
 # Métodos fora da spec devem dar 405. QUERY e TRACE ficam de fora: o StrictHttpFirewall do Spring
