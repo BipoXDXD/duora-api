@@ -10,6 +10,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
@@ -19,6 +21,8 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import io.github.bucket4j.BucketConfiguration;
+import io.github.bucket4j.BucketExceptions.BucketExecutionException;
+import io.github.bucket4j.ConsumptionProbe;
 import io.github.bucket4j.distributed.proxy.ProxyManager;
 
 /**
@@ -26,6 +30,8 @@ import io.github.bucket4j.distributed.proxy.ProxyManager;
  * no PostgreSQL (docs/adr/0006), então o limite vale para todas as réplicas juntas.
  */
 class JoinWaitlistRateLimitFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(JoinWaitlistRateLimitFilter.class);
 
     static final String PATH = "/api/waitlist";
 
@@ -43,6 +49,9 @@ class JoinWaitlistRateLimitFilter extends OncePerRequestFilter {
 
     private static final String TOO_MANY_REQUESTS_BODY = """
             {"type":"about:blank","title":"Too Many Requests","status":429}""";
+
+    private static final String SERVICE_UNAVAILABLE_BODY = """
+            {"type":"about:blank","title":"Service Unavailable","status":503}""";
 
     private final ProxyManager<String> buckets;
     private final BucketConfiguration limit;
@@ -62,8 +71,17 @@ class JoinWaitlistRateLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        var bucket = buckets.getProxy(KEY_PREFIX + clientOf(request.getRemoteAddr()), () -> limit);
-        var probe = bucket.tryConsumeAndReturnRemaining(1);
+        String key = KEY_PREFIX + clientOf(request.getRemoteAddr());
+        ConsumptionProbe probe;
+        try {
+            probe = buckets.getProxy(key, () -> limit).tryConsumeAndReturnRemaining(1);
+        } catch (BucketExecutionException e) {
+            // Falha fechada (docs/adr/0006): banco fora, pool esgotado ou timeout. Sem contar, não deixa
+            // passar. 503, e não 500, porque é indisponibilidade da dependência, e não defeito.
+            log.error("Rate limit store failed; rejecting join request", e);
+            reject(response, HttpStatus.SERVICE_UNAVAILABLE, SERVICE_UNAVAILABLE_BODY);
+            return;
+        }
         if (probe.isConsumed()) {
             chain.doFilter(request, response);
             return;
@@ -90,10 +108,14 @@ class JoinWaitlistRateLimitFilter extends OncePerRequestFilter {
 
     private static void rejectTooManyRequests(HttpServletResponse response, long nanosToWait) throws IOException {
         long retryAfterSeconds = Math.ceilDiv(nanosToWait, NANOS_PER_SECOND);
-        response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
         response.setHeader(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds));
+        reject(response, HttpStatus.TOO_MANY_REQUESTS, TOO_MANY_REQUESTS_BODY);
+    }
+
+    private static void reject(HttpServletResponse response, HttpStatus status, String problemBody) throws IOException {
+        response.setStatus(status.value());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
-        response.getWriter().write(TOO_MANY_REQUESTS_BODY);
+        response.getWriter().write(problemBody);
     }
 
 }

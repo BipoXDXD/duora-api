@@ -13,8 +13,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 class CurrentUserController {
 
+    /** errorOnInvalidType: outro tipo de principal falha aqui, com a causa, em vez de chegar como null. */
     @GetMapping("/api/me")
-    CurrentUserResponse currentUser(@AuthenticationPrincipal ClaimAccessor user) {
+    CurrentUserResponse currentUser(@AuthenticationPrincipal(errorOnInvalidType = true) ClaimAccessor user) {
         return new CurrentUserResponse(user.getClaimAsString(StandardClaimNames.NAME));
     }
 

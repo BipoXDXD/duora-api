@@ -1,6 +1,8 @@
 package bipo.tech.duoraapi.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -197,19 +199,34 @@ class WebLoginIT {
                         """, JsonCompareMode.STRICT));
     }
 
+    /** Principal sem claims é defeito de configuração: falha com a causa, e não com um NPE adiante. */
+    @Test
+    void currentUserWithPrincipalWithoutClaimsFailsWithTheCause() {
+        assertThatThrownBy(() -> mockMvc.perform(get(CURRENT_USER_PATH).with(user("ana"))))
+                .hasRootCauseInstanceOf(ClassCastException.class);
+    }
+
     @Test
     void currentUserWithoutSessionIsUnauthorizedInsteadOfRedirectedToLogin() throws Exception {
         mockMvc.perform(get(CURRENT_USER_PATH))
                 .andExpect(status().isUnauthorized())
                 .andExpect(header().doesNotExist(HttpHeaders.LOCATION))
-                .andExpect(content().string(""));
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(content().json("""
+                        {"type": "about:blank", "title": "Unauthorized", "status": 401}
+                        """, JsonCompareMode.STRICT));
     }
 
     @Test
     void logoutWithoutCsrfTokenIsRejectedAndKeepsSession() throws Exception {
         var session = logIn();
 
-        mockMvc.perform(post("/logout").cookie(session)).andExpect(status().isForbidden());
+        mockMvc.perform(post("/logout").cookie(session))
+                .andExpect(status().isForbidden())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(content().json("""
+                        {"type": "about:blank", "title": "Forbidden", "status": 403}
+                        """, JsonCompareMode.STRICT));
 
         mockMvc.perform(get(ADMIN_ONLY_PATH).cookie(session)).andExpect(status().isOk());
     }

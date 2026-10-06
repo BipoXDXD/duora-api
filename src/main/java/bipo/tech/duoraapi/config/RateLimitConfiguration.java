@@ -31,12 +31,20 @@ class RateLimitConfiguration {
     /** Folga depois da reposição completa, para não apagar um bucket que acabou de ser usado. */
     private static final Duration KEEP_AFTER_FULL_REFILL = Duration.ofMinutes(1);
 
+    /**
+     * Teto de cada comando no banco (o Bucket4j o aplica como query timeout, em segundos inteiros).
+     * Sem ele, requisições do mesmo cliente esperariam o lock da linha sem limite, cada uma segurando
+     * uma conexão do pool.
+     */
+    static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(1);
+
     @Bean
     PostgreSQLSelectForUpdateBasedProxyManager<String> rateLimitBuckets(DataSource dataSource) {
         return Bucket4jPostgreSQL.selectForUpdateBasedBuilder(dataSource)
                 .primaryKeyMapper(PrimaryKeyMapper.STRING)
                 .table(TABLE)
                 .expirationAfterWrite(basedOnTimeForRefillingBucketUpToMax(KEEP_AFTER_FULL_REFILL))
+                .requestTimeout(REQUEST_TIMEOUT)
                 .build();
     }
 

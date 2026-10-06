@@ -64,16 +64,19 @@ class CustomActionRoutingTest {
         assertThat(cancelMatcher.matches(postRequest("/things/" + ID + ":accept"))).isFalse();
     }
 
-    /** Se só um dos dois decodificasse o "%3A", a regra de autorização da ação poderia ser contornada. */
+    /**
+     * Se só um dos dois decodificasse o "%3A", a regra de autorização da ação poderia ser contornada.
+     * Com a cadeia de filtros e o Tomcat de verdade: CustomActionSecurityIT.
+     */
     @Test
-    void encodedColonIsTreatedAlikeByControllerAndSecurityMatcher() throws Exception {
+    void encodedColonReachesTheActionInControllerAndSecurityMatcher() throws Exception {
         var encodedPath = "/things/" + ID + "%3Acancel";
         var cancelMatcher = PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/things/{id}:cancel");
 
-        int status = mockMvc.perform(post(URI.create(encodedPath))).andReturn().getResponse().getStatus();
-        boolean controllerRouted = status == 200;
-
-        assertThat(cancelMatcher.matches(postRequest(encodedPath))).isEqualTo(controllerRouted);
+        mockMvc.perform(post(URI.create(encodedPath)))
+                .andExpect(status().isOk())
+                .andExpect(content().string("cancel " + ID));
+        assertThat(cancelMatcher.matches(postRequest(encodedPath))).isTrue();
     }
 
     private static MockHttpServletRequest postRequest(String path) {

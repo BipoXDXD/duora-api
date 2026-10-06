@@ -1,7 +1,9 @@
 package bipo.tech.duoraapi.config;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.io.IOException;
@@ -27,6 +29,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -109,7 +112,11 @@ class BearerTokenValidationIT {
     void forbidsValidTokenWithoutAdminRole() throws Exception {
         mockMvc.perform(get(ADMIN_ONLY_PATH).header(HttpHeaders.AUTHORIZATION, bearer(signed(userClaims().build()))))
                 .andExpect(status().isForbidden())
-                .andExpect(content().string(""));
+                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, containsString("insufficient_scope")))
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(content().json("""
+                        {"type": "about:blank", "title": "Forbidden", "status": 403}
+                        """, JsonCompareMode.STRICT));
     }
 
     /** A porta bearer responde o mesmo contrato da sessão web, com o nome vindo do access token. */
@@ -129,7 +136,11 @@ class BearerTokenValidationIT {
     void rejectsInvalidToken(String token) throws Exception {
         mockMvc.perform(get(ADMIN_ONLY_PATH).header(HttpHeaders.AUTHORIZATION, bearer(token)))
                 .andExpect(status().isUnauthorized())
-                .andExpect(content().string(""));
+                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, containsString("invalid_token")))
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(content().json("""
+                        {"type": "about:blank", "title": "Unauthorized", "status": 401}
+                        """, JsonCompareMode.STRICT));
     }
 
     static Stream<Named<String>> invalidTokens() {

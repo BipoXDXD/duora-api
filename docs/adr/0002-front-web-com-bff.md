@@ -63,7 +63,7 @@ precisa ser igual ao do access token.
 
 | Ameaça (STRIDE) | Mitigação | Teste |
 |---|---|---|
-| Information disclosure: XSS rouba credencial | Token só no servidor; cookie `HttpOnly` | `WebLoginIT.sessionCookieIsHostOnlyHttpOnlySecureAndLax` |
+| Information disclosure: XSS rouba credencial | Token só no servidor; cookie `HttpOnly`. **Pendente:** o logout em JSON entrega o ID token ao JavaScript (ver abaixo) | `WebLoginIT.sessionCookieIsHostOnlyHttpOnlySecureAndLax` |
 | Spoofing: fixação de sessão | Id da sessão trocado no login; sessão anterior não autentica | `WebLoginIT.loginRedirectsToFrontAndRotatesSessionId`, `preLoginSessionIsUselessAfterLogin` |
 | Tampering: CSRF em mutação autenticada | Token CSRF obrigatório | `WebLoginIT.logoutWithoutCsrfTokenIsRejectedAndKeepsSession` |
 | Spoofing: ID token de outro tenant, de outro app ou reaproveitado (nonce) | Validação de `iss`, `aud` e `nonce` | `WebLoginIT.rejectsLoginWithInvalidTokens` |
@@ -71,3 +71,23 @@ precisa ser igual ao do access token.
 | Repudiation/elevation: sessão continua válida após sair | Logout invalida a sessão aqui e no Entra | `WebLoginIT.sessionCookieIsUselessAfterLogout`, `logoutEndsSessionHereAndAnswersTheEntraLogoutUrl` |
 | Information disclosure: `/api/me` vaza e-mail, `oid` ou papéis | DTO com allowlist (`displayName`) | `WebLoginIT.currentUserExposesOnlyTheDisplayName`, `BearerTokenValidationIT.currentUserFromBearerTokenExposesOnlyTheDisplayName` |
 | Configuração ausente | A subida falha sem as variáveis novas ou com elas em branco | `RequiredAuthenticationSettingsIT` |
+
+### Pendente: ID token no corpo do logout
+
+O `{"logoutUrl": "..."}` do `POST /logout` traz `id_token_hint` com o ID token inteiro, assinado
+pelo Entra e com `name`, `oid` e, se houver, `email`. Antes ele só passava pelo `Location` de um
+302, que o JavaScript não lê numa navegação. Com isso, a mitigação "token só no servidor" da
+primeira linha da tabela deixa de valer para o ID token: um XSS no `duora-web` que leia o cookie
+`XSRF-TOKEN` e chame o logout obtém a PII assinada e um `id_token_hint` válido. O ID token não
+autoriza a API (`aud` é outra), mas pode servir de prova de identidade a quem valide mal a `aud`.
+
+Decisão do usuário, em aberto. Opções levantadas na revisão dos PRs #1 e #2:
+
+- montar a URL sem `id_token_hint`, só com `client_id` e `post_logout_redirect_uri` (ou com
+  `logout_hint`), testando contra o Entra real;
+- voltar ao 302 com navegação top-level por formulário `POST`, levando o token CSRF em parâmetro
+  (com `csrf.spa()`, ele passa pelo handler XOR).
+
+Qualquer que seja a escolha, ela entra com um teste que afirma que a resposta do logout não contém
+o ID token (por exemplo, um canário `CANARY-<uuid>` numa claim do ID token de teste), e esta seção
+sai da ADR.

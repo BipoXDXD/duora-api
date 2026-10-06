@@ -40,16 +40,25 @@ não puder ser multiplicado.
 ## Consequências
 
 - Toda requisição limitada abre uma transação curta no banco. Se o banco cair, a rota responde
-  erro em vez de passar sem limite (falha fechada); a inscrição dependeria do banco de qualquer
-  forma.
+  `503` em `ProblemDetail` em vez de passar sem limite (falha fechada); a inscrição dependeria do
+  banco de qualquer forma. Cada comando do Bucket4j tem teto de 1 s
+  (`RateLimitConfiguration.REQUEST_TIMEOUT`), para requisições do mesmo cliente não esperarem o
+  lock da linha sem limite. A espera por conexão segue o timeout do pool (Hikari, 30 s): um pool
+  dedicado ao rate limit (bulkhead) só entra se a medição no k6 mostrar disputa.
 - A tabela não tem teto de linhas, ao contrário do cache em memória. O crescimento fica limitado
   pela quantidade de IPv4 e de redes /64 de quem ataca, e cada linha some em até uma hora mais o
   intervalo da limpeza; a métrica de tamanho mostra se isso mudar.
 - O IP do cliente fica gravado na chave até a reposição completa mais um minuto (no máximo cerca de
   uma hora na waitlist). É dado pessoal pela LGPD: entra no registro de operações de tratamento,
   com finalidade de segurança e retenção curta.
-- O cliente ainda é identificado pelo IP da conexão. Atrás do proxy do Container Apps é preciso
-  configurar `server.forward-headers-strategy`, senão todos os clientes dividem o IP do proxy.
+- **Pendente, bloqueia o primeiro deploy:** o cliente ainda é identificado pelo IP da conexão.
+  Atrás do proxy do Container Apps é preciso configurar `server.forward-headers-strategy`, restrito
+  à faixa do ingress (`internalProxies`) para o cliente não forjar o IP. Sem isso, todos os
+  visitantes dividem o IP do proxy e um único bucket: 10 inscrições por hora para o sistema
+  inteiro, já que o estado agora é compartilhado entre réplicas. Nada impede hoje o deploy sem a
+  configuração; a trava (propriedade obrigatória no perfil de deploy ou passo no smoke test que
+  confira chaves distintas por `X-Forwarded-For`) é decisão do usuário, junto com a do proxy
+  confiável.
 - O Caffeine saiu do `pom.xml`.
 - Se a latência medida no k6 pesar, o caminho é Redis com o mesmo Bucket4j, trocando só o
   `ProxyManager`.
@@ -60,6 +69,10 @@ não puder ser multiplicado.
   bucket diferentes, que só compartilham o banco, somam o mesmo limite.
 - `JoinWaitlistRateLimitFilterIT.sharesLimitWithinIpv6Slash64` e `countsEachIpv6Slash64Separately`:
   endereços da mesma rede /64 somam o mesmo limite; redes diferentes, não.
+- `JoinWaitlistRateLimitFilterIT.rejectsRequestWithServiceUnavailableWhenBucketStoreIsDown` e
+  `rejectsRequestWithServiceUnavailableWhenBucketStaysLocked`: com o banco recusando conexão ou com
+  a linha do bucket presa por outra transação, a requisição não passa e recebe `503` (falha fechada
+  e timeout).
 - `JoinWaitlistIT.joiningAboveRateLimitIsRejectedWithoutWriting`: acima do limite, `429` com
   `Retry-After` e nada gravado.
 - `ExpiredRateLimitBucketCleanerIT`: o `expires_at` gravado é a reposição completa mais a folga, a

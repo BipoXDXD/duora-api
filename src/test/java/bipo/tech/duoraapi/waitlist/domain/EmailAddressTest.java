@@ -40,4 +40,14 @@ class EmailAddressTest {
                 .isInstanceOf(InvalidEmailAddressException.class);
     }
 
+    /** Invisíveis: entrariam na lista como lixo e escapariam do UNIQUE com um e-mail igual na tela. */
+    @ParameterizedTest
+    @ValueSource(strings = {"a\u0000b@example.com", "ana@example.com\u0000", "a\u0001b@example.com",
+            "a\u001Fb@example.com", "a\u007Fb@example.com", "a\u00A0b@example.com", "a\u200Bb@example.com",
+            "ana@exam\u2028ple.com", "ana@example.c\u3000om"})
+    void rejectsControlAndInvisibleCharacters(String value) {
+        assertThatThrownBy(() -> new EmailAddress(value))
+                .isInstanceOf(InvalidEmailAddressException.class);
+    }
+
 }
