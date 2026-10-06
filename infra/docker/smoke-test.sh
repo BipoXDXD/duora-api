@@ -40,6 +40,7 @@ docker run -d --name "$api" --network "$network" -p 127.0.0.1::8080 \
   -e DUORA_AUTH_AUTHORITY=https://login.duora.test/tenant \
   -e DUORA_AUTH_WEB_CLIENT_ID=duora-web-smoke \
   -e DUORA_AUTH_WEB_CLIENT_SECRET=smoke-test-only \
+  -e DUORA_TRUSTED_PROXIES=192.0.2.0/24 \
   "$image" >/dev/null
 
 port="$(docker port "$api" 8080/tcp | head -1 | cut -d: -f2)"
@@ -59,5 +60,8 @@ docker stop --timeout "$shutdown_timeout_seconds" "$api" >/dev/null
 # 143 = 128 + SIGTERM: a JVM recebeu o sinal e saiu sozinha, sem o SIGKILL do fim do prazo (137).
 exit_code="$(docker inspect -f '{{.State.ExitCode}}' "$api")"
 [[ "$exit_code" == "143" || "$exit_code" == "0" ]] || fail "encerramento com código $exit_code"
-docker logs "$api" 2>&1 | grep -q "Graceful shutdown complete" || fail "sem graceful shutdown no log"
+# Lê o log inteiro antes de procurar: com pipefail, o grep -q sai no primeiro acerto e o SIGPIPE no
+# docker logs faria o pipeline falhar mesmo com a linha presente.
+api_logs="$(docker logs "$api" 2>&1)"
+[[ "$api_logs" == *"Graceful shutdown complete"* ]] || fail "sem graceful shutdown no log"
 echo "ok: encerrou com SIGTERM (código $exit_code) e graceful shutdown"
