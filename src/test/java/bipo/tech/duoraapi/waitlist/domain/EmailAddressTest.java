@@ -50,4 +50,12 @@ class EmailAddressTest {
                 .isInstanceOf(InvalidEmailAddressException.class);
     }
 
+    /** Dado pessoal: um log ou mensagem de erro que imprima o objeto não leva o endereço. */
+    @Test
+    void textRepresentationHidesTheAddress() {
+        var email = new EmailAddress("ana.silva@example.com");
+
+        assertThat(email.toString()).doesNotContain("ana.silva", "example.com");
+    }
+
 }

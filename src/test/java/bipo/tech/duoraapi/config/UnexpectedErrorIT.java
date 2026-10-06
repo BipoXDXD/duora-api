@@ -6,6 +6,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.UUID;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -67,16 +68,23 @@ class UnexpectedErrorIT {
                 .doesNotContain("Exception", "SQL", "at ", "waitlist_entry", "bipo.tech", "trace");
     }
 
-    /** O cliente recebe só o id; o stack trace fica no log, numa linha com o mesmo id. */
+    /**
+     * O cliente recebe só o id; o stack trace fica no log, numa linha com o mesmo id. O e-mail
+     * enviado (canário) não aparece em nenhum dos dois.
+     */
     @Test
     void unexpectedFailureIsLoggedWithStackTraceUnderTheRequestId(CapturedOutput output) throws Exception {
-        var response = joinWhileTableIsMissing("ana@example.com");
+        String canary = "canary-" + UUID.randomUUID();
+
+        var response = joinWhileTableIsMissing(canary + "@example.com");
 
         String requestId = response.headers().firstValue(REQUEST_ID).orElseThrow();
         assertThat(response.body()).contains("\"requestId\":\"" + requestId + "\"");
         assertThat(output.getOut().lines().filter(line -> line.contains(requestId)))
                 .anySatisfy(line -> assertThat(line)
                         .contains("\"level\":\"ERROR\"", "\"stack_trace\":", "\\tat ", "PSQLException"));
+        assertThat(response.body()).doesNotContain(canary);
+        assertThat(output.getAll()).doesNotContain(canary);
     }
 
     private HttpResponse<String> joinWhileTableIsMissing(String email) throws Exception {
