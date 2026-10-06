@@ -136,12 +136,16 @@ Pacotes por módulo, cada um dividido em camadas:
 ```
 bipo.tech.duoraapi
 ├── config/              # segurança, sessão, relógio, rate limit compartilhado
+├── events/              # eventos e inscrições
+│   ├── api/             # rotas do ADMIN, lista e inscrição; paginação por keyset
+│   ├── application/     # casos de uso (administração, catálogo, inscrição)
+│   └── domain/          # evento e suas regras de estado, repositórios
 ├── identity/            # conta interna; AccountId é a API publicada
 │   ├── api/             # abre a conta e a entrega ao parâmetro AccountId
 │   ├── application/     # AccountService
 │   └── domain/          # conta, identidade externa, repositório
 ├── migration/           # job de migração do deploy (Flyway + papel restrito da API)
-├── profiles/            # perfil do próprio usuário e GET /api/me
+├── profiles/            # perfil do próprio usuário e GET /api/me; ProfileCompleteness é a API publicada
 │   ├── api/
 │   ├── application/
 │   └── domain/          # regras 18+, value objects, repositório
@@ -158,7 +162,7 @@ bipo.tech.duoraapi
 
 Os testes espelham a mesma estrutura. Um módulo só usa de outro a API publicada, que são as
 classes na raiz do pacote dele (como `identity.AccountId`); as camadas são internas
-([ADR 0011](docs/adr/0011-conta-e-perfil.md)). Módulos de apoio (waitlist, identity, profiles) usam
+([ADR 0011](docs/adr/0011-conta-e-perfil.md)). Módulos de apoio (waitlist, identity, profiles, events) usam
 essas camadas simples; os do core (pareamento, minijogos, conexões, trustsafety) usam ports & adapters, com
 domínio sem framework. O `ArchitectureTest` cobra a classificação e a direção das dependências
 ([ADR 0007](docs/adr/0007-estilo-por-modulo.md)).
@@ -180,6 +184,16 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 | `GET` | `/api/me/blocked-accounts` | Autenticado | Quem o usuário bloqueou, do mais recente ao mais antigo: `{items: [{accountId, blockedAt}], nextPageToken}`, `maxPageSize` de 1 a 100 (padrão 20), `pageToken` da página anterior; `400` fora disso |
 | `POST` | `/api/reports` | Autenticado | Denuncia outra conta com `{reportedAccountId, reason, description}`; `reason` de lista fechada, `description` até 1000 caracteres e obrigatória com `OTHER`. `201` com `Location` e a denúncia (`status` `OPEN`); `400` para si mesmo ou valor inválido; `404` sem conta; `429` com `Retry-After` acima da cota; `503` com a cota indisponível. Denunciar não bloqueia |
 | `GET` | `/api/reports/{id}` | Autenticado | A própria denúncia; de outra pessoa ou inexistente, `404` |
+| `POST` | `/api/admin/events` | `ADMIN` | Cria um rascunho com `{title, description, startsAt, endsAt, capacity}` (horários ISO 8601 com fuso). `201` com `Location` e o evento; `400` para valor inválido ou campo desconhecido |
+| `GET` | `/api/admin/events/{id}` | `ADMIN` | `200` com o evento, o `status` (`DRAFT`, `PUBLISHED`, `CANCELLED`) e `registrationCount`; nunca a lista de inscritos |
+| `POST` | `/api/admin/events/{id}:publish` | `ADMIN` | `200` com o evento publicado; `409` se não for rascunho ou já tiver começado |
+| `POST` | `/api/admin/events/{id}:cancel` | `ADMIN` | `200` com o evento cancelado; `409` se já cancelado ou encerrado |
+| `GET` | `/api/events` | Autenticado | Publicados que ainda não começaram, por início: `{items, nextPageToken}`, `pageSize` de 1 a 50 (padrão 10), `pageToken` da página anterior |
+| `GET` | `/api/events/{id}` | Autenticado | `200` com `{id, title, description, startsAt, endsAt, status}`; rascunho ou inexistente `404` |
+| `PUT` | `/api/events/{id}/registration` | Autenticado | Inscreve quem chama: `201` com `Location` na primeira vez, `200` com a mesma inscrição nas repetições; `403` com perfil incompleto; `409` com evento cancelado, começado ou lotado |
+| `GET` | `/api/events/{id}/registration` | Autenticado | A própria inscrição, ou `404` |
+| `DELETE` | `/api/events/{id}/registration` | Autenticado | Cancela a própria inscrição: `204`, também sem inscrição; `409` depois do início |
+| `GET` | `/api/me/registrations` | Autenticado | As próprias inscrições em eventos que ainda não acabaram, com o resumo do evento, no mesmo envelope paginado |
 | `GET` | `/actuator/health` | Público | Estado da aplicação |
 
 ### Contrato (OpenAPI)
@@ -256,6 +270,7 @@ Para o front (repositório `duora-web`):
 | Sair | `POST /logout` com o header `X-XSRF-TOKEN`; a resposta é `200` com `{"logoutUrl": "..."}`, e o front navega até essa URL para sair também do Entra |
 | Saber se está logado | `GET /api/me`: `200` com o nome de exibição e `profileComplete`, ou `401` sem sessão |
 | Completar ou editar o perfil | `GET /api/me/profile` e `PATCH /api/me/profile` com `If-Match` (o `ETag` do `GET`) e `X-XSRF-TOKEN`; em `412`, ler de novo e reaplicar |
+| Ver e se inscrever em eventos | `GET /api/events`; `PUT /api/events/{id}/registration` com `X-XSRF-TOKEN` (repetir é seguro); em `403`, levar ao cadastro do perfil |
 
 Em desenvolvimento, o Vite faz proxy da API, para front e API ficarem na mesma origem
 (`http://localhost:5173`).
@@ -304,6 +319,8 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0012](docs/adr/0012-contrato-openapi.md) | Spec OpenAPI gerada e versionada; Spectral, oasdiff e Schemathesis no CI |
 | [0013](docs/adr/0013-logs-estruturados-e-correlation-id.md) | Logs em JSON (ECS); trace id W3C como correlation ID |
 | [0014](docs/adr/0014-infraestrutura-do-piloto-na-azure.md) | Infraestrutura do piloto em Bicep, deploy por OIDC (proposta, custo pendente) |
+| [0015](docs/adr/0015-bloqueio-e-denuncia.md) | Bloqueio e denúncia entre contas |
+| [0016](docs/adr/0016-eventos-e-inscricoes.md) | Eventos e inscrições: lock do evento para a capacidade, inscrição como sub-recurso idempotente |
 
 ## Segurança
 
@@ -315,7 +332,8 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
   réplicas juntas ([ADR 0006](docs/adr/0006-rate-limit-no-postgresql.md)). Localmente, o limite
   usa o IP da conexão. Atrás do ingress (perfil `behind-proxy`, ligado na imagem), usa o
   `X-Forwarded-For` só quando a conexão vem da faixa `DUORA_TRUSTED_PROXIES`.
-- **Entrada estrita:** campos JSON desconhecidos são rejeitados com `400`.
+- **Entrada estrita:** campos JSON desconhecidos e números fracionários em campos inteiros são
+  rejeitados com `400`.
 - **Perfil:** cada usuário só alcança o próprio (`/api/me/profile`, sem id na rota). Região só como
   UF (`BR-SP`), nunca localização precisa; data de nascimento só de maior de idade, informada uma vez,
   e a elegibilidade é calculada na hora, nunca guardada ([ADR 0011](docs/adr/0011-conta-e-perfil.md)).
@@ -324,4 +342,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
   revela se a outra pessoa bloqueou você. Cada conta faz até 10 denúncias por dia
   (`duora.trustsafety.report-rate-limit.*`), contadas no PostgreSQL, e o relato nunca vai para o log
   ([ADR 0015](docs/adr/0015-bloqueio-e-denuncia.md)).
+- **Eventos:** ninguém vê quem se inscreveu: cada pessoa só alcança a própria inscrição (sem id na rota), e
+  o ADMIN só vê a contagem. Rascunho responde como evento inexistente. A capacidade vale sob concorrência
+  ([ADR 0016](docs/adr/0016-eventos-e-inscricoes.md)).
 - **CI:** o gitleaks varre o histórico em busca de segredos a cada push e pull request.
