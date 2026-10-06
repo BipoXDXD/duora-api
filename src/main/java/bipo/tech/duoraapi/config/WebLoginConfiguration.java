@@ -4,9 +4,12 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
 
+import jakarta.servlet.http.HttpServletResponse;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
@@ -30,6 +33,8 @@ import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
 import org.springframework.util.Assert;
+
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Login do front web pelo próprio Spring (BFF, docs/adr/0002): o Spring é um cliente confidencial
@@ -117,12 +122,25 @@ public class WebLoginConfiguration {
         }
     }
 
-    /** Encerra a sessão aqui e também no Entra, para o próximo login pedir credenciais de novo. */
+    /**
+     * Encerra a sessão aqui e também no Entra, para o próximo login pedir credenciais de novo. O front
+     * chama o logout por fetch, que não segue um 302 para outra origem: em vez do redirect, a resposta
+     * é 200 com a URL de logout do Entra, e o front navega até ela.
+     */
     @Bean
-    LogoutSuccessHandler entraLogoutSuccessHandler(ClientRegistrationRepository clientRegistrations) {
+    LogoutSuccessHandler entraLogoutSuccessHandler(ClientRegistrationRepository clientRegistrations,
+            JsonMapper jsonMapper) {
         var handler = new OidcClientInitiatedLogoutSuccessHandler(clientRegistrations);
         handler.setPostLogoutRedirectUri("{baseUrl}/");
+        handler.setRedirectStrategy((request, response, logoutUrl) -> {
+            response.setStatus(HttpServletResponse.SC_OK);
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            jsonMapper.writeValue(response.getOutputStream(), new LogoutResponse(logoutUrl));
+        });
         return handler;
+    }
+
+    private record LogoutResponse(String logoutUrl) {
     }
 
 }

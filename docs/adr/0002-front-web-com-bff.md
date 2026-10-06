@@ -54,7 +54,10 @@ precisa ser igual ao do access token.
 - O registro `duora-desktop` foi removido do tenant; `duora-android` continua para quando o app
   Kotlin for decidido.
 - O front não guarda tokens nem conversa com o Entra: leva o usuário a `/oauth2/authorization/entra`
-  para entrar e faz `POST /logout`, com o token CSRF, para sair.
+  para entrar e faz `POST /logout`, com o token CSRF, para sair. Como o `fetch` não segue um 302
+  para outra origem, o logout responde `200` com `{"logoutUrl": "..."}` (o logout do Entra, com
+  `post_logout_redirect_uri`), e o front navega até essa URL. `GET /api/me` diz se há sessão e
+  devolve só o nome de exibição.
 
 ## Compliance
 
@@ -65,5 +68,6 @@ precisa ser igual ao do access token.
 | Tampering: CSRF em mutação autenticada | Token CSRF obrigatório | `WebLoginIT.logoutWithoutCsrfTokenIsRejectedAndKeepsSession` |
 | Spoofing: ID token de outro tenant, de outro app ou reaproveitado (nonce) | Validação de `iss`, `aud` e `nonce` | `WebLoginIT.rejectsLoginWithInvalidTokens` |
 | Spoofing: access token de outra API, de outro usuário ou com chave forjada | Mesmo `JwtDecoder` da porta bearer e `oid` igual nos dois tokens | `WebLoginIT.rejectsLoginWithInvalidTokens` |
-| Repudiation/elevation: sessão continua válida após sair | Logout invalida a sessão aqui e no Entra | `WebLoginIT.logoutEndsSessionHereAndAtEntra` |
+| Repudiation/elevation: sessão continua válida após sair | Logout invalida a sessão aqui e no Entra | `WebLoginIT.sessionCookieIsUselessAfterLogout`, `logoutEndsSessionHereAndAnswersTheEntraLogoutUrl` |
+| Information disclosure: `/api/me` vaza e-mail, `oid` ou papéis | DTO com allowlist (`displayName`) | `WebLoginIT.currentUserExposesOnlyTheDisplayName`, `BearerTokenValidationIT.currentUserFromBearerTokenExposesOnlyTheDisplayName` |
 | Configuração ausente | A subida falha sem as variáveis novas ou com elas em branco | `RequiredAuthenticationSettingsIT` |

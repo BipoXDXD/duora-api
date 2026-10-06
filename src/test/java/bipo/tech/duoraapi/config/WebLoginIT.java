@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.io.IOException;
@@ -42,6 +43,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.util.UriComponents;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import com.jayway.jsonpath.JsonPath;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
@@ -212,18 +214,39 @@ class WebLoginIT {
         mockMvc.perform(get(ADMIN_ONLY_PATH).cookie(session)).andExpect(status().isOk());
     }
 
+    /**
+     * O front chama o logout por fetch, que não segue um 302 para outra origem: a resposta é 200 com
+     * a URL de logout do Entra, para o front navegar até ela.
+     */
     @Test
-    void logoutEndsSessionHereAndAtEntra() throws Exception {
+    void logoutEndsSessionHereAndAnswersTheEntraLogoutUrl() throws Exception {
         var session = logIn();
         var csrf = csrfCookie(session);
 
         var logout = mockMvc.perform(post("/logout").cookie(session, csrf).header(CSRF_HEADER, csrf.getValue()))
-                .andExpect(status().is3xxRedirection())
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist(HttpHeaders.LOCATION))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.length()").value(1))
                 .andReturn();
 
-        var entraLogout = UriComponentsBuilder.fromUriString(logout.getResponse().getRedirectedUrl()).build();
+        String logoutUrl = JsonPath.read(logout.getResponse().getContentAsString(), "$.logoutUrl");
+        var entraLogout = UriComponentsBuilder.fromUriString(logoutUrl).build();
+        assertThat(entraLogout.getHost()).isEqualTo("127.0.0.1");
         assertThat(entraLogout.getPath()).isEqualTo("/tenant/oauth2/v2.0/logout");
-        assertThat(entraLogout.getQueryParams()).containsKeys("id_token_hint", "post_logout_redirect_uri");
+        assertThat(entraLogout.getQueryParams()).containsKey("id_token_hint");
+        assertThat(queryParam(entraLogout, "post_logout_redirect_uri")).isEqualTo("http://localhost/");
+    }
+
+    @Test
+    void sessionCookieIsUselessAfterLogout() throws Exception {
+        var session = logIn();
+        var csrf = csrfCookie(session);
+
+        mockMvc.perform(post("/logout").cookie(session, csrf).header(CSRF_HEADER, csrf.getValue()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get(CURRENT_USER_PATH).cookie(session)).andExpect(status().isUnauthorized());
         mockMvc.perform(get(ADMIN_ONLY_PATH).cookie(session)).andExpect(status().isUnauthorized());
     }
 

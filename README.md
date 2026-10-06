@@ -142,7 +142,7 @@ Para o front (repositório `duora-web`):
 | Ação | Como |
 |---|---|
 | Entrar | Navegar para `/oauth2/authorization/entra`; após o login, volta para `/` |
-| Sair | `POST /logout` com o header `X-XSRF-TOKEN`; o navegador segue para o logout do Entra |
+| Sair | `POST /logout` com o header `X-XSRF-TOKEN`; a resposta é `200` com `{"logoutUrl": "..."}`, e o front navega até essa URL para sair também do Entra |
 | Saber se está logado | `GET /api/me`: `200` com o nome de exibição, ou `401` sem sessão |
 
 Em desenvolvimento, o Vite faz proxy da API, para front e API ficarem na mesma origem
