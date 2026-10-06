@@ -113,6 +113,38 @@ class OpenApiContractIT {
         }
     }
 
+    /** Bloqueio e denúncia (docs/adr/0015): erros, cota, Location e paginação aparecem na spec. */
+    @Test
+    void blockAndReportDocumentTheirContract() throws Exception {
+        JsonNode spec = jsonMapper.readTree(generatedSpec());
+        JsonNode block = spec.at("/paths/~1api~1accounts~1{accountId}:block/post");
+        JsonNode list = spec.at("/paths/~1api~1me~1blocked-accounts/get");
+        JsonNode file = spec.at("/paths/~1api~1reports/post");
+        JsonNode read = spec.at("/paths/~1api~1reports~1{id}/get");
+
+        assertThat(block.at("/responses/204").isMissingNode()).isFalse();
+        assertThat(documentsProblem(block, 400)).isTrue();
+        assertThat(documentsProblem(block, 404)).isTrue();
+        assertThat(list.get("parameters").valueStream()
+                .map(parameter -> parameter.path("name").asString() + ":" + parameter.at("/schema/maximum").asString()))
+                .contains("maxPageSize:100");
+        assertThat(spec.at("/components/schemas/BlockedAccountsResponse/properties/items/maxItems").asInt())
+                .isEqualTo(100);
+        assertThat(file.at("/responses/201/headers/Location/required").asBoolean()).isTrue();
+        assertThat(file.at("/responses/429/headers/Retry-After/required").asBoolean()).isTrue();
+        for (int status : new int[] {400, 404, 429, 503}) {
+            assertThat(documentsProblem(file, status)).as("POST de denúncia documenta o %d", status).isTrue();
+        }
+        assertThat(documentsProblem(read, 404)).isTrue();
+        assertThat(spec.at("/components/schemas/FileReportRequest/additionalProperties").asBoolean(true)).isFalse();
+        assertThat(spec.at("/components/schemas/FileReportRequest/properties/reason/enum").valueStream()
+                .map(JsonNode::asString))
+                .containsExactly("HARASSMENT", "HATE_SPEECH", "SEXUAL_CONTENT", "VIOLENCE_OR_THREAT", "SCAM_OR_SPAM",
+                        "FAKE_PROFILE", "SUSPECTED_MINOR", "OTHER");
+        assertThat(spec.at("/components/schemas/FileReportRequest/properties/description/maxLength").asInt())
+                .isEqualTo(1000);
+    }
+
     /**
      * Operação pública declara {@code security: []}; as outras declaram a resposta 401 e recebem 401
      * sem credencial. Assim a spec não promete acesso que a segurança nega, nem o contrário.

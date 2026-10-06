@@ -15,16 +15,217 @@
     "session" : [ ]
   } ],
   "tags" : [ {
+    "description" : "Bloqueio entre contas",
+    "name" : "blocks"
+  }, {
     "description" : "Perfil do usuário logado",
     "name" : "profile"
   }, {
     "description" : "Sessão do usuário logado",
     "name" : "session"
   }, {
+    "description" : "Denúncias para a moderação",
+    "name" : "reports"
+  }, {
     "description" : "Lista de espera do pré-lançamento",
     "name" : "waitlist"
   } ],
   "paths" : {
+    "/api/accounts/{accountId}:block" : {
+      "post" : {
+        "description" : "Idempotente: bloquear quem já está bloqueado também responde 204 e mantém a data do primeiro bloqueio. A resposta é a mesma se a outra pessoa tiver bloqueado você.",
+        "operationId" : "blockAccount",
+        "parameters" : [ {
+          "description" : "Id da outra conta, como o app o recebe ao mostrar a pessoa",
+          "in" : "path",
+          "name" : "accountId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "A conta está bloqueada",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Bloqueio de si mesmo, ou id que não é UUID",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sessão web sem o token CSRF no header X-XSRF-TOKEN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Não há conta com esse id",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Bloqueia outra conta",
+        "tags" : [ "blocks" ]
+      }
+    },
+    "/api/accounts/{accountId}:unblock" : {
+      "post" : {
+        "description" : "Idempotente: sem bloqueio, ou com id que não é de conta, também responde 204. Um bloqueio que a outra pessoa fez continua valendo.",
+        "operationId" : "unblockAccount",
+        "parameters" : [ {
+          "description" : "Id da outra conta, como o app o recebe ao mostrar a pessoa",
+          "in" : "path",
+          "name" : "accountId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "A conta não está bloqueada por quem chama",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sessão web sem o token CSRF no header X-XSRF-TOKEN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Desfaz o próprio bloqueio de outra conta",
+        "tags" : [ "blocks" ]
+      }
+    },
     "/api/admin/waitlist/stats" : {
       "get" : {
         "description" : "Só ADMIN.",
@@ -148,6 +349,99 @@
         },
         "summary" : "Quem está logado",
         "tags" : [ "session" ]
+      }
+    },
+    "/api/me/blocked-accounts" : {
+      "get" : {
+        "description" : "Do bloqueio mais recente para o mais antigo, paginado por cursor. A última página vem com nextPageToken null.",
+        "operationId" : "listBlockedAccounts",
+        "parameters" : [ {
+          "description" : "Quantos bloqueios no máximo nesta página",
+          "in" : "query",
+          "name" : "maxPageSize",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20,
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        }, {
+          "description" : "O nextPageToken da página anterior; ausente na primeira",
+          "in" : "query",
+          "name" : "pageToken",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 200,
+            "pattern" : "^[A-Za-z0-9_-]+$"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/BlockedAccountsResponse"
+                }
+              }
+            },
+            "description" : "Uma página dos bloqueios",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "maxPageSize fora de 1 a 100, ou pageToken que a API não gerou",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lista quem o usuário bloqueou",
+        "tags" : [ "blocks" ]
       }
     },
     "/api/me/profile" : {
@@ -389,6 +683,279 @@
         "tags" : [ "profile" ]
       }
     },
+    "/api/reports" : {
+      "post" : {
+        "description" : "Cria a denúncia no estado OPEN, para a moderação. Denunciar não bloqueia: para isso, chame blockAccount. Cada conta pode fazer 10 denúncias por dia, repostas aos poucos.",
+        "operationId" : "fileReport",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/FileReportRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ReportResponse"
+                }
+              }
+            },
+            "description" : "A denúncia criada",
+            "headers" : {
+              "Location" : {
+                "description" : "Endereço da denúncia criada",
+                "required" : true,
+                "schema" : {
+                  "type" : "string",
+                  "format" : "uri",
+                  "maxLength" : 2048
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Denúncia de si mesmo, motivo OTHER sem descrição, descrição inválida, JSON malformado ou campo desconhecido",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sessão web sem o token CSRF no header X-XSRF-TOKEN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Não há conta com o id denunciado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "415" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Corpo em outro formato que não application/json",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Cota diária de denúncias desta conta esgotada",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até a próxima denúncia ficar disponível",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int64",
+                  "maximum" : 86400,
+                  "minimum" : 0
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "503" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Cota indisponível; a denúncia é recusada",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Denuncia outra conta",
+        "tags" : [ "reports" ]
+      }
+    },
+    "/api/reports/{id}" : {
+      "get" : {
+        "description" : "Só quem denunciou a lê. A de outra pessoa responde como um id que não existe.",
+        "operationId" : "getMyReport",
+        "parameters" : [ {
+          "description" : "Id da denúncia",
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ReportResponse"
+                }
+              }
+            },
+            "description" : "A denúncia",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Denúncia inexistente ou de outra pessoa",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lê uma denúncia feita pelo usuário",
+        "tags" : [ "reports" ]
+      }
+    },
     "/api/waitlist" : {
       "post" : {
         "description" : "Pública. A resposta é a mesma para e-mail novo ou já inscrito, para não revelar quem está na lista. Limitada por IP (IPv6 por rede /64), com o estado compartilhado entre réplicas.",
@@ -519,6 +1086,45 @@
       }
     },
     "schemas" : {
+      "BlockedAccount" : {
+        "type" : "object",
+        "properties" : {
+          "accountId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Id da conta bloqueada",
+            "maxLength" : 36,
+            "minLength" : 36
+          },
+          "blockedAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Quando o bloqueio foi feito",
+            "maxLength" : 35
+          }
+        },
+        "required" : [ "accountId", "blockedAt" ]
+      },
+      "BlockedAccountsResponse" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "description" : "Bloqueios do mais recente para o mais antigo",
+            "items" : {
+              "$ref" : "#/components/schemas/BlockedAccount"
+            },
+            "maxItems" : 100
+          },
+          "nextPageToken" : {
+            "type" : [ "string", "null" ],
+            "description" : "Token da próxima página, ou null na última",
+            "maxLength" : 200,
+            "pattern" : "^[A-Za-z0-9_-]+$"
+          }
+        },
+        "required" : [ "items", "nextPageToken" ]
+      },
       "CurrentUserResponse" : {
         "type" : "object",
         "properties" : {
@@ -566,6 +1172,30 @@
             "writeOnly" : true
           }
         }
+      },
+      "FileReportRequest" : {
+        "type" : "object",
+        "additionalProperties" : false,
+        "properties" : {
+          "description" : {
+            "type" : [ "string", "null" ],
+            "description" : "Relato livre em parágrafos, sem caracteres invisíveis; obrigatório com o motivo OTHER. Vazio ou só com espaços conta como ausente.",
+            "maxLength" : 1000
+          },
+          "reason" : {
+            "type" : "string",
+            "description" : "Motivo, de uma lista fechada",
+            "enum" : [ "HARASSMENT", "HATE_SPEECH", "SEXUAL_CONTENT", "VIOLENCE_OR_THREAT", "SCAM_OR_SPAM", "FAKE_PROFILE", "SUSPECTED_MINOR", "OTHER" ]
+          },
+          "reportedAccountId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Id da conta denunciada",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        },
+        "required" : [ "reason", "reportedAccountId" ]
       },
       "JoinWaitlistRequest" : {
         "type" : "object",
@@ -649,6 +1279,46 @@
           }
         },
         "required" : [ "bio", "birthDate", "complete", "displayName", "region" ]
+      },
+      "ReportResponse" : {
+        "type" : "object",
+        "properties" : {
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Quando a denúncia foi feita",
+            "maxLength" : 35
+          },
+          "description" : {
+            "type" : [ "string", "null" ],
+            "description" : "O relato, ou null se não houve",
+            "maxLength" : 1000
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Id da denúncia",
+            "maxLength" : 36,
+            "minLength" : 36
+          },
+          "reason" : {
+            "type" : "string",
+            "enum" : [ "HARASSMENT", "HATE_SPEECH", "SEXUAL_CONTENT", "VIOLENCE_OR_THREAT", "SCAM_OR_SPAM", "FAKE_PROFILE", "SUSPECTED_MINOR", "OTHER" ]
+          },
+          "reportedAccountId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Id da conta denunciada",
+            "maxLength" : 36,
+            "minLength" : 36
+          },
+          "status" : {
+            "type" : "string",
+            "description" : "Estado na moderação",
+            "enum" : [ "OPEN" ]
+          }
+        },
+        "required" : [ "createdAt", "description", "id", "reason", "reportedAccountId", "status" ]
       },
       "WaitlistStatsResponse" : {
         "type" : "object",

@@ -26,6 +26,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import bipo.tech.duoraapi.AccountTables;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
 /**
@@ -51,8 +52,7 @@ class AccountProvisioningIT {
 
     @BeforeEach
     void cleanDatabase() {
-        jdbcClient.sql("delete from profile").update();
-        jdbcClient.sql("delete from account").update();
+        AccountTables.deleteAccountsAndTheirData(jdbcClient);
     }
 
     @Test
