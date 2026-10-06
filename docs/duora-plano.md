@@ -14,7 +14,7 @@ Aplicação web com prioridade para celular e área administrativa. Sem app nati
 | Necessidade | Escolha inicial | Aplicação no Duora |
 |---|---|---|
 | Interface | [React 19](https://react.dev/versions) + TypeScript com `strict` | Componentes e modelos tipados. |
-| Build | [Vite](https://vite.dev/guide/), [Node.js 24 LTS](https://nodejs.org/en/about/previous-releases) e pnpm | Desenvolvimento, build estático e dependências com lockfile. |
+| Build | [Vite](https://vite.dev/guide/), [Node.js 24 LTS](https://nodejs.org/en/about/previous-releases) e [npm](https://docs.npmjs.com/cli/v11/commands/npm-ci) | Desenvolvimento, build estático e dependências com lockfile (`package-lock.json`, instalado com `npm ci`). |
 | Rotas | [React Router](https://reactrouter.com/start/declarative/installation) | Cadastro, eventos, sala, conversas e administração. |
 | Dados remotos | [TanStack Query](https://tanstack.com/query/latest/docs/framework/react/overview) | Consultas, cache em memória, mutações e invalidação. |
 | Estado de interface | Hooks, Context e `useReducer` | Modais e apresentação do jogo; sem duplicar todo o banco em estado global. |
@@ -22,7 +22,7 @@ Aplicação web com prioridade para celular e área administrativa. Sem app nati
 | Estilo e componentes | [Tailwind CSS](https://tailwindcss.com/docs/installation/using-vite) + [shadcn/ui](https://ui.shadcn.com/docs) | Componentes adaptados à identidade visual, não um tema genérico intocado. |
 | Cliente HTTP | `fetch` + tipos gerados por [openapi-typescript](https://openapi-ts.dev/introduction) | Contrato compartilhado, erros e credenciais tratados em um único cliente. |
 | Tempo real | SDK JavaScript do [Azure Web PubSub](https://learn.microsoft.com/en-us/azure/azure-web-pubsub/overview) | Receber atualizações autorizadas; ações continuam passando pela API. |
-| Qualidade | ESLint, typescript-eslint e Prettier | Verificações no editor e na integração contínua. |
+| Qualidade | [oxlint](https://oxc.rs/docs/guide/usage/linter.html) e `tsc` (`typecheck`) | Lint com avisos como erro e checagem de tipos separada do build, no editor e na integração contínua. |
 
 **Design:** Figma, tokens visuais e componentes reutilizáveis; estética adulta e lúdica. Testar teclado, foco, contraste, redução de movimento e acesso permanente a sair/denunciar. Animações CSS primeiro.
 
