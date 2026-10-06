@@ -32,7 +32,7 @@ class ArchitectureTest {
     private static final String[] SUPPORTING_MODULES = {"waitlist", "identity", "profiles", "notifications"};
 
     /** Infraestrutura compartilhada e composition root, sem regra de negócio. */
-    private static final String[] INFRASTRUCTURE = {"config"};
+    private static final String[] INFRASTRUCTURE = {"config", "migration"};
 
     @ArchTest
     static final ArchRule everyClassBelongsToAClassifiedModule = classes()

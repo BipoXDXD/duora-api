@@ -71,11 +71,10 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- PostgreSQL -->
+        <!-- PostgreSQL. Escopo compile: o job de migração usa PGConnection.alterUserPassword (docs/adr/0011) -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <scope>runtime</scope>
         </dependency>
 
         <!-- Flyway: no Boot 4 a auto-configuração mora no starter, flyway-core sozinho não migra -->
