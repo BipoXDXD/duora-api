@@ -66,6 +66,16 @@ conta) já identifica a intenção, é única no banco e é gravada na mesma tra
 acrescentaria uma segunda chave para a mesma coisa. Se a inscrição passar a ter corpo ou cobrança, a
 ADR 0005 volta a valer (ver pendências).
 
+**Sem `If-Match` no `PUT`**, apesar da regra geral do projeto para `PUT`/`PATCH`: o `If-Match` protege um
+corpo contra a edição de outra aba (lost update), e esta inscrição não tem corpo nem versão a perder. Os dois
+`PUT` simultâneos chegam ao mesmo estado.
+
+**Sem `Idempotency-Key` nas rotas do ADMIN** (`POST /api/admin/events`, `:publish`, `:cancel`), outra exceção
+à ADR 0005: repetir a criação depois de perder a resposta gera um segundo rascunho, que só o ADMIN vê e que
+ele cancela; repetir `:publish` ou `:cancel` responde `409` sem mudar nada, e o estado se confere com um
+`GET`. Implementar a chave (tabela, fingerprint do corpo, resposta guardada, limpeza) não se paga para um
+ADMIN só no piloto. Entra quando a área administrativa tiver mais de uma pessoa ou automação.
+
 ### Capacidade sob concorrência
 
 "Contar e depois inserir" em READ COMMITTED deixa duas pessoas ocuparem a mesma última vaga (write
@@ -115,7 +125,8 @@ chaves é conferido nos testes). Rascunho responde exatamente como evento inexis
 - `pageSize` de 1 a 50, padrão 10; fora disso, `400`.
 - O token é Base64 URL-safe de "início id", **não cifrado**: só carrega o que o cliente já viu na página, e
   toda consulta continua filtrando por estado e por dono. Adulterá-lo só muda onde a lista recomeça. Token
-  malformado → `400`.
+  malformado, ou com instante fora de 1970 a 9999 (o `Instant` aceita anos que o `timestamptz` recusaria
+  com erro do banco), → `400`.
 - `GET /api/events`: publicados que ainda não começaram. `GET /api/me/registrations`: as próprias
   inscrições em eventos que ainda não acabaram, inclusive cancelados (para a pessoa saber) e em andamento.
 
@@ -188,12 +199,13 @@ STRIDE do fluxo (permissão de ADMIN e dado pessoal: quem vai a qual encontro):
 | Tampering: usuário B cancela a inscrição de A (BOLA) | Sem id de inscrição na rota; o serviço só recebe a conta autenticada | `RegistrationIT.anotherUserNeitherSeesNorCancelsTheRegistration` |
 | Tampering: corrida ultrapassa a capacidade | Lock do evento + contagem na mesma transação | `RegistrationIT.concurrentRegistrationsNeverExceedTheCapacity`, `lastPlaceIsTakenAndThenTheEventIsFull` |
 | Tampering: clique duplo ou retry duplica a inscrição | PK (evento, conta) + consulta sob o lock; repetição devolve a mesma | `RegistrationIT.concurrentRepeatedRegistrationsCreateOnlyOne`, `registeringAgainAnswersTheSameRegistration` |
-| Tampering: publicar e cancelar ao mesmo tempo grava os dois | `@Version` no evento | `AdminEventIT.concurrentPublishesPublishOnce` |
+| Tampering: publicar e cancelar ao mesmo tempo grava os dois | `@Version` no evento | `AdminEventIT.concurrentPublishesPublishOnce`, `concurrentPublishAndCancelLeaveTheStateOfTheActionsThatSucceeded` |
+| Tampering: inscrição entra num evento que acabou de ser cancelado | O cancelamento espera o lock da inscrição; a inscrição que espera vê o evento cancelado | `RegistrationIT.registrationRacingTheEventCancellationEndsConsistent` |
 | Tampering: inscrição em evento cancelado, começado ou rascunho | Regras no domínio, conferidas com o evento travado | `RegistrationIT.cancelledEventRefusesRegistration`, `startedEventRefusesRegistration`, `draftLooksLikeAnEventThatDoesNotExist`; `EventTest` |
 | Information disclosure: lista de participantes ou contagem para usuários | Nenhuma rota de participantes; respostas com allowlist de chaves | `EventCatalogIT.readsAPublishedEvent`, `listsOnlyPublishedEventsThatHaveNotStartedInStartOrder` (conjunto exato), `RegistrationIT.adminSeesHowManyPeopleRegisteredButNotWho` |
 | Information disclosure: usuário B vê as inscrições de A | Consultas filtram pela conta autenticada | `RegistrationIT.anotherUserNeitherSeesNorCancelsTheRegistration`, `listsOwnRegistrationsOfEventsThatHaveNotEndedInStartOrder` |
 | Information disclosure: rascunho descoberto por id | Rascunho responde igual a inexistente | `EventCatalogIT.draftLooksExactlyLikeAnEventThatDoesNotExist` |
-| Denial of service: entrada inválida ou enorme vira `500` | Limites em todo campo, horário com fuso, inteiro estrito, `pageSize` e token limitados | `AdminEventIT.invalidInputIsRejectedWithoutWriting`, `acceptsValuesOnTheBorder`, `sqlInTheTitleIsStoredAsPlainText`, `EventCatalogIT.invalidPageSizeIsABadRequest`, `invalidPageTokenIsABadRequest`; `PageTokenTest`, `PageSizeTest` |
+| Denial of service: entrada inválida ou enorme vira `500` | Limites em todo campo, horário com fuso, inteiro estrito, `pageSize` e token limitados | `AdminEventIT.invalidInputIsRejectedWithoutWriting`, `acceptsValuesOnTheBorder`, `sqlInTheTitleIsStoredAsPlainText`, `EventCatalogIT.invalidPageSizeIsABadRequest`, `invalidPageTokenIsABadRequest` (inclusive ano fora do `timestamptz`), `RegistrationIT.invalidPageOfOwnRegistrationsIsABadRequest`; `PageTokenTest`, `PageSizeTest` |
 | Denial of service: inscrição presa no lock segura conexões | `lock_timeout` de 2 s → `503` com `Retry-After` | `RegistrationIT.registrationThatWaitsTooLongForTheEventLockIsRefused` |
 
 Repudiation (quem criou, publicou ou cancelou) não é tratada: não há trilha de auditoria. Entra junto com a
