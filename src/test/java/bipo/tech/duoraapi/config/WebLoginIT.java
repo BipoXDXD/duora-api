@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
@@ -251,8 +252,32 @@ class WebLoginIT {
         var entraLogout = UriComponentsBuilder.fromUriString(logoutUrl).build();
         assertThat(entraLogout.getHost()).isEqualTo("127.0.0.1");
         assertThat(entraLogout.getPath()).isEqualTo("/tenant/oauth2/v2.0/logout");
-        assertThat(entraLogout.getQueryParams()).containsKey("id_token_hint");
+        assertThat(entraLogout.getQueryParams()).containsOnlyKeys("client_id", "post_logout_redirect_uri");
+        assertThat(queryParam(entraLogout, "client_id")).isEqualTo(WEB_CLIENT_ID);
         assertThat(queryParam(entraLogout, "post_logout_redirect_uri")).isEqualTo("http://localhost/");
+    }
+
+    /**
+     * A resposta do logout chega ao JavaScript: ela não pode levar o ID token (id_token_hint), que traz
+     * PII assinada pelo Entra (docs/adr/0002). Basta o payload do token, sem cabeçalho nem assinatura,
+     * para expor as claims.
+     */
+    @Test
+    void logoutResponseDoesNotCarryTheIdToken() throws Exception {
+        var session = logIn();
+        String idToken = JsonPath.read(NEXT_TOKEN_RESPONSE.get(), "$.id_token");
+        String idTokenClaims = idToken.split("\\.")[1];
+        var csrf = csrfCookie(session);
+
+        var logout = mockMvc.perform(post("/logout").cookie(session, csrf).header(CSRF_HEADER, csrf.getValue()))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse();
+
+        String body = URLDecoder.decode(logout.getContentAsString(), StandardCharsets.UTF_8);
+        assertThat(body).doesNotContain(idTokenClaims).doesNotContain("id_token_hint");
+        assertThat(logout.getHeaderNames()).allSatisfy(
+                name -> assertThat(String.join(",", logout.getHeaders(name))).doesNotContain(idTokenClaims));
     }
 
     @Test
@@ -344,7 +369,7 @@ class WebLoginIT {
     private static String queryParam(UriComponents uri, String name) {
         var value = uri.getQueryParams().getFirst(name);
         assertThat(value).as("parâmetro %s", name).isNotNull();
-        return java.net.URLDecoder.decode(value, StandardCharsets.UTF_8);
+        return URLDecoder.decode(value, StandardCharsets.UTF_8);
     }
 
     private static JWTClaimsSet.Builder baseClaims() {

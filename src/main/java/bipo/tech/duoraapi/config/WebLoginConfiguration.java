@@ -13,7 +13,6 @@ import org.springframework.http.MediaType;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
-import org.springframework.security.oauth2.client.oidc.web.logout.OidcClientInitiatedLogoutSuccessHandler;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
@@ -33,6 +32,8 @@ import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
 import org.springframework.util.Assert;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import tools.jackson.databind.json.JsonMapper;
 
@@ -46,6 +47,7 @@ public class WebLoginConfiguration {
     static final String REGISTRATION_ID = "entra";
     static final String LOGIN_PATH = "/oauth2/authorization/" + REGISTRATION_ID;
     static final String OBJECT_ID_CLAIM = "oid";
+    private static final String END_SESSION_ENDPOINT = "end_session_endpoint";
 
     /**
      * Montado aqui, e não pelas propriedades spring.security.oauth2.client.*, por dois motivos: @Value
@@ -83,7 +85,7 @@ public class WebLoginConfiguration {
                 // compartilhadas entre tenants); "end_session_endpoint" permite sair também do Entra.
                 .providerConfigurationMetadata(Map.of(
                         "issuer", issuer,
-                        "end_session_endpoint", authority + "/oauth2/v2.0/logout"))
+                        END_SESSION_ENDPOINT, authority + "/oauth2/v2.0/logout"))
                 .build();
         return new InMemoryClientRegistrationRepository(registration);
     }
@@ -126,18 +128,30 @@ public class WebLoginConfiguration {
      * Encerra a sessão aqui e também no Entra, para o próximo login pedir credenciais de novo. O front
      * chama o logout por fetch, que não segue um 302 para outra origem: em vez do redirect, a resposta
      * é 200 com a URL de logout do Entra, e o front navega até ela.
+     *
+     * <p>A URL não leva id_token_hint: ela chega ao JavaScript, e o ID token traz PII assinada pelo
+     * Entra (docs/adr/0002). Sem a dica, o Entra pode pedir que o usuário escolha a conta ao sair.
      */
     @Bean
     LogoutSuccessHandler entraLogoutSuccessHandler(ClientRegistrationRepository clientRegistrations,
             JsonMapper jsonMapper) {
-        var handler = new OidcClientInitiatedLogoutSuccessHandler(clientRegistrations);
-        handler.setPostLogoutRedirectUri("{baseUrl}/");
-        handler.setRedirectStrategy((request, response, logoutUrl) -> {
+        ClientRegistration entra = clientRegistrations.findByRegistrationId(REGISTRATION_ID);
+        Assert.state(entra != null, "client registration '" + REGISTRATION_ID + "' is missing");
+        if (!(entra.getProviderDetails().getConfigurationMetadata().get(END_SESSION_ENDPOINT) instanceof String endSessionEndpoint)) {
+            throw new IllegalStateException(END_SESSION_ENDPOINT + " is missing from the provider metadata");
+        }
+        String clientId = entra.getClientId();
+        return (request, response, authentication) -> {
+            String postLogoutRedirectUri = ServletUriComponentsBuilder.fromContextPath(request).path("/").toUriString();
+            String logoutUrl = UriComponentsBuilder.fromUriString(endSessionEndpoint)
+                    .queryParam("client_id", clientId)
+                    .queryParam("post_logout_redirect_uri", postLogoutRedirectUri)
+                    .encode()
+                    .toUriString();
             response.setStatus(HttpServletResponse.SC_OK);
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             jsonMapper.writeValue(response.getOutputStream(), new LogoutResponse(logoutUrl));
-        });
-        return handler;
+        };
     }
 
     private record LogoutResponse(String logoutUrl) {
