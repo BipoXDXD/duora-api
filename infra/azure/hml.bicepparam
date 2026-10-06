@@ -39,10 +39,12 @@ param entraWebClientSecret = readEnvironmentVariable('DUORA_ENTRA_WEB_CLIENT_SEC
 
 // Sem proteção contra purga em homologação, para poder recriar o cofre com o mesmo nome.
 param keyVaultPurgeProtection = false
+// Telemetria OTLP para o Application Insights: desligada até a API exportar e o custo ser aprovado.
+param enableOpenTelemetry = bool(readEnvironmentVariable('DUORA_ENABLE_OPENTELEMETRY', 'false'))
 param logDailyQuotaGb = '0.2'
 
 param alertEmail = readEnvironmentVariable('DUORA_ALERT_EMAIL')
-// Na moeda de cobrança da assinatura: ajuste se não for dólar (docs/adr/0011, custos).
+// Na moeda de cobrança da assinatura: ajuste se não for dólar (docs/adr/0014, custos).
 param monthlyBudget = 50
 // Fixado no primeiro apply (primeiro dia daquele mês) e mantido: a API recusa início antigo demais.
 param budgetStartDate = readEnvironmentVariable('DUORA_BUDGET_START_DATE')

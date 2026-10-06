@@ -13,6 +13,9 @@ param retentionInDays int = 30
 @description('Teto diário de ingestão em GB (-1 desliga o teto).')
 param dailyQuotaGb string
 
+@description('O agente OpenTelemetry gerenciado do Container Apps envia pela connection string.')
+param enableOpenTelemetry bool
+
 resource workspace 'Microsoft.OperationalInsights/workspaces@2025-07-01' = {
   name: 'log-${namePrefix}'
   location: location
@@ -35,8 +38,9 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
     Application_Type: 'web'
     WorkspaceResourceId: workspace.id
     IngestionMode: 'LogAnalytics'
-    // Sem a chave de instrumentação local: só ingestão autenticada, quando o agente entrar.
-    DisableLocalAuth: true
+    // Sem o agente, nada usa a connection string, e a ingestão por ela fica fechada. O agente
+    // gerenciado do Container Apps só envia por ela.
+    DisableLocalAuth: !enableOpenTelemetry
   }
 }
 

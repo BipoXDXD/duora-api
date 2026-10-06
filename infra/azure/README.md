@@ -2,9 +2,9 @@
 
 Bicep dos dois ambientes do Duora (homologação e produção) e dos recursos compartilhados. As
 decisões, as alternativas e a **estimativa de custo** estão na
-[ADR 0011](../../docs/adr/0011-infraestrutura-do-piloto-na-azure.md).
+[ADR 0014](../../docs/adr/0014-infraestrutura-do-piloto-na-azure.md).
 
-> **Antes do primeiro apply:** aprovar o custo da ADR 0011. Nada aqui foi aplicado ainda; só a
+> **Antes do primeiro apply:** aprovar o custo da ADR 0014. Nada aqui foi aplicado ainda; só a
 > validação offline roda no CI.
 
 | Arquivo | O que cria | Onde |
@@ -102,6 +102,10 @@ EOF
 
 - As senhas do banco vão para o Key Vault no apply; o arquivo local é a cópia que permite reaplicar.
   A senha de administração só é usada pelo job de migração.
+- `DUORA_BUDGET_START_DATE` fica fixo depois do primeiro apply: a API de orçamentos recusa um início
+  antigo demais, e mudar o início a cada apply não faz sentido.
+- Opcional: `DUORA_ENABLE_OPENTELEMETRY=true` liga o agente OpenTelemetry gerenciado do ambiente, com
+  traces e logs para o Application Insights (desligado por padrão; custo de ingestão na ADR 0014).
 - O segredo do cliente web é do registro `duora-web` no tenant `duoraapp`. Crie um por ambiente (ou um
   registro por ambiente, como pede o plano §6), com validade de até 180 dias e lembrete para renovar.
 - Antes do primeiro login web, registre o redirect URI do ambiente no tenant
@@ -171,11 +175,11 @@ tokens da `main` (publicação) e do environment correspondente (deploy).
 - **Probes e TLS do banco:** `curl https://<fqdn>/actuator/health/readiness` responde
   `{"status":"UP"}`. Se a readiness ficar `DOWN`, veja os logs da réplica
   (`az containerapp logs show -g duora-hml -n ca-duora-hml-api`); um erro de certificado aponta para o
-  `sslmode=verify-full` (ADR 0011).
+  `sslmode=verify-full` (ADR 0014).
 - **Proxy confiável (`DUORA_TRUSTED_PROXIES`):** de uma rede, faça 11 `POST /api/waitlist` com e-mails
   diferentes: o 11º recebe `429`. Logo depois, de outra rede (o celular fora do Wi-Fi), um `POST` tem de
   receber `202`. Se receber `429`, o ingress não conecta a partir da subnet, todos os clientes estão no
-  mesmo bucket e a faixa precisa mudar (ADR 0006 e 0011).
+  mesmo bucket e a faixa precisa mudar (ADR 0006 e 0014).
 - **Orçamento:** confira em Cost Management que os orçamentos `budget-duora-hml` e
   `budget-duora-prod` existem, na moeda da assinatura.
 

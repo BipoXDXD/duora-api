@@ -1,5 +1,5 @@
 // Produção do piloto: plano §6 (1 vCPU, 2 GiB, 1 a 3 réplicas; mínimo de uma réplica para as tarefas
-// internas). Banco no menor Burstable até a medição pedir mais (docs/adr/0011). Valores secretos e os
+// internas). Banco no menor Burstable até a medição pedir mais (docs/adr/0014). Valores secretos e os
 // que só existem depois do primeiro apply vêm de variáveis de ambiente (infra/azure/README.md).
 using 'main.bicep'
 
@@ -38,10 +38,12 @@ param auth = {
 param entraWebClientSecret = readEnvironmentVariable('DUORA_ENTRA_WEB_CLIENT_SECRET')
 
 param keyVaultPurgeProtection = true
+// Telemetria OTLP para o Application Insights: desligada até a API exportar e o custo ser aprovado.
+param enableOpenTelemetry = bool(readEnvironmentVariable('DUORA_ENABLE_OPENTELEMETRY', 'false'))
 param logDailyQuotaGb = '0.5'
 
 param alertEmail = readEnvironmentVariable('DUORA_ALERT_EMAIL')
-// Na moeda de cobrança da assinatura: ajuste se não for dólar (docs/adr/0011, custos).
+// Na moeda de cobrança da assinatura: ajuste se não for dólar (docs/adr/0014, custos).
 param monthlyBudget = 150
 // Fixado no primeiro apply (primeiro dia daquele mês) e mantido: a API recusa início antigo demais.
 param budgetStartDate = readEnvironmentVariable('DUORA_BUDGET_START_DATE')

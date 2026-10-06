@@ -1,6 +1,6 @@
 // Um ambiente do Duora (homologação ou produção) num resource group próprio: rede, banco privado,
 // Key Vault, logs, ambiente do Container Apps, API, job de migração, identidade de deploy do GitHub e
-// alertas. A imagem vem do registry compartilhado (shared.bicep). Decisões em docs/adr/0011;
+// alertas. A imagem vem do registry compartilhado (shared.bicep). Decisões em docs/adr/0014;
 // passo a passo em infra/azure/README.md.
 
 targetScope = 'resourceGroup'
@@ -80,6 +80,9 @@ param keyVaultPurgeProtection bool
 
 param logDailyQuotaGb string
 
+@description('Liga o agente OpenTelemetry gerenciado do Container Apps (traces e logs OTLP para o Application Insights).')
+param enableOpenTelemetry bool = false
+
 param alertEmail string
 
 param monthlyBudget int
@@ -122,6 +125,7 @@ module monitoring 'modules/monitoring.bicep' = {
     namePrefix: namePrefix
     location: location
     dailyQuotaGb: logDailyQuotaGb
+    enableOpenTelemetry: enableOpenTelemetry
   }
 }
 
@@ -179,6 +183,8 @@ module containerAppsEnvironment 'modules/container-apps-environment.bicep' = {
     location: location
     infrastructureSubnetId: network.outputs.containerAppsSubnetId
     logAnalyticsWorkspaceName: monitoring.outputs.workspaceName
+    enableOpenTelemetry: enableOpenTelemetry
+    appInsightsName: monitoring.outputs.appInsightsName
   }
 }
 
@@ -211,7 +217,7 @@ module api 'modules/api-app.bicep' = if (deployApi) {
     memory: apiMemory
     minReplicas: apiMinReplicas
     maxReplicas: apiMaxReplicas
-    // O ingress conecta à réplica a partir da subnet do ambiente (docs/adr/0006 e 0011).
+    // O ingress conecta à réplica a partir da subnet do ambiente (docs/adr/0006 e 0014).
     trustedProxies: containerAppsSubnetPrefix
     jdbcUrl: jdbcUrl
     appDatabaseRole: appDatabaseRole

@@ -28,6 +28,8 @@ done
 # O primeiro apply cria o ambiente sem a API (README); essa variação também precisa compilar.
 DUORA_DEPLOY_API=false az bicep build-params --file hml.bicepparam --stdout >/dev/null
 echo "ok: hml.bicepparam sem a API"
+DUORA_ENABLE_OPENTELEMETRY=true az bicep build-params --file prod.bicepparam --stdout >/dev/null
+echo "ok: prod.bicepparam com o agente OpenTelemetry"
 
 # Formata uma cópia (o --stdout acrescenta uma quebra de linha no fim) e compara com o original.
 formatted="$(mktemp -d)"

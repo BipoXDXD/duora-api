@@ -1,4 +1,4 @@
-# 0011. Infraestrutura do piloto na Azure como código
+# 0014. Infraestrutura do piloto na Azure como código
 
 - **Status:** Proposta. Decidido na sessão autônoma de 2026-10-05; revisar com o usuário.
   **Pendente com o usuário: aprovar custo antes do primeiro apply.**
@@ -94,9 +94,23 @@ papéis por `pgaadauth_create_principal`; fica como evolução (pendência abaix
 - **Credenciais do banco** (plano §7: "aplicação acessa banco sem privilégios de administrador;
   migrações têm credencial separada"): o job conecta com o login de administração, garante o papel
   `duora_app` com a senha atual (hash SCRAM calculado no cliente pelo driver), roda o Flyway e
-  concede ao papel só `SELECT/INSERT/UPDATE/DELETE` nas tabelas e uso das sequências, sem acesso ao
-  `flyway_schema_history`. A API conecta como `duora_app` com `SPRING_FLYWAY_ENABLED=false`. Trocar a
-  senha do papel é trocar o segredo e rodar o job.
+  concede ao papel só `SELECT/INSERT/UPDATE/DELETE` em todas as tabelas e uso das sequências, sem
+  acesso ao `flyway_schema_history`. Os privilégios valem para as tabelas que já existem (`GRANT ... ON
+  ALL TABLES IN SCHEMA public` a cada execução) e para as que o dono das migrations criar depois
+  (`ALTER DEFAULT PRIVILEGES`), então módulos novos (identity, profiles, trustsafety...) não pedem
+  mudança no job. A API conecta como `duora_app` com `SPRING_FLYWAY_ENABLED=false`. Trocar a senha do
+  papel é trocar o segredo e rodar o job.
+- **Telemetria (opcional, desligada):** o parâmetro `enableOpenTelemetry` (variável
+  `DUORA_ENABLE_OPENTELEMETRY`, padrão `false`) liga o agente OpenTelemetry gerenciado do ambiente do
+  Container Apps, com traces e logs para o Application Insights. Ligado, o ambiente injeta
+  `OTEL_EXPORTER_OTLP_ENDPOINT` nas réplicas; a API já exporta por OTLP quando essa variável existe
+  (PR de logs estruturados, `spring-boot-starter-opentelemetry`), sem depender de nada deste Bicep.
+  Desligado, nada é coletado nem cobrado e a connection string do Application Insights fica fechada
+  (`DisableLocalAuth`), porque o agente gerenciado só envia por ela. As propriedades
+  `appInsightsConfiguration` e `openTelemetryConfiguration` só existem em versão preview da API
+  (`Microsoft.App/managedEnvironments@2025-10-02-preview`); a GA mais recente (2026-01-01) não as tem.
+  Ligar custa a ingestão no Log Analytics (US$ 4,60/GB acima da cota gratuita) e passa pelo mesmo teto
+  diário; fica para decidir com o custo aprovado e a API exportando.
 - **TLS do banco:** `sslmode=verify-full` com `DefaultJavaSSLFactory`, que usa o `cacerts` do JRE; as
   raízes da Azure (DigiCert Global Root G2 e Microsoft RSA Root CA 2017) estão nele.
 - **Probes** (fecha a Divergência 12 de DevOps e a pendência da ADR 0008): liveness em
@@ -211,8 +225,8 @@ US$ 220. O que mais pesa é o PostgreSQL e a réplica sempre ligada de produçã
    `Duora deployer` cobre todos os comandos do `deploy.sh` (a lista de actions foi montada pela
    documentação, sem teste contra a Azure; um `AuthorizationFailed` diz qual action falta).
 6. Avaliar a autenticação do banco pelo Entra com identidade gerenciada, que elimina as duas senhas.
-7. Instrumentar a API para o Application Insights (agente Java ou OpenTelemetry); hoje o recurso
-   existe, mas não recebe telemetria.
+7. Ligar a telemetria (`DUORA_ENABLE_OPENTELEMETRY=true`) depois que a API exportar OTLP; até lá o
+   Application Insights existe, mas não recebe nada.
 
 ## Compliance
 
