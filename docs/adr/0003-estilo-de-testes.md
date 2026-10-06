@@ -61,7 +61,9 @@ pessoais.
 ## Compliance
 
 - `TestStyleTest` (ArchUnit sobre o código de teste) falha com `@WebMvcTest` ou com campo
-  `@MockitoBean`, `@MockitoSpyBean`, `@Mock` ou `@Spy` de tipo do próprio sistema.
+  `@MockitoBean`, `@MockitoSpyBean`, `@Mock` ou `@Spy` de tipo do próprio sistema. `@MockitoBean`
+  e `@MockitoSpyBean` na classe (`types = ...`) são proibidos para qualquer tipo, porque escapariam
+  da regra dos campos; `TestStyleRulesTest` confere que a regra pega esse caso.
 - Revisão de PR cobre o que o ArchUnit não vê: `mock(...)` chamado direto no corpo do teste.
 - `ArchitectureTest` confere que o domínio não depende das camadas de cima, o que mantém o
   domínio testável sem Spring ([ADR 0007](0007-estilo-por-modulo.md)).

@@ -8,7 +8,9 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBeans;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBeans;
 
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
@@ -34,6 +36,18 @@ class TestStyleTest {
             .should().haveRawType(resideInAPackage(OWN_CODE))
             .because("o banco e os serviços da própria API são reais nos testes (docs/adr/0003)")
             .allowEmptyShould(true);
+
+    /**
+     * Na classe, {@code @MockitoBean(types = ...)} troca um bean sem campo, e a regra acima não o vê.
+     * Mock de dependência externa vai num campo, onde o tipo fica visível.
+     */
+    @ArchTest
+    static final ArchRule springMocksAreNeverDeclaredOnTheClass = noClasses()
+            .should().beAnnotatedWith(MockitoBean.class)
+            .orShould().beAnnotatedWith(MockitoBeans.class)
+            .orShould().beAnnotatedWith(MockitoSpyBean.class)
+            .orShould().beAnnotatedWith(MockitoSpyBeans.class)
+            .because("um mock na classe escaparia da regra dos campos (docs/adr/0003)");
 
     @ArchTest
     static final ArchRule mockitoMocksOnlyReplaceExternalDependencies = noFields()
