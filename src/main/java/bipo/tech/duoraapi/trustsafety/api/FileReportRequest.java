@@ -11,4 +11,12 @@ import bipo.tech.duoraapi.trustsafety.domain.ReportReason;
  * (fail-on-unknown-properties). Os limites da descrição ficam no domínio.
  */
 record FileReportRequest(@NotNull UUID reportedAccountId, @NotNull ReportReason reason, String description) {
+
+    /** O Spring MVC registra o corpo lido por este toString em DEBUG: o relato fica de fora. */
+    @Override
+    public String toString() {
+        return "FileReportRequest[reportedAccountId=" + reportedAccountId + ", reason=" + reason
+                + ", description=redacted]";
+    }
+
 }

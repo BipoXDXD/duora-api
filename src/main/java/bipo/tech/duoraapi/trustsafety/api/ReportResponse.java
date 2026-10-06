@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.UUID;
 
 import bipo.tech.duoraapi.trustsafety.domain.Report;
-import bipo.tech.duoraapi.trustsafety.domain.ReportDescription;
 import bipo.tech.duoraapi.trustsafety.domain.ReportReason;
 import bipo.tech.duoraapi.trustsafety.domain.ReportStatus;
 
@@ -18,10 +17,10 @@ record ReportResponse(UUID id, UUID reportedAccountId, ReportReason reason, Stri
                 report.status(), report.createdAt());
     }
 
-    /** O relato é dado sensível: fora de qualquer log que imprima a resposta. */
+    /** O Spring MVC registra a resposta escrita por este toString em DEBUG: o relato fica de fora. */
     @Override
     public String toString() {
-        return "ReportResponse[id=" + id + ", " + ReportDescription.class.getSimpleName() + "=redacted]";
+        return "ReportResponse[id=" + id + ", reason=" + reason + ", status=" + status + ", description=redacted]";
     }
 
 }

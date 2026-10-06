@@ -2,7 +2,9 @@ package bipo.tech.duoraapi.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 import java.io.IOException;
 import java.net.URI;
@@ -32,6 +34,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 
+import bipo.tech.duoraapi.AccountTables;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
 /**
@@ -56,6 +59,10 @@ class SensitiveDataLoggingIT {
     /** Data de nascimento marcada: improvável em qualquer outra linha de log. */
     private static final String CANARY_BIRTH_DATE = "1987-03-29";
 
+    private static final String REPORTS_PATH = "/api/reports";
+    private static final String REPORTED_OBJECT_ID = "oid-reported";
+
+    private static final int CREATED = 201;
     private static final int ACCEPTED = 202;
     private static final int BAD_REQUEST = 400;
     private static final int UNAUTHORIZED = 401;
@@ -79,8 +86,7 @@ class SensitiveDataLoggingIT {
     void cleanDatabase() {
         jdbcClient.sql("delete from waitlist_entry").update();
         jdbcClient.sql("delete from rate_limit_bucket").update();
-        jdbcClient.sql("delete from profile").update();
-        jdbcClient.sql("delete from account").update();
+        AccountTables.deleteAccountsAndTheirData(jdbcClient);
     }
 
     @Test
@@ -183,6 +189,50 @@ class SensitiveDataLoggingIT {
         assertThat(response.getHeaderNames()).allSatisfy(name ->
                 assertThat(String.join(",", response.getHeaders(name))).doesNotContainIgnoringCase(canary));
         assertThat(output.getAll()).doesNotContainIgnoringCase(canary);
+    }
+
+    /** A resposta devolve a denúncia a quem a fez; o log não leva o relato (docs/adr/0015). */
+    @Test
+    void acceptedReportDescriptionNeverReachesTheLog(CapturedOutput output) throws Exception {
+        var response = fileReport("""
+                {"reportedAccountId": "%s", "reason": "OTHER", "description": "%s"}
+                """.formatted(reportedAccountId(), canary));
+
+        assertThat(response.getStatus()).isEqualTo(CREATED);
+        assertThat(output.getAll()).doesNotContainIgnoringCase(canary);
+    }
+
+    /** Relato longo demais ou com caractere invisível: 400 sem ecoar o texto. */
+    @ParameterizedTest
+    @ValueSource(strings = {"%s%s", "%s\\u200b"})
+    void rejectedReportDescriptionNeverReachesTheLog(String descriptionTemplate, CapturedOutput output) throws Exception {
+        var description = descriptionTemplate.formatted(canary, "x".repeat(1000));
+
+        var response = fileReport("""
+                {"reportedAccountId": "%s", "reason": "OTHER", "description": "%s"}
+                """.formatted(reportedAccountId(), description));
+
+        assertThat(response.getStatus()).isEqualTo(BAD_REQUEST);
+        assertThat(response.getContentAsString()).doesNotContainIgnoringCase(canary);
+        assertThat(response.getHeaderNames()).allSatisfy(name ->
+                assertThat(String.join(",", response.getHeaders(name))).doesNotContainIgnoringCase(canary));
+        assertThat(output.getAll()).doesNotContainIgnoringCase(canary);
+    }
+
+    private MockHttpServletResponse fileReport(String body) throws Exception {
+        return mockMvc.perform(post(REPORTS_PATH)
+                        .with(jwt().jwt(token -> token.issuer(ISSUER).claim("oid", "oid-" + UUID.randomUUID())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andReturn().getResponse();
+    }
+
+    /** Abre a conta denunciada pelo primeiro acesso, como em produção. */
+    private UUID reportedAccountId() throws Exception {
+        mockMvc.perform(get("/api/me").with(jwt().jwt(token -> token.issuer(ISSUER).claim("oid", REPORTED_OBJECT_ID))));
+        return jdbcClient.sql("select id from account where subject = :subject")
+                .param("subject", REPORTED_OBJECT_ID)
+                .query(UUID.class).single();
     }
 
     private MockHttpServletResponse editProfile(String body) throws Exception {
