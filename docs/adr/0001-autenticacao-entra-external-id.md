@@ -69,5 +69,5 @@ servidor de identidade para operar.
 | Spoofing: token expirado ou sem expiração | Validação de `exp`, que passa a ser obrigatória | `BearerTokenValidationIT.rejectsInvalidToken` |
 | Tampering: payload alterado para ganhar `ADMIN` | Assinatura cobre o payload | `BearerTokenValidationIT.rejectsInvalidToken` |
 | Elevation of privilege: usuário comum em rota de admin | `hasRole("ADMIN")` a partir da claim `roles` | `BearerTokenValidationIT.forbidsValidTokenWithoutAdminRole`, `WaitlistSecurityIT` |
-| Elevation of privilege: rota esquecida fica pública | Negar por padrão, com allowlist explícita | `WaitlistSecurityIT.anonymousIsRejectedOnRoutesOutsideAllowlist` |
+| Elevation of privilege: rota esquecida fica pública | Negar por padrão, com allowlist explícita | `DenyByDefaultIT` (toda rota registrada, inclusive do actuator, responde 401 sem credencial e com bearer inválido, fora da allowlist), `WaitlistSecurityIT.anonymousIsRejectedOnRoutesOutsideAllowlist` |
 | Configuração ausente deixa a API subir sem validar | A subida falha sem as variáveis ou com audience vazia | `RequiredAuthenticationSettingsIT` |
