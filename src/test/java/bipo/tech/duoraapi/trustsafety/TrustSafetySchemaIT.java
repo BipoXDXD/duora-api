@@ -71,6 +71,54 @@ class TrustSafetySchemaIT {
         assertThat(jdbcClient.sql("select count(*) from account_block").query(Long.class).single()).isEqualTo(1);
     }
 
+    @Test
+    void anAccountCannotReportItself() {
+        assertThatThrownBy(() -> insertReport(ana, ana, "HARASSMENT", null))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("report_not_self");
+    }
+
+    @Test
+    void otherReasonNeedsADescription() {
+        assertThatThrownBy(() -> insertReport(ana, bruno, "OTHER", null))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("report_other_needs_description");
+    }
+
+    @Test
+    void reasonComesFromTheClosedList() {
+        assertThatThrownBy(() -> insertReport(ana, bruno, "BORING", null))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("report_reason_check");
+    }
+
+    @Test
+    void descriptionHasAtMostAThousandCharacters() {
+        insertReport(ana, bruno, "OTHER", "a".repeat(1000));
+
+        assertThatThrownBy(() -> insertReport(ana, bruno, "OTHER", "a".repeat(1001)))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("report_description_check");
+    }
+
+    @Test
+    void reportStartsOpenAndHasAUuidV7() {
+        insertReport(ana, bruno, "HARASSMENT", null);
+
+        assertThat(jdbcClient.sql("select status from report").query(String.class).single()).isEqualTo("OPEN");
+        assertThat(jdbcClient.sql("select id from report").query(UUID.class).single().version()).isEqualTo(7);
+    }
+
+    @Test
+    void accountWithReportsCannotBeDeletedBehindTheModulesBack() {
+        insertReport(ana, bruno, "HARASSMENT", null);
+
+        assertThatThrownBy(() -> jdbcClient.sql("delete from account where id = :id").param("id", ana).update())
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbcClient.sql("delete from account where id = :id").param("id", bruno).update())
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
     private UUID insertAccount(String subject) {
         return jdbcClient.sql("""
                         insert into account (issuer, subject, created_at) values ('https://issuer.example', :subject, now())
@@ -78,6 +126,18 @@ class TrustSafetySchemaIT {
                         """)
                 .param("subject", subject)
                 .query(UUID.class).single();
+    }
+
+    private void insertReport(UUID reporter, UUID reported, String reason, String description) {
+        jdbcClient.sql("""
+                        insert into report (reporter_account_id, reported_account_id, reason, description, status, created_at)
+                        values (:reporter, :reported, :reason, :description, 'OPEN', now())
+                        """)
+                .param("reporter", reporter)
+                .param("reported", reported)
+                .param("reason", reason)
+                .param("description", description)
+                .update();
     }
 
     private void insertBlock(UUID blocker, UUID blocked) {

@@ -54,7 +54,8 @@ class DenyByDefaultIT {
     void enumerationFindsControllerActuatorAndPublicRoutes() {
         assertThat(registeredRoutes())
                 .contains("GET /api/me", "GET /api/admin/waitlist/stats", "GET /actuator/health/**",
-                        "POST /api/accounts/{accountId}:block", "GET /api/me/blocked-accounts")
+                        "POST /api/accounts/{accountId}:block", "GET /api/me/blocked-accounts", "POST /api/reports",
+                        "GET /api/reports/{id}")
                 .containsAll(PUBLIC_ROUTES);
     }
 

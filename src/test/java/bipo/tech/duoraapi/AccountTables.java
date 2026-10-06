@@ -12,6 +12,7 @@ public final class AccountTables {
     }
 
     public static void deleteAccountsAndTheirData(JdbcClient jdbcClient) {
+        jdbcClient.sql("delete from report").update();
         jdbcClient.sql("delete from account_block").update();
         jdbcClient.sql("delete from profile").update();
         jdbcClient.sql("delete from account").update();
