@@ -1,6 +1,7 @@
 package bipo.tech.duoraapi.config;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -41,8 +42,11 @@ final class ProblemDetailSecurityResponses {
     private static void writeProblemBody(HttpServletResponse response) throws IOException {
         HttpStatus status = HttpStatus.valueOf(response.getStatus());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
-        response.getWriter().write("""
-                {"type":"about:blank","title":"%s","status":%d}""".formatted(status.getReasonPhrase(), status.value()));
+        // Bytes em UTF-8, como o JSON exige (RFC 8259), e Content-Type sem charset, como o resto da API:
+        // o getWriter() faria o Tomcat declarar e usar o ISO-8859-1 padrão dele.
+        response.getOutputStream().write("""
+                {"type":"about:blank","title":"%s","status":%d}""".formatted(status.getReasonPhrase(), status.value())
+                .getBytes(StandardCharsets.UTF_8));
     }
 
 }

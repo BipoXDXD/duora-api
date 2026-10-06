@@ -1,0 +1,22 @@
+# Lint da spec (docs/openapi.json) no CI: regras gerais do OpenAPI e o ruleset OWASP API Security
+# (docs/adr/0012). Erro quebra o build; aviso aparece no log para revisão. Cada regra desligada
+# abaixo diz por quê: o ruleset é linha de base, não meta de zero.
+extends:
+  - spectral:oas
+  - "@stoplight/spectral-owasp-ruleset"
+
+rules:
+  # A API não manda headers RateLimit-*: o limite existe só onde há abuso a conter (o POST público
+  # da waitlist, docs/adr/0006), que documenta o 429 com Retry-After. Rotas autenticadas ganham
+  # limite quando tiverem custo que o justifique, e aí documentam o 429.
+  owasp:api4:2023-rate-limit: off
+  # Sem CORS: front e API ficam no mesmo site (docs/adr/0002), e o navegador não precisa do header.
+  owasp:api8:2023-define-cors-origin: off
+
+overrides:
+  # Inscrição na waitlist é anônima de propósito (docs/adr/0002): sem sessão de vítima e chamada
+  # também pelo app sem token. Limite por IP e resposta igual para e-mail novo ou repetido.
+  - files:
+      - "../../docs/openapi.json#/paths/~1api~1waitlist/post"
+    rules:
+      owasp:api2:2023-write-restricted: off

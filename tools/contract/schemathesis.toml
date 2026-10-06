@@ -1,0 +1,23 @@
+# Configuração do Schemathesis em infra/docker/contract-test.sh (docs/adr/0012).
+
+[phases.coverage]
+# Métodos fora da spec devem dar 405. QUERY e TRACE ficam de fora: o StrictHttpFirewall do Spring
+# Security os recusa com 400 antes do roteamento, porque não estão na allowlist de métodos dele.
+# A recusa é deliberada e não chega a nenhum handler.
+unexpected-methods = ["get", "put", "post", "delete", "options", "patch"]
+
+[checks]
+# Além dos padrões do Schemathesis: 412 e 428 são as recusas do If-Match (docs/adr/0005). Um ETag
+# gerado ao acaso quase nunca é a versão atual do perfil, então mesmo um corpo válido recebe 412.
+positive_data_acceptance.expected-statuses = ["2xx", 401, 403, 404, 409, 412, 428, 429, "5xx"]
+negative_data_rejection.expected-statuses = [400, 401, 403, 404, 405, 406, 409, 412, 415, 422, 428, 429, "5xx"]
+# Sem o If-Match obrigatório, a API responde 428 (Precondition Required), como manda a RFC 6585.
+missing_required_header.expected-statuses = [400, 401, 403, 406, 415, 422, 428]
+
+# A edição do perfil tem regras que o schema não expressa: maior de idade, data de nascimento que não
+# muda, nome e região que não podem ser apagados, texto sem caracteres invisíveis. Um corpo válido
+# pelo schema pode, então, receber 400 de propósito, e essas regras têm testes próprios (ProfileIT).
+# Os outros checks, inclusive o de dado inválido recusado, continuam valendo nesta operação.
+[[operations]]
+include-name = "PATCH /api/me/profile"
+checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 409, 412, 428, 429, "5xx"]

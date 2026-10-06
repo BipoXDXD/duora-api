@@ -62,6 +62,14 @@ jobs:
       - name: Smoke test
         run: infra/docker/smoke-test.sh duora-api:${{ github.sha }}
 
+      # Schemathesis contra a imagem subida, a partir de docs/openapi.json (docs/adr/0012). Seed fixa:
+      # o resultado só muda quando muda a API ou a spec. A busca com seed aleatória fica no
+      # workflow semanal contract-fuzz.yml.
+      - name: Teste de contrato
+        env:
+          SCHEMATHESIS_SEED: '20261005'
+        run: infra/docker/contract-test.sh duora-api:${{ github.sha }}
+
   bicep:
     name: Bicep
     runs-on: ubuntu-latest
@@ -75,6 +83,35 @@ jobs:
 
       - name: Build, lint e formatação
         run: infra/azure/validate.sh
+
+  contract:
+    name: Contrato da API
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # o diff de breaking change lê a spec da main
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: tools/contract/package-lock.json
+
+      # Versões do package-lock.json; sem scripts de instalação de dependências.
+      - name: Instalar Spectral
+        run: npm ci --ignore-scripts --prefix tools/contract
+
+      - name: Lint da spec (Spectral + OWASP)
+        run: npm run --prefix tools/contract lint
+
+      # Breaking change só entra registrada em docs/api-changelog.md no mesmo PR.
+      - name: Breaking changes (oasdiff)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: tools/contract/check-breaking.sh "origin/$BASE_REF"
 
   secrets:
     name: Varredura de segredos

@@ -1,0 +1,47 @@
+name: Fuzzing do contrato
+
+# Schemathesis com seed aleatória (docs/adr/0012): procura defeitos que a seed fixa do CI de PR não
+# alcança, sem quebrar PRs sem relação com eles. A seed sai no log e no resumo da execução; para
+# reproduzir, rode de novo com ela (workflow_dispatch) ou localmente com SCHEMATHESIS_SEED.
+on:
+  schedule:
+    - cron: '17 6 * * 1' # segunda-feira, 06:17 UTC
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: 'Seed a repetir (vazio: aleatória)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contract-fuzz
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: Schemathesis com seed aleatória
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build
+        run: docker build --tag duora-api:${{ github.sha }} .
+
+      - name: Seed
+        id: seed
+        env:
+          INPUT_SEED: ${{ inputs.seed }}
+        run: |
+          seed="${INPUT_SEED:-$(od -An -N8 -tu8 /dev/urandom | tr -d ' ')}"
+          [[ "$seed" =~ ^[0-9]+$ ]] || { echo "seed inválida: $seed" >&2; exit 1; }
+          echo "seed=$seed" >> "$GITHUB_OUTPUT"
+          echo "Seed do Schemathesis: \`$seed\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Teste de contrato
+        env:
+          SCHEMATHESIS_SEED: ${{ steps.seed.outputs.seed }}
+        run: infra/docker/contract-test.sh duora-api:${{ github.sha }}

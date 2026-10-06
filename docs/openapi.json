@@ -1,0 +1,682 @@
+{
+  "openapi" : "3.1.0",
+  "info" : {
+    "description" : "API do Duora. Duas portas de entrada com as mesmas regras de rota: cookie de sessão do front web (BFF), com o token CSRF do cookie XSRF-TOKEN no header X-XSRF-TOKEN em toda mutação, e Authorization: Bearer com o access token do Entra External ID. Erros em application/problem+json.",
+    "title" : "Duora API",
+    "version" : "0.1.0"
+  },
+  "servers" : [ {
+    "url" : "/",
+    "x-internal" : false
+  } ],
+  "security" : [ {
+    "bearer" : [ ]
+  }, {
+    "session" : [ ]
+  } ],
+  "tags" : [ {
+    "description" : "Perfil do usuário logado",
+    "name" : "profile"
+  }, {
+    "description" : "Sessão do usuário logado",
+    "name" : "session"
+  }, {
+    "description" : "Lista de espera do pré-lançamento",
+    "name" : "waitlist"
+  } ],
+  "paths" : {
+    "/api/admin/waitlist/stats" : {
+      "get" : {
+        "description" : "Só ADMIN.",
+        "operationId" : "getWaitlistStats",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/WaitlistStatsResponse"
+                }
+              }
+            },
+            "description" : "OK",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem o papel ADMIN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Total de inscrições na lista de espera",
+        "tags" : [ "waitlist" ]
+      }
+    },
+    "/api/me" : {
+      "get" : {
+        "description" : "O front usa para saber se há sessão: 200 com o nome de exibição e se o perfil está completo, ou 401 sem sessão.",
+        "operationId" : "getCurrentUser",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CurrentUserResponse"
+                }
+              }
+            },
+            "description" : "OK",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Quem está logado",
+        "tags" : [ "session" ]
+      }
+    },
+    "/api/me/profile" : {
+      "get" : {
+        "description" : "Toda conta tem um perfil, vazio até a primeira edição. O ETag da resposta vai no If-Match da edição.",
+        "operationId" : "getMyProfile",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProfileResponse"
+                }
+              }
+            },
+            "description" : "O perfil, com a versão no ETag",
+            "headers" : {
+              "ETag" : {
+                "description" : "Versão do perfil, para mandar no If-Match da próxima edição",
+                "required" : true,
+                "schema" : {
+                  "type" : "string",
+                  "maxLength" : 20,
+                  "pattern" : "^\"[0-9]{1,18}\"$"
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lê o próprio perfil",
+        "tags" : [ "profile" ]
+      },
+      "patch" : {
+        "description" : "Merge patch de um nível: campo ausente não muda, null apaga e valor troca. Nome, data de nascimento e região não podem ser apagados; a data de nascimento só pode ser informada uma vez e precisa ser de maior de idade. A edição é inteira ou nada.",
+        "operationId" : "editMyProfile",
+        "parameters" : [ {
+          "description" : "O ETag da última leitura do perfil",
+          "in" : "header",
+          "name" : "If-Match",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 20,
+            "pattern" : "^\"[0-9]{1,18}\"$"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/EditProfileRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProfileResponse"
+                }
+              }
+            },
+            "description" : "O perfil editado, com a nova versão no ETag",
+            "headers" : {
+              "ETag" : {
+                "description" : "Versão do perfil, para mandar no If-Match da próxima edição",
+                "required" : true,
+                "schema" : {
+                  "type" : "string",
+                  "maxLength" : 20,
+                  "pattern" : "^\"[0-9]{1,18}\"$"
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Valor inválido, campo obrigatório apagado, JSON malformado ou campo desconhecido",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sessão web sem o token CSRF no header X-XSRF-TOKEN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "A data de nascimento já foi informada e não muda",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "412" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "O If-Match não é o ETag atual: o perfil mudou desde a leitura, ou o valor não é um ETag",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "415" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Corpo em outro formato que não application/json",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "428" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Falta o If-Match",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Edita o próprio perfil",
+        "tags" : [ "profile" ]
+      }
+    },
+    "/api/waitlist" : {
+      "post" : {
+        "description" : "Pública. A resposta é a mesma para e-mail novo ou já inscrito, para não revelar quem está na lista. Limitada por IP (IPv6 por rede /64), com o estado compartilhado entre réplicas.",
+        "operationId" : "joinWaitlist",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/JoinWaitlistRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "202" : {
+            "description" : "Inscrição aceita, nova ou repetida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "E-mail ausente ou inválido, JSON malformado ou campo desconhecido",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "415" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Corpo em outro formato que não application/json",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Limite de inscrições deste cliente esgotado",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até a próxima inscrição ser aceita",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int64",
+                  "maximum" : 9223372036854775807,
+                  "minimum" : 0
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "503" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Limite de inscrições indisponível; a inscrição é recusada",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "security" : [ ],
+        "summary" : "Inscreve um e-mail na lista de espera",
+        "tags" : [ "waitlist" ]
+      }
+    }
+  },
+  "components" : {
+    "headers" : {
+      "RequestId" : {
+        "description" : "Correlation ID da requisição (trace id W3C); informe-o ao reportar um erro",
+        "required" : true,
+        "schema" : {
+          "type" : "string",
+          "maxLength" : 32,
+          "minLength" : 32,
+          "pattern" : "^[0-9a-f]{32}$"
+        }
+      }
+    },
+    "schemas" : {
+      "CurrentUserResponse" : {
+        "type" : "object",
+        "properties" : {
+          "displayName" : {
+            "type" : [ "string", "null" ],
+            "description" : "Nome de exibição no Entra, ou null se o usuário não tiver nome",
+            "maxLength" : 256
+          },
+          "profileComplete" : {
+            "type" : "boolean",
+            "description" : "Se o perfil já tem o necessário para usar o Duora; se não, o front leva ao cadastro"
+          }
+        },
+        "required" : [ "displayName", "profileComplete" ]
+      },
+      "EditProfileRequest" : {
+        "type" : "object",
+        "additionalProperties" : false,
+        "description" : "Só os campos a mudar. Campo ausente não muda; null apaga.",
+        "properties" : {
+          "bio" : {
+            "type" : [ "string", "null" ],
+            "description" : "Apresentação curta, em parágrafos; vazio ou null apaga",
+            "maxLength" : 300,
+            "writeOnly" : true
+          },
+          "birthDate" : {
+            "type" : [ "string", "null" ],
+            "format" : "date",
+            "description" : "Data de nascimento de maior de idade; informada uma vez, não muda nem é apagada",
+            "maxLength" : 10,
+            "writeOnly" : true
+          },
+          "displayName" : {
+            "type" : [ "string", "null" ],
+            "description" : "Nome que as outras pessoas veem, numa linha; não pode ser apagado",
+            "maxLength" : 50,
+            "minLength" : 1,
+            "writeOnly" : true
+          },
+          "region" : {
+            "type" : [ "string", "null" ],
+            "description" : "Estado, pelo código ISO 3166-2; não pode ser apagado",
+            "enum" : [ "BR-AC", "BR-AL", "BR-AP", "BR-AM", "BR-BA", "BR-CE", "BR-DF", "BR-ES", "BR-GO", "BR-MA", "BR-MT", "BR-MS", "BR-MG", "BR-PA", "BR-PB", "BR-PR", "BR-PE", "BR-PI", "BR-RJ", "BR-RN", "BR-RS", "BR-RO", "BR-RR", "BR-SC", "BR-SP", "BR-SE", "BR-TO", null ],
+            "writeOnly" : true
+          }
+        }
+      },
+      "JoinWaitlistRequest" : {
+        "type" : "object",
+        "additionalProperties" : false,
+        "properties" : {
+          "email" : {
+            "type" : "string",
+            "format" : "email",
+            "description" : "Endereço de e-mail; espaços nas pontas são ignorados e a caixa é normalizada",
+            "example" : "ana@example.com",
+            "maxLength" : 254
+          }
+        },
+        "required" : [ "email" ]
+      },
+      "ProblemDetail" : {
+        "type" : "object",
+        "description" : "Erro no formato RFC 9457. Sem stack trace, SQL nem nome de classe.",
+        "properties" : {
+          "detail" : {
+            "type" : "string",
+            "maxLength" : 1000
+          },
+          "instance" : {
+            "type" : "string",
+            "format" : "uri-reference",
+            "maxLength" : 1000
+          },
+          "requestId" : {
+            "type" : "string",
+            "description" : "Correlation ID, o mesmo do header X-Request-Id; vem nos erros inesperados (500)",
+            "maxLength" : 32,
+            "minLength" : 32,
+            "pattern" : "^[0-9a-f]{32}$"
+          },
+          "status" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 599,
+            "minimum" : 100
+          },
+          "title" : {
+            "type" : "string",
+            "maxLength" : 1000
+          },
+          "type" : {
+            "type" : "string",
+            "format" : "uri-reference",
+            "maxLength" : 1000
+          }
+        },
+        "required" : [ "status", "title" ]
+      },
+      "ProfileResponse" : {
+        "type" : "object",
+        "properties" : {
+          "bio" : {
+            "type" : [ "string", "null" ],
+            "description" : "Apresentação, ou null",
+            "maxLength" : 300
+          },
+          "birthDate" : {
+            "type" : [ "string", "null" ],
+            "format" : "date",
+            "description" : "Data de nascimento, ou null se ainda não informada",
+            "maxLength" : 10
+          },
+          "complete" : {
+            "type" : "boolean",
+            "description" : "Nome, data de nascimento de maior de idade e região preenchidos"
+          },
+          "displayName" : {
+            "type" : [ "string", "null" ],
+            "description" : "Nome de exibição, ou null se ainda não informado",
+            "maxLength" : 50
+          },
+          "region" : {
+            "type" : [ "string", "null" ],
+            "description" : "Estado, pelo código ISO 3166-2, ou null se ainda não informado",
+            "enum" : [ "BR-AC", "BR-AL", "BR-AP", "BR-AM", "BR-BA", "BR-CE", "BR-DF", "BR-ES", "BR-GO", "BR-MA", "BR-MT", "BR-MS", "BR-MG", "BR-PA", "BR-PB", "BR-PR", "BR-PE", "BR-PI", "BR-RJ", "BR-RN", "BR-RS", "BR-RO", "BR-RR", "BR-SC", "BR-SP", "BR-SE", "BR-TO", null ]
+          }
+        },
+        "required" : [ "bio", "birthDate", "complete", "displayName", "region" ]
+      },
+      "WaitlistStatsResponse" : {
+        "type" : "object",
+        "properties" : {
+          "total" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Inscrições na lista",
+            "maximum" : 9223372036854775807,
+            "minimum" : 0
+          }
+        },
+        "required" : [ "total" ]
+      }
+    },
+    "securitySchemes" : {
+      "bearer" : {
+        "bearerFormat" : "JWT",
+        "description" : "Access token da duora-api emitido pelo Entra External ID, validado conforme a RFC8725: algoritmo fixo (RS256) e iss, aud, exp e oid obrigatórios.",
+        "scheme" : "bearer",
+        "type" : "http"
+      },
+      "session" : {
+        "description" : "Sessão do front web, criada pelo login em /oauth2/authorization/entra",
+        "in" : "cookie",
+        "name" : "__Host-DUORA_SESSION",
+        "type" : "apiKey"
+      }
+    }
+  }
+}

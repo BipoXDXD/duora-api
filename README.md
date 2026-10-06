@@ -115,6 +115,7 @@ o Web PubSub ou um serviço de e-mail.
 | HTTP real pelo Tomcat (`X-Forwarded-For`, `/error`) | `config/ForwardedClientAddressIT`, `config/UnexpectedErrorIT` |
 | Correlation ID (`X-Request-Id`, `traceparent`) | `config/RequestCorrelationIT` |
 | Canário de dados sensíveis no log | `config/SensitiveDataLoggingIT` |
+| Contrato OpenAPI: sem drift, acesso à documentação | `config/OpenApiContractIT`, `config/ApiDocsAccessIT` |
 | `@DataJpaTest` + PostgreSQL | `waitlist/domain/WaitlistEntryRepositoryIT` |
 | Migrations Flyway | `FlywayMigrationIT` |
 | Regras de arquitetura (ArchUnit) | `ArchitectureTest`, `ArchitectureRulesTest` |
@@ -170,6 +171,37 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 | `GET` | `/api/me/profile` | Autenticado | `200` com `{displayName, birthDate, bio, region, complete}` e `ETag` com a versão (`"0"` antes da primeira edição) |
 | `PATCH` | `/api/me/profile` | Autenticado | Edição parcial: campo ausente não muda, `null` apaga. Exige `If-Match` com o `ETag` lido: sem ele `428`, desatualizado `412`. `200` com o perfil e o `ETag` novo; `400` para valor inválido ou campo desconhecido; `409` ao trocar a data de nascimento |
 | `GET` | `/actuator/health` | Público | Estado da aplicação |
+
+### Contrato (OpenAPI)
+
+A spec OpenAPI 3.1 versionada fica em [`docs/openapi.json`](docs/openapi.json); o `duora-web` gera
+os tipos dela com `openapi-typescript`. Ela é gerada pela aplicação (springdoc), e o
+`OpenApiContractIT` falha se a versionada divergir da gerada. Depois de mudar um endpoint:
+
+```bash
+./mvnw verify                          # falha apontando a divergência e grava target/openapi.json
+cp target/openapi.json docs/openapi.json
+```
+
+Em produção a documentação não existe. Com o perfil `api-docs`
+(`SPRING_PROFILES_ACTIVE=api-docs`), a spec fica em `/api/admin/openapi` (`.yaml` também) e o
+Swagger UI em `/api/admin/swagger-ui.html`, só para `ADMIN`.
+
+O CI confere o contrato de três jeitos ([ADR 0012](docs/adr/0012-contrato-openapi.md)):
+
+| Verificação | Rodar localmente |
+|---|---|
+| Lint com Spectral e o ruleset OWASP | `npm ci --ignore-scripts --prefix tools/contract && npm run --prefix tools/contract lint` |
+| Breaking change contra a `main` (oasdiff) | `tools/contract/check-breaking.sh origin/main` |
+| Fuzzing com Schemathesis contra a imagem | `docker build -t duora-api:local . && infra/docker/contract-test.sh duora-api:local` |
+
+O fuzzing parte de uma seed: o CI de PR usa uma fixa, e o workflow semanal `contract-fuzz.yml`
+(também manual) usa uma aleatória e a imprime. Para repetir uma execução, rode o script com
+`SCHEMATHESIS_SEED=<seed>`. Toda resposta documenta o header `X-Request-Id`, e o `ProblemDetail` do
+`500` documenta `requestId`.
+
+Breaking change intencional: registre-a em [`docs/api-changelog.md`](docs/api-changelog.md) no
+mesmo PR, com o que o front precisa mudar; sem isso o CI recusa.
 
 ## Logs e correlation ID
 
@@ -259,6 +291,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0009](docs/adr/0009-outbox-e-eventos.md) | Outbox próprio, eventos por chave, partição por limiar |
 | [0010](docs/adr/0010-sem-refresh-token.md) | Login web sem refresh token |
 | [0011](docs/adr/0011-conta-e-perfil.md) | Conta por emissor + `oid`; perfil singular com `If-Match`; regras 18+ |
+| [0012](docs/adr/0012-contrato-openapi.md) | Spec OpenAPI gerada e versionada; Spectral, oasdiff e Schemathesis no CI |
 | [0013](docs/adr/0013-logs-estruturados-e-correlation-id.md) | Logs em JSON (ECS); trace id W3C como correlation ID |
 | [0014](docs/adr/0014-infraestrutura-do-piloto-na-azure.md) | Infraestrutura do piloto em Bicep, deploy por OIDC (proposta, custo pendente) |
 

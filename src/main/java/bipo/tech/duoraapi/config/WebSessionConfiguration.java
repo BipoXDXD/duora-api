@@ -25,7 +25,7 @@ class WebSessionConfiguration {
         serializer.setUseSecureCookie(true);
         // Lax, e não Strict: o cookie precisa voltar no redirect do Entra para concluir o login.
         serializer.setSameSite("Lax");
-        return serializer;
+        return new WellFormedSessionIdCookieSerializer(serializer);
     }
 
 }
