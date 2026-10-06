@@ -71,6 +71,17 @@ class JoinWaitlistIT {
         assertThat(repository.count()).isZero();
     }
 
+    /** Escapes do JSON: o NUL chegava ao PostgreSQL, que o recusa com exceção (500). */
+    @ParameterizedTest
+    @ValueSource(strings = {"a\\u0000b@example.com", "a\\u0001b@example.com", "a\\u00a0b@example.com"})
+    void joiningWithControlOrInvisibleCharacterIsRejectedWithoutWriting(String jsonEscapedEmail) throws Exception {
+        join(jsonEscapedEmail, CLIENT_D)
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+
+        assertThat(repository.count()).isZero();
+    }
+
     @Test
     void joiningWithUnknownFieldIsRejectedWithoutWriting() throws Exception {
         mockMvc.perform(post("/api/waitlist")

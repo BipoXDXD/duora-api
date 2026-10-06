@@ -11,12 +11,19 @@ public record EmailAddress(String value) {
 
     private static final Pattern SHAPE = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
 
+    /**
+     * Controle (NUL incluso), formatação invisível (zero-width) e espaços Unicode, que o \\s não
+     * cobre: o PostgreSQL recusa o NUL, e o resto entraria como lixo que escapa do UNIQUE.
+     */
+    private static final Pattern CONTROL_OR_INVISIBLE = Pattern.compile("[\\p{Cc}\\p{Cf}\\p{Z}]");
+
     public EmailAddress {
         if (value == null) {
             throw new InvalidEmailAddressException("email is required");
         }
         value = value.strip().toLowerCase(Locale.ROOT);
-        if (value.length() > MAX_LENGTH || !SHAPE.matcher(value).matches()) {
+        if (value.length() > MAX_LENGTH || CONTROL_OR_INVISIBLE.matcher(value).find()
+                || !SHAPE.matcher(value).matches()) {
             throw new InvalidEmailAddressException("email is not a valid address");
         }
     }
