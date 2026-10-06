@@ -3,6 +3,9 @@ package bipo.tech.duoraapi.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.io.IOException;
@@ -30,14 +33,17 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.util.UriComponents;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import com.jayway.jsonpath.JsonPath;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JOSEObjectType;
 import com.nimbusds.jose.JWSAlgorithm;
@@ -66,11 +72,14 @@ class WebLoginIT {
     private static final String CSRF_COOKIE = "XSRF-TOKEN";
     private static final String CSRF_HEADER = "X-XSRF-TOKEN";
     private static final String ADMIN_ONLY_PATH = "/api/admin/waitlist/stats";
+    private static final String CURRENT_USER_PATH = "/api/me";
 
     private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String WEB_CLIENT_ID = "duora-web-client-id";
     private static final String API_AUDIENCE = "duora-api-client-id";
     private static final String USER_OBJECT_ID = "user-object-id";
+    private static final String USER_DISPLAY_NAME = "Ana Souza";
+    private static final String USER_EMAIL = "ana@example.com";
     private static final String KEY_ID = "signing-key";
 
     private static final RSAKey SIGNING_KEY = generateRsaKey();
@@ -162,6 +171,40 @@ class WebLoginIT {
                 .doesNotContainIgnoringCase("Domain=");
     }
 
+    /** O front só precisa do nome para exibir; e-mail, oid e papéis ficam no servidor. */
+    @Test
+    void currentUserExposesOnlyTheDisplayName() throws Exception {
+        var session = logIn();
+
+        mockMvc.perform(get(CURRENT_USER_PATH).cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(content().json("""
+                        {"displayName": "Ana Souza"}
+                        """, JsonCompareMode.STRICT));
+    }
+
+    /** Usuário sem nome no Entra: a chave continua no JSON, para o contrato não mudar de forma. */
+    @Test
+    void currentUserWithoutNameInTheIdTokenHasNullDisplayName() throws Exception {
+        var session = sessionCookieOf(completeLogin(startLogin(),
+                claims -> claims.claim("name", null), UnaryOperator.identity()));
+
+        mockMvc.perform(get(CURRENT_USER_PATH).cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {"displayName": null}
+                        """, JsonCompareMode.STRICT));
+    }
+
+    @Test
+    void currentUserWithoutSessionIsUnauthorizedInsteadOfRedirectedToLogin() throws Exception {
+        mockMvc.perform(get(CURRENT_USER_PATH))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().doesNotExist(HttpHeaders.LOCATION))
+                .andExpect(content().string(""));
+    }
+
     @Test
     void logoutWithoutCsrfTokenIsRejectedAndKeepsSession() throws Exception {
         var session = logIn();
@@ -171,18 +214,39 @@ class WebLoginIT {
         mockMvc.perform(get(ADMIN_ONLY_PATH).cookie(session)).andExpect(status().isOk());
     }
 
+    /**
+     * O front chama o logout por fetch, que não segue um 302 para outra origem: a resposta é 200 com
+     * a URL de logout do Entra, para o front navegar até ela.
+     */
     @Test
-    void logoutEndsSessionHereAndAtEntra() throws Exception {
+    void logoutEndsSessionHereAndAnswersTheEntraLogoutUrl() throws Exception {
         var session = logIn();
         var csrf = csrfCookie(session);
 
         var logout = mockMvc.perform(post("/logout").cookie(session, csrf).header(CSRF_HEADER, csrf.getValue()))
-                .andExpect(status().is3xxRedirection())
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist(HttpHeaders.LOCATION))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.length()").value(1))
                 .andReturn();
 
-        var entraLogout = UriComponentsBuilder.fromUriString(logout.getResponse().getRedirectedUrl()).build();
+        String logoutUrl = JsonPath.read(logout.getResponse().getContentAsString(), "$.logoutUrl");
+        var entraLogout = UriComponentsBuilder.fromUriString(logoutUrl).build();
+        assertThat(entraLogout.getHost()).isEqualTo("127.0.0.1");
         assertThat(entraLogout.getPath()).isEqualTo("/tenant/oauth2/v2.0/logout");
-        assertThat(entraLogout.getQueryParams()).containsKeys("id_token_hint", "post_logout_redirect_uri");
+        assertThat(entraLogout.getQueryParams()).containsKey("id_token_hint");
+        assertThat(queryParam(entraLogout, "post_logout_redirect_uri")).isEqualTo("http://localhost/");
+    }
+
+    @Test
+    void sessionCookieIsUselessAfterLogout() throws Exception {
+        var session = logIn();
+        var csrf = csrfCookie(session);
+
+        mockMvc.perform(post("/logout").cookie(session, csrf).header(CSRF_HEADER, csrf.getValue()))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get(CURRENT_USER_PATH).cookie(session)).andExpect(status().isUnauthorized());
         mockMvc.perform(get(ADMIN_ONLY_PATH).cookie(session)).andExpect(status().isUnauthorized());
     }
 
@@ -272,6 +336,8 @@ class WebLoginIT {
                 .issuer(ISSUER)
                 .subject("pairwise-subject")
                 .claim("oid", USER_OBJECT_ID)
+                .claim("name", USER_DISPLAY_NAME)
+                .claim("email", USER_EMAIL)
                 .issueTime(Date.from(now.minus(Duration.ofMinutes(1))))
                 .expirationTime(Date.from(now.plus(Duration.ofMinutes(10))));
     }

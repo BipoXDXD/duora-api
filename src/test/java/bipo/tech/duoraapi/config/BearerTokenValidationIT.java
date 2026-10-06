@@ -30,6 +30,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.nimbusds.jose.JOSEException;
@@ -109,6 +110,18 @@ class BearerTokenValidationIT {
         mockMvc.perform(get(ADMIN_ONLY_PATH).header(HttpHeaders.AUTHORIZATION, bearer(signed(userClaims().build()))))
                 .andExpect(status().isForbidden())
                 .andExpect(content().string(""));
+    }
+
+    /** A porta bearer responde o mesmo contrato da sessão web, com o nome vindo do access token. */
+    @Test
+    void currentUserFromBearerTokenExposesOnlyTheDisplayName() throws Exception {
+        var token = signed(userClaims().claim("name", "Ana Souza").claim("email", "ana@example.com").build());
+
+        mockMvc.perform(get("/api/me").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {"displayName": "Ana Souza"}
+                        """, JsonCompareMode.STRICT));
     }
 
     @ParameterizedTest
