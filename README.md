@@ -46,26 +46,40 @@ curl -i -X POST localhost:8080/api/waitlist \
   -d '{"email": "ana@example.com"}'
 ```
 
+## Imagem Docker
+
+```bash
+docker build -t duora-api:local .
+infra/docker/smoke-test.sh duora-api:local
+```
+
+O `Dockerfile` compila com o JDK e roda só com o JRE, em camadas, como usuário sem privilégios; as
+imagens base são fixadas por digest. O smoke test sobe a imagem com um PostgreSQL descartável e
+confere health, usuário e encerramento por SIGTERM. O CI faz os dois a cada push
+([ADR 0008](docs/adr/0008-imagem-e-let-it-crash.md)).
+
 ## Testes
 
 | Comando | O que roda | Precisa de Docker |
 |---|---|---|
-| `./mvnw test` | Testes rápidos (`*Test`): unitários, Mockito, `@WebMvcTest`, segurança, ArchUnit | Não |
-| `./mvnw verify` | Os rápidos + integração (`*IT`): `@DataJpaTest`, `@SpringBootTest`, migrations Flyway | Sim |
+| `./mvnw test` | Testes rápidos (`*Test`): domínio puro e ArchUnit | Não |
+| `./mvnw verify` | Os rápidos + integração (`*IT`): `@SpringBootTest`, `@DataJpaTest`, migrations Flyway | Sim |
 
-Os testes de integração usam PostgreSQL real (Testcontainers com `@ServiceConnection`), nunca H2.
+Os testes seguem o estilo de Khorikov ([ADR 0003](docs/adr/0003-estilo-de-testes.md)): o domínio é
+testado sem mocks; o banco próprio é sempre real (Testcontainers com `@ServiceConnection`, nunca
+H2); controllers e segurança passam por `@SpringBootTest` + MockMvc com os serviços de verdade.
+Mockito (`@MockitoBean`) só entra para dependências externas que a API não controla, como o Entra,
+o Web PubSub ou um serviço de e-mail.
 
 | Tipo | Exemplo |
 |---|---|
 | Unitário puro (JUnit + AssertJ) | `waitlist/domain/EmailAddressTest` |
-| Mockito | `waitlist/application/WaitlistServiceTest` |
-| `@WebMvcTest` | `waitlist/api/WaitlistControllerTest` |
-| Spring Security (401/403) | `waitlist/api/WaitlistSecurityTest` |
-| Validação de JWT (tokens reais, JWKS local) | `config/BearerTokenValidationTest` |
+| `@SpringBootTest` + MockMvc, ponta a ponta | `waitlist/JoinWaitlistIT` |
+| Spring Security (401/403) | `waitlist/WaitlistSecurityIT` |
+| Validação de JWT (tokens reais, JWKS local) | `config/BearerTokenValidationIT` |
 | Login web (BFF): sessão, cookie, CSRF, logout | `config/WebLoginIT` |
 | Subida sem configuração obrigatória | `config/RequiredAuthenticationSettingsIT` |
 | `@DataJpaTest` + PostgreSQL | `waitlist/domain/WaitlistEntryRepositoryIT` |
-| `@SpringBootTest` completo | `waitlist/JoinWaitlistIT` |
 | Migrations Flyway | `FlywayMigrationIT` |
 | Regras de arquitetura (ArchUnit) | `ArchitectureTest` |
 
@@ -80,18 +94,21 @@ No CI, o relatório completo fica como artefato `jacoco-report`.
 
 ## Estrutura
 
-Pacotes por feature, cada uma dividida em camadas:
+Pacotes por módulo, cada um dividido em camadas:
 
 ```
 bipo.tech.duoraapi
-├── config/              # segurança, relógio
+├── config/              # segurança, sessão, relógio, rate limit compartilhado
 └── waitlist/
     ├── api/             # controller, DTOs, rate limit
     ├── application/     # casos de uso (WaitlistService)
     └── domain/          # entidade, value objects, repositório
 ```
 
-Os testes espelham a mesma estrutura. O `ArchitectureTest` garante que `domain` não dependa de `api`.
+Os testes espelham a mesma estrutura. Módulos de apoio (como a waitlist) usam essas camadas
+simples; os do core (pareamento, minijogos, conexões, moderação) vão usar ports & adapters, com
+domínio sem framework. O `ArchitectureTest` cobra a classificação e a direção das dependências
+([ADR 0007](docs/adr/0007-estilo-por-modulo.md)).
 
 As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida o schema
 (`ddl-auto=validate`); quem o cria e altera é o Flyway.
@@ -156,13 +173,29 @@ obsoletos. As variáveis vão para `~/.config/duora/dev.env` (permissão 600); o
 `duora-web` é criado só se ainda não estiver lá, vale 180 dias e nunca é exibido. Para dar acesso
 de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *Enterprise applications*.
 
+## Decisões de arquitetura
+
+| ADR | Decisão |
+|---|---|
+| [0001](docs/adr/0001-autenticacao-entra-external-id.md) | Entra External ID; API como resource server |
+| [0002](docs/adr/0002-front-web-com-bff.md) | Front web com BFF no Spring |
+| [0003](docs/adr/0003-estilo-de-testes.md) | Testes no estilo Khorikov: domínio sem mocks, banco real |
+| [0004](docs/adr/0004-identificadores-e-unicidade.md) | UUIDv7 como PK e id público; `NULLS NOT DISTINCT` |
+| [0005](docs/adr/0005-contrato-da-api.md) | Contrato: `POST /x/{id}:verbo`, 409/412, `Idempotency-Key`, `ProblemDetail` |
+| [0006](docs/adr/0006-rate-limit-no-postgresql.md) | Rate limit com estado no PostgreSQL |
+| [0007](docs/adr/0007-estilo-por-modulo.md) | Ports & adapters no core, camadas simples no supporting |
+| [0008](docs/adr/0008-imagem-e-let-it-crash.md) | Dockerfile multi-stage; queda só em estado irrecuperável |
+| [0009](docs/adr/0009-outbox-e-eventos.md) | Outbox próprio, eventos por chave, partição por limiar |
+| [0010](docs/adr/0010-sem-refresh-token.md) | Login web sem refresh token |
+
 ## Segurança
 
 - **Negado por padrão:** toda rota exige sessão ou token válido, exceto a allowlist em
   `SecurityConfiguration`. Sem credencial válida, `401`; sem o papel necessário, `403`.
 - **Waitlist sem vazamento:** o `POST` responde igual para e-mail novo ou já inscrito.
-- **Rate limit:** 10 inscrições por IP por hora (`duora.waitlist.join-rate-limit.*`), com `429` e
-  `Retry-After` acima disso. O limite vale por instância e usa o IP da conexão; atrás de proxy, é
-  preciso configurar `server.forward-headers-strategy`.
+- **Rate limit:** 10 inscrições por hora por IPv4 ou rede IPv6 /64 (`duora.waitlist.join-rate-limit.*`), com `429` e
+  `Retry-After` acima disso. Os buckets ficam no PostgreSQL, então o limite vale para todas as
+  réplicas juntas ([ADR 0006](docs/adr/0006-rate-limit-no-postgresql.md)). O limite usa o IP da
+  conexão; atrás de proxy, é preciso configurar `server.forward-headers-strategy`.
 - **Entrada estrita:** campos JSON desconhecidos são rejeitados com `400`.
 - **CI:** o gitleaks varre o histórico em busca de segredos a cada push e pull request.

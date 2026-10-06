@@ -1,6 +1,5 @@
 package bipo.tech.duoraapi.config;
 
-import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -11,23 +10,26 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.nimbusds.jose.JOSEException;
@@ -44,15 +46,16 @@ import com.nimbusds.jwt.PlainJWT;
 import com.nimbusds.jwt.SignedJWT;
 import com.sun.net.httpserver.HttpServer;
 
-import bipo.tech.duoraapi.waitlist.application.WaitlistService;
+import bipo.tech.duoraapi.TestcontainersConfiguration;
 
 /**
  * Valida tokens de verdade contra a configuração de produção (issuer, audience, algoritmo, roles),
  * com um JWKS local no lugar do Entra External ID. Teste de fronteira: ver docs/adr/0001.
  */
-@WebMvcTest
-@Import(SecurityConfiguration.class)
-class BearerTokenValidationTest {
+@SpringBootTest
+@AutoConfigureMockMvc
+@Import(TestcontainersConfiguration.class)
+class BearerTokenValidationIT {
 
     private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String AUDIENCE = "duora-api-client-id";
@@ -67,8 +70,8 @@ class BearerTokenValidationTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockitoBean
-    private WaitlistService waitlistService;
+    @Autowired
+    private JdbcClient jdbcClient;
 
     @DynamicPropertySource
     static void authenticationProperties(DynamicPropertyRegistry registry) {
@@ -83,21 +86,26 @@ class BearerTokenValidationTest {
         JWKS_SERVER.stop(0);
     }
 
+    @BeforeEach
+    void seedOneEntry() {
+        jdbcClient.sql("delete from waitlist_entry").update();
+        jdbcClient.sql("insert into waitlist_entry (email, joined_at) values (?, ?)")
+                .params("ana@example.com", OffsetDateTime.parse("2026-10-05T12:00:00Z"))
+                .update();
+    }
+
     @Test
     void acceptsValidTokenWithAdminRole() throws Exception {
-        given(waitlistService.countEntries()).willReturn(3L);
 
         mockMvc.perform(get(ADMIN_ONLY_PATH).header(HttpHeaders.AUTHORIZATION, bearer(signed(adminClaims().build()))))
                 .andExpect(status().isOk())
                 .andExpect(content().json("""
-                        {"total": 3}
+                        {"total": 1}
                         """));
     }
 
     @Test
     void forbidsValidTokenWithoutAdminRole() throws Exception {
-        given(waitlistService.countEntries()).willReturn(3L);
-
         mockMvc.perform(get(ADMIN_ONLY_PATH).header(HttpHeaders.AUTHORIZATION, bearer(signed(userClaims().build()))))
                 .andExpect(status().isForbidden())
                 .andExpect(content().string(""));
@@ -106,8 +114,6 @@ class BearerTokenValidationTest {
     @ParameterizedTest
     @MethodSource("invalidTokens")
     void rejectsInvalidToken(String token) throws Exception {
-        given(waitlistService.countEntries()).willReturn(3L);
-
         mockMvc.perform(get(ADMIN_ONLY_PATH).header(HttpHeaders.AUTHORIZATION, bearer(token)))
                 .andExpect(status().isUnauthorized())
                 .andExpect(content().string(""));

@@ -1,0 +1,7 @@
+# Allowlist: só o necessário para compilar. Fica de fora, entre outros, livros/ (centenas de MB),
+# target/, segredos locais e a configuração das IDEs.
+*
+!.mvn/
+!mvnw
+!pom.xml
+!src/main/

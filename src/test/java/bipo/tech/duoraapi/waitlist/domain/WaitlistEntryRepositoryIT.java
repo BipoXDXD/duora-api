@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.simple.JdbcClient;
 
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
@@ -20,6 +21,9 @@ class WaitlistEntryRepositoryIT {
 
     @Autowired
     private WaitlistEntryRepository repository;
+
+    @Autowired
+    private JdbcClient jdbcClient;
 
     @Test
     void insertIfAbsentStoresNewEntry() {
@@ -41,6 +45,17 @@ class WaitlistEntryRepositoryIT {
         assertThat(repository.count()).isEqualTo(1);
         assertThat(repository.findByEmail("ana@example.com"))
                 .hasValueSatisfying(entry -> assertThat(entry.joinedAt()).isEqualTo(FIRST_JOIN));
+    }
+
+    @Test
+    void insertIfAbsentAssignsTimeOrderedUuidId() {
+        repository.insertIfAbsent("ana@example.com", FIRST_JOIN);
+
+        var idVersion = jdbcClient.sql("select uuid_extract_version(id) from waitlist_entry where email = ?")
+                .param("ana@example.com")
+                .query(Integer.class)
+                .single();
+        assertThat(idVersion).isEqualTo(7);
     }
 
 }
