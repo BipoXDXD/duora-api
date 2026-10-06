@@ -85,6 +85,8 @@ instrumentação.
 - `SensitiveDataLoggingIT`: com o Spring MVC e a API em DEBUG, um canário em e-mail aceito e
   recusado, `Authorization` (Bearer e Basic), cookies de sessão e CSRF, query string, `traceparent`,
   `X-Request-Id`, `baggage` e `code` do callback OAuth2 nunca aparece no log, no corpo nem nos
-  headers da resposta.
+  headers da resposta. No `PATCH /api/me/profile`, nome, bio e data de nascimento aceitos não vão
+  para o log, e os recusados (nome longo, bio com invisível, data fora do formato) não vão nem para
+  o log nem para a resposta.
 - `EmailAddressTest`: o `toString` não traz o endereço.
 - `infra/docker/smoke-test.sh` continua achando "Graceful shutdown complete" na mensagem JSON.
