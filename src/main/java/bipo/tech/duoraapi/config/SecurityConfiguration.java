@@ -113,6 +113,8 @@ public class SecurityConfiguration {
                 // trocaria o 5xx por um 401. Só o encaminhamento: GET /error direto continua fechado.
                 .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                 .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
+                // Probes do Container Apps: a plataforma chama sem credencial e só lê o estado (docs/adr/0014).
+                .requestMatchers(HttpMethod.GET, "/actuator/health/liveness", "/actuator/health/readiness").permitAll()
                 .requestMatchers(JOIN_WAITLIST).permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated();
