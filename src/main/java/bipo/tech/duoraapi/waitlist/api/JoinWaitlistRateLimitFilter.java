@@ -3,6 +3,7 @@ package bipo.tech.duoraapi.waitlist.api;
 import java.io.IOException;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
 import jakarta.servlet.FilterChain;
@@ -115,7 +116,9 @@ class JoinWaitlistRateLimitFilter extends OncePerRequestFilter {
     private static void reject(HttpServletResponse response, HttpStatus status, String problemBody) throws IOException {
         response.setStatus(status.value());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
-        response.getWriter().write(problemBody);
+        // Bytes em UTF-8, como o JSON exige (RFC 8259), e Content-Type sem charset, como o resto da API:
+        // o getWriter() faria o Tomcat declarar e usar o ISO-8859-1 padrão dele.
+        response.getOutputStream().write(problemBody.getBytes(StandardCharsets.UTF_8));
     }
 
 }
