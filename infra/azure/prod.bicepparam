@@ -1,4 +1,4 @@
-// Produção do piloto: plano §6 (1 vCPU, 2 GiB, 1 a 3 réplicas; mínimo de uma réplica para as tarefas
+// Produção do piloto, SEM apply até haver usuários reais (docs/adr/0014, revisão de 2026-10-06): plano §6 (1 vCPU, 2 GiB, 1 a 3 réplicas; mínimo de uma réplica para as tarefas
 // internas). Banco no menor Burstable até a medição pedir mais (docs/adr/0014). Valores secretos e os
 // que só existem depois do primeiro apply vêm de variáveis de ambiente (infra/azure/README.md).
 using 'main.bicep'
@@ -43,8 +43,8 @@ param enableOpenTelemetry = bool(readEnvironmentVariable('DUORA_ENABLE_OPENTELEM
 param logDailyQuotaGb = '0.5'
 
 param alertEmail = readEnvironmentVariable('DUORA_ALERT_EMAIL')
-// Na moeda de cobrança da assinatura: ajuste se não for dólar (docs/adr/0014, custos).
-param monthlyBudget = 150
+// Na moeda de cobrança da assinatura, que é o real: R$ 800 equivalem a cerca de US$ 150 (docs/adr/0014).
+param monthlyBudget = 800
 // Fixado no primeiro apply (primeiro dia daquele mês) e mantido: a API recusa início antigo demais.
 param budgetStartDate = readEnvironmentVariable('DUORA_BUDGET_START_DATE')
 
