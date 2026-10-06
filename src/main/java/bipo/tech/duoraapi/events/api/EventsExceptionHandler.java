@@ -19,6 +19,11 @@ class EventsExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
+    @ExceptionHandler(InvalidPageRequestException.class)
+    ProblemDetail handleInvalidPageRequest(InvalidPageRequestException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+    }
+
     @ExceptionHandler(EventNotFoundException.class)
     ProblemDetail handleNotFound(EventNotFoundException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
