@@ -40,8 +40,11 @@ não puder ser multiplicado.
 ## Consequências
 
 - Toda requisição limitada abre uma transação curta no banco. Se o banco cair, a rota responde
-  erro em vez de passar sem limite (falha fechada); a inscrição dependeria do banco de qualquer
-  forma.
+  `503` em `ProblemDetail` em vez de passar sem limite (falha fechada); a inscrição dependeria do
+  banco de qualquer forma. Cada comando do Bucket4j tem teto de 1 s
+  (`RateLimitConfiguration.REQUEST_TIMEOUT`), para requisições do mesmo cliente não esperarem o
+  lock da linha sem limite. A espera por conexão segue o timeout do pool (Hikari, 30 s): um pool
+  dedicado ao rate limit (bulkhead) só entra se a medição no k6 mostrar disputa.
 - A tabela não tem teto de linhas, ao contrário do cache em memória. O crescimento fica limitado
   pela quantidade de IPv4 e de redes /64 de quem ataca, e cada linha some em até uma hora mais o
   intervalo da limpeza; a métrica de tamanho mostra se isso mudar.
@@ -60,6 +63,10 @@ não puder ser multiplicado.
   bucket diferentes, que só compartilham o banco, somam o mesmo limite.
 - `JoinWaitlistRateLimitFilterIT.sharesLimitWithinIpv6Slash64` e `countsEachIpv6Slash64Separately`:
   endereços da mesma rede /64 somam o mesmo limite; redes diferentes, não.
+- `JoinWaitlistRateLimitFilterIT.rejectsRequestWithServiceUnavailableWhenBucketStoreIsDown` e
+  `rejectsRequestWithServiceUnavailableWhenBucketStaysLocked`: com o banco recusando conexão ou com
+  a linha do bucket presa por outra transação, a requisição não passa e recebe `503` (falha fechada
+  e timeout).
 - `JoinWaitlistIT.joiningAboveRateLimitIsRejectedWithoutWriting`: acima do limite, `429` com
   `Retry-After` e nada gravado.
 - `ExpiredRateLimitBucketCleanerIT`: o `expires_at` gravado é a reposição completa mais a folga, a

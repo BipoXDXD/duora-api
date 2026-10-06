@@ -2,16 +2,19 @@ package bipo.tech.duoraapi.waitlist.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.sql.Connection;
 import java.time.Duration;
 
 import javax.sql.DataSource;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -91,6 +94,45 @@ class JoinWaitlistRateLimitFilterIT {
         assertThat(rejected.response.getStatus()).isEqualTo(429);
     }
 
+    /** Falha fechada (docs/adr/0006): sem o banco não há como contar, e a inscrição não passa. */
+    @Test
+    void rejectsRequestWithServiceUnavailableWhenBucketStoreIsDown() throws Exception {
+        var unreachable = new DriverManagerDataSource("jdbc:postgresql://127.0.0.1:1/unreachable");
+        var withoutStore = new JoinWaitlistRateLimitFilter(bucketsOn(unreachable), CAPACITY, PERIOD);
+
+        var rejected = join(withoutStore, CLIENT_A);
+
+        assertThat(rejected.chain.getRequest()).isNull();
+        assertThat(rejected.response.getStatus()).isEqualTo(503);
+        assertThat(rejected.response.getContentType()).isEqualTo("application/problem+json");
+    }
+
+    /** Sem timeout, a requisição esperaria o lock da linha indefinidamente, segurando uma conexão. */
+    @Test
+    @Timeout(10)
+    void rejectsRequestWithServiceUnavailableWhenBucketStaysLocked() throws Exception {
+        join(filter, CLIENT_A);
+
+        try (Connection lockHolder = dataSource.getConnection()) {
+            // Se o filtro não tiver timeout, o PostgreSQL derruba esta sessão e solta o lock: o teste
+            // falha pelo status, em vez de travar o build.
+            try (var holderTimeout = lockHolder.createStatement()) {
+                holderTimeout.execute("set idle_in_transaction_session_timeout = '5s'");
+            }
+            lockHolder.setAutoCommit(false);
+            try (var lock = lockHolder.prepareStatement("select state from rate_limit_bucket where id = ? for update")) {
+                lock.setString(1, JoinWaitlistRateLimitFilter.KEY_PREFIX + CLIENT_A);
+                lock.executeQuery().close();
+            }
+
+            var rejected = join(filter, CLIENT_A);
+
+            assertThat(rejected.chain.getRequest()).isNull();
+            assertThat(rejected.response.getStatus()).isEqualTo(503);
+            lockHolder.rollback();
+        }
+    }
+
     @Test
     void sharesLimitWithinIpv6Slash64() throws Exception {
         join(filter, "2001:db8:1:2::1");
@@ -149,6 +191,10 @@ class JoinWaitlistRateLimitFilterIT {
 
     /** Outra réplica tem o próprio gerenciador de buckets; só o banco é comum. */
     private ProxyManager<String> otherReplicaBuckets() {
+        return bucketsOn(dataSource);
+    }
+
+    private static ProxyManager<String> bucketsOn(DataSource dataSource) {
         return Bucket4jPostgreSQL.selectForUpdateBasedBuilder(dataSource)
                 .primaryKeyMapper(PrimaryKeyMapper.STRING)
                 .table("rate_limit_bucket")
