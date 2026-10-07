@@ -108,6 +108,11 @@ public class Event {
         return status != EventStatus.DRAFT;
     }
 
+    /** Publicado e dentro do horário {@code [startsAt, endsAt)}: é quando as rodadas de pareamento acontecem. */
+    public boolean isUnderway(Instant now) {
+        return status == EventStatus.PUBLISHED && schedule().hasStarted(now) && !schedule().hasEnded(now);
+    }
+
     /**
      * @param registrations quantas pessoas já estão inscritas, contadas com o evento travado
      * @throws EventStateConflictException se o evento não está publicado, já começou ou lotou

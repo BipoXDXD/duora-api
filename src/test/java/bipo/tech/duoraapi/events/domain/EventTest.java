@@ -209,6 +209,39 @@ class EventTest {
         assertThatCode(() -> event.ensureAllowsLeaving(NOW)).doesNotThrowAnyException();
     }
 
+    @Test
+    void publishedEventIsUnderwayFromTheStartInstant() {
+        assertThat(published().isUnderway(STARTS_AT)).isTrue();
+    }
+
+    @Test
+    void publishedEventIsNotUnderwayJustBeforeTheStart() {
+        assertThat(published().isUnderway(JUST_BEFORE_START)).isFalse();
+    }
+
+    @Test
+    void publishedEventIsStillUnderwayJustBeforeTheEnd() {
+        assertThat(published().isUnderway(JUST_BEFORE_END)).isTrue();
+    }
+
+    @Test
+    void publishedEventIsNoLongerUnderwayAtTheEndInstant() {
+        assertThat(published().isUnderway(ENDS_AT)).isFalse();
+    }
+
+    @Test
+    void cancelledEventIsNotUnderwayDuringItsSchedule() {
+        var event = published();
+        event.cancel(NOW);
+
+        assertThat(event.isUnderway(STARTS_AT)).isFalse();
+    }
+
+    @Test
+    void draftIsNotUnderwayDuringItsSchedule() {
+        assertThat(draftStartingAt(STARTS_AT).isUnderway(STARTS_AT)).isFalse();
+    }
+
     private static Event published() {
         var event = draftStartingAt(STARTS_AT);
         event.publish(NOW);
