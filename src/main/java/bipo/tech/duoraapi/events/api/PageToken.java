@@ -18,6 +18,9 @@ final class PageToken {
     /** Folga sobre o maior token válido, que tem 86 caracteres. */
     static final int MAX_LENGTH = 90;
 
+    /** Base64 URL-safe sem padding: o token vai na query string sem escape. */
+    static final String PATTERN = "^[A-Za-z0-9_-]+$";
+
     /**
      * Nenhum evento existe fora de 1970 a 9999. O Instant aceita anos muito além do que o timestamptz
      * guarda, e um token adulterado com um deles viraria erro do banco (500) em vez de 400.

@@ -33,3 +33,21 @@ checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 
 [[operations]]
 include-name = "GET /api/me/blocked-accounts"
 checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 429, "5xx"]
+
+# Criação de evento (docs/adr/0016): início no futuro e até 365 dias à frente, fim depois do início e no
+# máximo 12 horas após ele, texto sem caracteres invisíveis nem só com espaços. O schema não expressa
+# essas regras, então um corpo válido por ele pode receber 400 de propósito (AdminEventIT).
+[[operations]]
+include-name = "POST /api/admin/events"
+checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 429, "5xx"]
+
+# Como em /api/me/blocked-accounts, o pageToken só vale se a própria API o gerou: um texto qualquer no
+# formato do schema recebe 400 de propósito (EventCatalogIT.invalidPageTokenIsABadRequest,
+# RegistrationIT.invalidPageOfOwnRegistrationsIsABadRequest).
+[[operations]]
+include-name = "GET /api/events"
+checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 429, "5xx"]
+
+[[operations]]
+include-name = "GET /api/me/registrations"
+checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 429, "5xx"]

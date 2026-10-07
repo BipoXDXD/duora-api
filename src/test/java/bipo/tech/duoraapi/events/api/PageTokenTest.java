@@ -27,7 +27,7 @@ class PageTokenTest {
     /** O token vai na query string: só caracteres que dispensam escape. */
     @Test
     void isSafeInAUrl() {
-        assertThat(PageToken.encode(CURSOR)).matches("[A-Za-z0-9_-]+");
+        assertThat(PageToken.encode(CURSOR)).matches("[A-Za-z0-9_-]+").matches(PageToken.PATTERN);
     }
 
     @ParameterizedTest

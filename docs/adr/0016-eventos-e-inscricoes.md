@@ -213,6 +213,16 @@ STRIDE do fluxo (permissão de ADMIN e dado pessoal: quem vai a qual encontro):
 Repudiation (quem criou, publicou ou cancelou) não é tratada: não há trilha de auditoria. Entra junto com a
 administração, se ela precisar do histórico.
 
+Contrato ([ADR 0012](0012-contrato-openapi.md)): `OpenApiContractIT.eventsAndRegistrationsDocumentTheirContract`
+confere na spec os erros, o `Location` dos `201`, o `503` com `Retry-After`, a paginação e os estados. No
+Spectral, a regra `owasp:api2:2023-no-credentials-in-url` fica desligada para o `pageToken` de
+`GET /api/events` e `GET /api/me/registrations`, como no `trustsafety`. No Schemathesis, o `400` entra entre
+as respostas esperadas para corpo válido em `POST /api/admin/events` (início no passado ou além de um ano,
+duração acima de 12 horas, caracteres invisíveis) e nas duas listas (pageToken que a API não gerou). O
+fuzzing achou um defeito, corrigido com teste: `GET` e `OPTIONS` em `/api/admin/events/{id}:publish` e
+`:cancel` caíam na rota de leitura com o id `"uuid:publish"`, e o `Allow` anunciava um `GET` que a ação
+não tem (`AdminEventIT.actionRouteAnswersOnlyToPost`).
+
 Regras de domínio sem Spring: `EventTest` (transições, bordas do intervalo semiaberto, capacidade),
 `EventScheduleTest`, `EventTitleTest`, `EventDescriptionTest`, `CapacityTest`. Fronteira entre módulos:
 `ArchitectureTest.modulesUseOnlyPublishedApisOfOtherModules` e a classificação de `events` em

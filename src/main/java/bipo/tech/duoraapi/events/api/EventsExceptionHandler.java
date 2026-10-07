@@ -19,7 +19,8 @@ import bipo.tech.duoraapi.events.domain.InvalidEventException;
 @RestControllerAdvice(basePackageClasses = EventsExceptionHandler.class)
 class EventsExceptionHandler {
 
-    private static final String RETRY_AFTER_SECONDS = "1";
+    /** O teto de espera do lock do evento é de 2 s; um segundo basta para tentar de novo. */
+    static final String RETRY_AFTER_SECONDS = "1";
 
     @ExceptionHandler(InvalidEventException.class)
     ProblemDetail handleInvalidEvent(InvalidEventException exception) {

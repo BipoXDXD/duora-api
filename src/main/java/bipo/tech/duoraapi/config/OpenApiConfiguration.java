@@ -126,7 +126,8 @@ class OpenApiConfiguration {
         if (ADMIN_ROUTES.matches(PathContainer.parsePath(path))) {
             operation.getResponses().addApiResponse("403", problem(HttpStatus.FORBIDDEN, "Sem o papel ADMIN"));
         } else if (method != PathItem.HttpMethod.GET) {
-            operation.getResponses().addApiResponse("403",
+            // Operação com um 403 próprio (regra de negócio) o declara já citando o CSRF; não o sobrescreva.
+            operation.getResponses().putIfAbsent("403",
                     problem(HttpStatus.FORBIDDEN, "Sessão web sem o token CSRF no header X-XSRF-TOKEN"));
         }
     }

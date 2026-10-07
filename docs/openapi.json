@@ -21,6 +21,12 @@
     "description" : "Perfil do usuário logado",
     "name" : "profile"
   }, {
+    "description" : "Criação, publicação e cancelamento de eventos pelo ADMIN",
+    "name" : "admin-events"
+  }, {
+    "description" : "Eventos publicados e as inscrições de quem está logado",
+    "name" : "events"
+  }, {
     "description" : "Sessão do usuário logado",
     "name" : "session"
   }, {
@@ -226,6 +232,492 @@
         "tags" : [ "blocks" ]
       }
     },
+    "/api/admin/events" : {
+      "post" : {
+        "description" : "O rascunho só aparece para o ADMIN até ser publicado. Sem Idempotency-Key: repetir a criação gera outro rascunho, que o ADMIN cancela (docs/adr/0016).",
+        "operationId" : "createEvent",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateEventRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AdminEventResponse"
+                }
+              }
+            },
+            "description" : "O rascunho criado",
+            "headers" : {
+              "Location" : {
+                "description" : "Endereço do evento criado",
+                "required" : true,
+                "schema" : {
+                  "type" : "string",
+                  "format" : "uri",
+                  "maxLength" : 2048
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Campo ausente ou inválido (texto, horário sem fuso, início no passado ou além de um ano, duração acima de 12 horas, capacidade fora de 2 a 200), JSON malformado ou campo desconhecido",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem o papel ADMIN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "415" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Corpo em outro formato que não application/json",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Cria um evento em rascunho",
+        "tags" : [ "admin-events" ]
+      }
+    },
+    "/api/admin/events/{id}" : {
+      "get" : {
+        "description" : "Traz o estado guardado e quantas pessoas se inscreveram, nunca quem.",
+        "operationId" : "getAdminEvent",
+        "parameters" : [ {
+          "description" : "Id do evento, como a criação o devolveu",
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AdminEventResponse"
+                }
+              }
+            },
+            "description" : "O evento",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem o papel ADMIN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Não há evento com esse id",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lê um evento, inclusive rascunho",
+        "tags" : [ "admin-events" ]
+      }
+    },
+    "/api/admin/events/{id}:cancel" : {
+      "post" : {
+        "description" : "Vale para rascunho ou publicado que ainda não acabou, inclusive em andamento. O evento continua visível, para quem se inscreveu saber, e não aceita inscrições. Repetir responde 409 sem mudar nada.",
+        "operationId" : "cancelEvent",
+        "parameters" : [ {
+          "description" : "Id do evento, como a criação o devolveu",
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AdminEventResponse"
+                }
+              }
+            },
+            "description" : "O evento cancelado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem o papel ADMIN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Não há evento com esse id",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "O evento já foi cancelado, já acabou ou mudou ao mesmo tempo por outra ação",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Cancela um evento",
+        "tags" : [ "admin-events" ]
+      }
+    },
+    "/api/admin/events/{id}:publish" : {
+      "post" : {
+        "description" : "O evento passa a aparecer para quem está logado e aceita inscrições. Só vale para rascunho que ainda não começou; repetir responde 409 sem mudar nada.",
+        "operationId" : "publishEvent",
+        "parameters" : [ {
+          "description" : "Id do evento, como a criação o devolveu",
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AdminEventResponse"
+                }
+              }
+            },
+            "description" : "O evento publicado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem o papel ADMIN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Não há evento com esse id",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "O evento não é rascunho, já começou ou mudou ao mesmo tempo por outra ação",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Publica um rascunho",
+        "tags" : [ "admin-events" ]
+      }
+    },
     "/api/admin/waitlist/stats" : {
       "get" : {
         "description" : "Só ADMIN.",
@@ -294,6 +786,587 @@
         },
         "summary" : "Total de inscrições na lista de espera",
         "tags" : [ "waitlist" ]
+      }
+    },
+    "/api/events" : {
+      "get" : {
+        "description" : "Só os publicados, do início mais próximo ao mais distante, paginados por cursor. A última página vem com nextPageToken null.",
+        "operationId" : "listUpcomingEvents",
+        "parameters" : [ {
+          "description" : "Quantos eventos no máximo nesta página",
+          "in" : "query",
+          "name" : "maxPageSize",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 10,
+            "maximum" : 50,
+            "minimum" : 1
+          }
+        }, {
+          "description" : "O nextPageToken da página anterior; ausente na primeira",
+          "in" : "query",
+          "name" : "pageToken",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 90,
+            "pattern" : "^[A-Za-z0-9_-]+$"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageResponseEventResponse"
+                }
+              }
+            },
+            "description" : "Uma página dos eventos",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "maxPageSize fora de 1 a 50, ou pageToken que a API não gerou",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lista os eventos que ainda vão começar",
+        "tags" : [ "events" ]
+      }
+    },
+    "/api/events/{eventId}/registration" : {
+      "delete" : {
+        "description" : "Idempotente: sem inscrição, também responde 204. Só até o evento começar.",
+        "operationId" : "cancelMyRegistration",
+        "parameters" : [ {
+          "description" : "Id do evento",
+          "in" : "path",
+          "name" : "eventId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        } ],
+        "responses" : {
+          "204" : {
+            "description" : "Quem chama não está inscrito no evento",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sessão web sem o token CSRF no header X-XSRF-TOKEN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Evento inexistente ou rascunho",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "O evento já começou",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Cancela a própria inscrição no evento",
+        "tags" : [ "events" ]
+      },
+      "get" : {
+        "description" : "Só a de quem chama: não há como ler a inscrição de outra pessoa. Sem inscrição, 404, exista o evento ou não.",
+        "operationId" : "getMyRegistration",
+        "parameters" : [ {
+          "description" : "Id do evento",
+          "in" : "path",
+          "name" : "eventId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RegistrationResponse"
+                }
+              }
+            },
+            "description" : "A inscrição",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Quem chama não está inscrito nesse evento",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lê a própria inscrição no evento",
+        "tags" : [ "events" ]
+      },
+      "put" : {
+        "description" : "Sem corpo. Idempotente pela chave evento + conta: repetir devolve a mesma inscrição, com a mesma data, por isso dispensa If-Match e Idempotency-Key (docs/adr/0016). Exige perfil completo e 18 anos.",
+        "operationId" : "registerForEvent",
+        "parameters" : [ {
+          "description" : "Id do evento",
+          "in" : "path",
+          "name" : "eventId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RegistrationResponse"
+                }
+              }
+            },
+            "description" : "A inscrição que já existia",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RegistrationResponse"
+                }
+              }
+            },
+            "description" : "A inscrição criada",
+            "headers" : {
+              "Location" : {
+                "description" : "Endereço da inscrição",
+                "required" : true,
+                "schema" : {
+                  "type" : "string",
+                  "format" : "uri",
+                  "maxLength" : 2048
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Perfil incompleto ou menor de 18 anos, ou sessão web sem o token CSRF no header X-XSRF-TOKEN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Evento inexistente ou rascunho",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Evento cancelado, já começado ou lotado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "503" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "O evento está ocupado com outras inscrições; nada foi gravado",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até tentar de novo",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int32",
+                  "maximum" : 1,
+                  "minimum" : 1
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Inscreve quem chama no evento",
+        "tags" : [ "events" ]
+      }
+    },
+    "/api/events/{id}" : {
+      "get" : {
+        "description" : "Sem capacidade, contagem nem inscritos. Um rascunho responde como um id que não existe.",
+        "operationId" : "getEvent",
+        "parameters" : [ {
+          "description" : "Id do evento",
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EventResponse"
+                }
+              }
+            },
+            "description" : "O evento",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Evento inexistente ou rascunho",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lê um evento publicado ou cancelado",
+        "tags" : [ "events" ]
       }
     },
     "/api/me" : {
@@ -681,6 +1754,99 @@
         },
         "summary" : "Edita o próprio perfil",
         "tags" : [ "profile" ]
+      }
+    },
+    "/api/me/registrations" : {
+      "get" : {
+        "description" : "Em eventos que ainda não acabaram, inclusive cancelados e em andamento, do início mais próximo ao mais distante, paginadas por cursor. A última página vem com nextPageToken null.",
+        "operationId" : "listMyRegistrations",
+        "parameters" : [ {
+          "description" : "Quantas inscrições no máximo nesta página",
+          "in" : "query",
+          "name" : "maxPageSize",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 10,
+            "maximum" : 50,
+            "minimum" : 1
+          }
+        }, {
+          "description" : "O nextPageToken da página anterior; ausente na primeira",
+          "in" : "query",
+          "name" : "pageToken",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 90,
+            "pattern" : "^[A-Za-z0-9_-]+$"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageResponseMyRegistrationResponse"
+                }
+              }
+            },
+            "description" : "Uma página das inscrições",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "maxPageSize fora de 1 a 50, ou pageToken que a API não gerou",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lista as próprias inscrições",
+        "tags" : [ "events" ]
       }
     },
     "/api/reports" : {
@@ -1086,6 +2252,60 @@
       }
     },
     "schemas" : {
+      "AdminEventResponse" : {
+        "type" : "object",
+        "properties" : {
+          "capacity" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Quantas pessoas podem se inscrever",
+            "maximum" : 200,
+            "minimum" : 2
+          },
+          "description" : {
+            "type" : "string",
+            "description" : "Descrição curta, em parágrafos",
+            "maxLength" : 500
+          },
+          "endsAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Fim, em UTC; o evento já acabou neste instante",
+            "maxLength" : 35
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Id do evento",
+            "maxLength" : 36,
+            "minLength" : 36
+          },
+          "registrationCount" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Quantas pessoas se inscreveram",
+            "maximum" : 200,
+            "minimum" : 0
+          },
+          "startsAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Início, em UTC; o evento começou neste instante",
+            "maxLength" : 35
+          },
+          "status" : {
+            "type" : "string",
+            "description" : "Estado guardado: rascunho, publicado ou cancelado",
+            "enum" : [ "DRAFT", "PUBLISHED", "CANCELLED" ]
+          },
+          "title" : {
+            "type" : "string",
+            "description" : "Título, em uma linha",
+            "maxLength" : 80
+          }
+        },
+        "required" : [ "capacity", "description", "endsAt", "id", "registrationCount", "startsAt", "status", "title" ]
+      },
       "BlockedAccount" : {
         "type" : "object",
         "properties" : {
@@ -1124,6 +2344,44 @@
           }
         },
         "required" : [ "items", "nextPageToken" ]
+      },
+      "CreateEventRequest" : {
+        "type" : "object",
+        "additionalProperties" : false,
+        "properties" : {
+          "capacity" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Quantas pessoas podem se inscrever",
+            "maximum" : 200,
+            "minimum" : 2
+          },
+          "description" : {
+            "type" : "string",
+            "description" : "Descrição curta em parágrafos, sem caracteres invisíveis",
+            "maxLength" : 500,
+            "minLength" : 1
+          },
+          "endsAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Fim, ISO 8601 com fuso; depois do início e no máximo 12 horas após ele",
+            "maxLength" : 35
+          },
+          "startsAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Início, ISO 8601 com fuso (Z ou -03:00); no futuro e até 365 dias à frente",
+            "maxLength" : 35
+          },
+          "title" : {
+            "type" : "string",
+            "description" : "Título em uma linha, sem caracteres invisíveis; espaços nas pontas são removidos",
+            "maxLength" : 80,
+            "minLength" : 1
+          }
+        },
+        "required" : [ "capacity", "description", "endsAt", "startsAt", "title" ]
       },
       "CurrentUserResponse" : {
         "type" : "object",
@@ -1173,6 +2431,46 @@
           }
         }
       },
+      "EventResponse" : {
+        "type" : "object",
+        "properties" : {
+          "description" : {
+            "type" : "string",
+            "description" : "Descrição curta, em parágrafos",
+            "maxLength" : 500
+          },
+          "endsAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Fim, em UTC; o evento já acabou neste instante",
+            "maxLength" : 35
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Id do evento",
+            "maxLength" : 36,
+            "minLength" : 36
+          },
+          "startsAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Início, em UTC; o evento começou neste instante",
+            "maxLength" : 35
+          },
+          "status" : {
+            "type" : "string",
+            "description" : "Publicado ou cancelado; em andamento e encerrado se leem dos horários",
+            "enum" : [ "PUBLISHED", "CANCELLED" ]
+          },
+          "title" : {
+            "type" : "string",
+            "description" : "Título, em uma linha",
+            "maxLength" : 80
+          }
+        },
+        "required" : [ "description", "endsAt", "id", "startsAt", "status", "title" ]
+      },
       "FileReportRequest" : {
         "type" : "object",
         "additionalProperties" : false,
@@ -1210,6 +2508,87 @@
           }
         },
         "required" : [ "email" ]
+      },
+      "MyRegistrationResponse" : {
+        "type" : "object",
+        "properties" : {
+          "endsAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Fim do evento, em UTC",
+            "maxLength" : 35
+          },
+          "eventId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Id do evento",
+            "maxLength" : 36,
+            "minLength" : 36
+          },
+          "eventStatus" : {
+            "type" : "string",
+            "description" : "Estado do evento: um cancelado continua na lista, para a pessoa saber",
+            "enum" : [ "PUBLISHED", "CANCELLED" ]
+          },
+          "registeredAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Quando a inscrição foi feita",
+            "maxLength" : 35
+          },
+          "startsAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Início do evento, em UTC",
+            "maxLength" : 35
+          },
+          "title" : {
+            "type" : "string",
+            "description" : "Título do evento",
+            "maxLength" : 80
+          }
+        },
+        "required" : [ "endsAt", "eventId", "eventStatus", "registeredAt", "startsAt", "title" ]
+      },
+      "PageResponseEventResponse" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "description" : "Itens da página, pelo início do evento",
+            "items" : {
+              "$ref" : "#/components/schemas/EventResponse"
+            },
+            "maxItems" : 50
+          },
+          "nextPageToken" : {
+            "type" : [ "string", "null" ],
+            "description" : "Token da próxima página, ou null na última",
+            "maxLength" : 90,
+            "pattern" : "^[A-Za-z0-9_-]+$"
+          }
+        },
+        "required" : [ "items", "nextPageToken" ]
+      },
+      "PageResponseMyRegistrationResponse" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "description" : "Itens da página, pelo início do evento",
+            "items" : {
+              "$ref" : "#/components/schemas/MyRegistrationResponse"
+            },
+            "maxItems" : 50
+          },
+          "nextPageToken" : {
+            "type" : [ "string", "null" ],
+            "description" : "Token da próxima página, ou null na última",
+            "maxLength" : 90,
+            "pattern" : "^[A-Za-z0-9_-]+$"
+          }
+        },
+        "required" : [ "items", "nextPageToken" ]
       },
       "ProblemDetail" : {
         "type" : "object",
@@ -1279,6 +2658,25 @@
           }
         },
         "required" : [ "bio", "birthDate", "complete", "displayName", "region" ]
+      },
+      "RegistrationResponse" : {
+        "type" : "object",
+        "properties" : {
+          "eventId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Id do evento",
+            "maxLength" : 36,
+            "minLength" : 36
+          },
+          "registeredAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Quando a inscrição foi feita; não muda nas repetições do PUT",
+            "maxLength" : 35
+          }
+        },
+        "required" : [ "eventId", "registeredAt" ]
       },
       "ReportResponse" : {
         "type" : "object",

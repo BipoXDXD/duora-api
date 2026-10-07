@@ -9,13 +9,32 @@ import bipo.tech.duoraapi.events.domain.EventDescription;
 import bipo.tech.duoraapi.events.domain.EventSchedule;
 import bipo.tech.duoraapi.events.domain.EventTitle;
 import bipo.tech.duoraapi.events.domain.InvalidEventException;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * Corpo da criação. Só o que o ADMIN define: id, estado e contagem são do servidor, e chave desconhecida
  * é recusada com 400 (spring.jackson.deserialization.fail-on-unknown-properties). Os horários chegam como
  * texto: o Jackson aceitaria um número como segundos da época.
  */
-record CreateEventRequest(String title, String description, String startsAt, String endsAt, Integer capacity) {
+@Schema(additionalProperties = Schema.AdditionalPropertiesValue.FALSE)
+record CreateEventRequest(
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED, minLength = 1, maxLength = EventTitle.MAX_LENGTH,
+                description = "Título em uma linha, sem caracteres invisíveis; espaços nas pontas são removidos")
+        String title,
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED, minLength = 1, maxLength = EventDescription.MAX_LENGTH,
+                description = "Descrição curta em parágrafos, sem caracteres invisíveis")
+        String description,
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED, format = "date-time",
+                maxLength = ApiSchemas.INSTANT_MAX_LENGTH,
+                description = "Início, ISO 8601 com fuso (Z ou -03:00); no futuro e até 365 dias à frente")
+        String startsAt,
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED, format = "date-time",
+                maxLength = ApiSchemas.INSTANT_MAX_LENGTH,
+                description = "Fim, ISO 8601 com fuso; depois do início e no máximo 12 horas após ele")
+        String endsAt,
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED, format = "int32", minimum = "" + Capacity.MIN_PLACES,
+                maximum = "" + Capacity.MAX_PLACES, description = "Quantas pessoas podem se inscrever")
+        Integer capacity) {
 
     EventTitle eventTitle() {
         return new EventTitle(title);
