@@ -388,14 +388,6 @@ class BlockIT {
         return user("oid-bruno");
     }
 
-    private static RequestPostProcessor carla() {
-        return user("oid-carla");
-    }
-
-    private static RequestPostProcessor davi() {
-        return user("oid-davi");
-    }
-
     private static RequestPostProcessor user(String objectId) {
         return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", objectId));
     }
