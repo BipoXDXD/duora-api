@@ -20,6 +20,13 @@ overrides:
       - "../../docs/openapi.json#/paths/~1api~1waitlist/post"
     rules:
       owasp:api2:2023-write-restricted: off
+  # O logout não pede credencial de propósito (docs/adr/0002): quem chama sem sessão recebe o mesmo
+  # 200, porque encerrar uma sessão que não existe é inofensivo. O que o protege é o token CSRF
+  # (403 sem ele), que a spec não modela como esquema de segurança.
+  - files:
+      - "../../docs/openapi.json#/paths/~1logout/post"
+    rules:
+      owasp:api2:2023-write-restricted: off
   # pageToken é o cursor opaco da paginação (docs/adr/0005), não uma credencial: só marca a posição
   # na lista de quem chama, que a consulta filtra de qualquer jeito (docs/adr/0015, 0016). O nome segue o
   # padrão de paginação do contrato; a regra só olha o nome do parâmetro.

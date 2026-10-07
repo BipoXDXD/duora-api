@@ -51,3 +51,12 @@ checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 
 [[operations]]
 include-name = "GET /api/me/registrations"
 checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 429, "5xx"]
+
+# O logout é rota da cadeia de sessão do Spring Security (docs/adr/0002, 0012). O fuzzing manda sempre
+# Authorization: Bearer, o que leva a requisição à cadeia bearer, que não conhece /logout: 404 em
+# qualquer método. Isso não é o contrato do logout (a spec descreve a sessão web), e a porta de sessão
+# fica fora do Schemathesis porque exige o login interativo no Entra. O contrato do logout é coberto
+# por OpenApiContractIT.logoutDocumentsWhatSpringSecurityDoes e WebLoginIT.
+[[operations]]
+include-path = "/logout"
+enabled = false

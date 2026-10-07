@@ -111,8 +111,13 @@ não no navegador do usuário, quando o contrato muda, e uma quebra só entra de
 - Imagens do oasdiff, do Schemathesis e do busybox (JWKS) ficam fixadas por digest em scripts, fora
   do alcance do Dependabot; atualizar à mão. Spectral e o ruleset seguem o `package-lock.json`, que
   o Dependabot atualiza.
-- Rotas fora do MVC (`/oauth2/authorization/entra`, `/logout`) não aparecem na spec; o README
-  continua documentando-as para o front.
+- Rotas do Spring Security não aparecem no springdoc sozinhas. O `POST /logout` entra na spec por um
+  `OpenApiCustomizer` em `OpenApiConfiguration` (`OpenApiContractIT.logoutDocumentsWhatSpringSecurityDoes`
+  confere spec e comportamento); `/oauth2/authorization/entra` é um redirect de navegador, não parte
+  do contrato do `fetch`, e segue só no README.
+  O Schemathesis não testa o `/logout` (`enabled = false` em `tools/contract/schemathesis.toml`): ele manda
+  sempre `Authorization: Bearer`, que leva a requisição à cadeia bearer, onde a rota não existe (404 em
+  qualquer método). É a mesma exceção da porta de sessão acima.
 
 ## Compliance
 
