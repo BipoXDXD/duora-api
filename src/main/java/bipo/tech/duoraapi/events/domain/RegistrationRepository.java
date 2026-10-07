@@ -67,6 +67,14 @@ public class RegistrationRepository {
                 .single();
     }
 
+    /** Quem está inscrito no evento, na ordem dos ids. A PK (evento, conta) atende a consulta. */
+    public List<AccountId> findAccountsByEvent(UUID eventId) {
+        return jdbcClient.sql("select account_id from registration where event_id = :eventId order by account_id")
+                .param("eventId", eventId)
+                .query((row, rowNumber) -> new AccountId(row.getObject("account_id", UUID.class)))
+                .list();
+    }
+
     public Optional<Registration> find(UUID eventId, AccountId account) {
         return jdbcClient.sql("""
                         select event_id, account_id, registered_at

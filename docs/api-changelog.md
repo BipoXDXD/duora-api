@@ -34,6 +34,15 @@ Mudanças compatíveis ([ADR 0016](adr/0016-eventos-e-inscricoes.md)):
   repetições; 403 com perfil incompleto; 409 com evento cancelado, começado ou lotado; 503 com
   `Retry-After`), `GET` e `DELETE` (204, idempotente) na mesma rota, e `GET /api/me/registrations`.
 
+Mudanças compatíveis ([ADR 0017](adr/0017-pareamento.md)):
+
+- Rodadas de pareamento para o ADMIN: `PUT /api/admin/events/{eventId}/rounds/{number}` (sem corpo; 201
+  com `Location` na primeira vez, 200 com a mesma rodada nas repetições; 409 com o evento fora do horário,
+  cancelado ou rascunho, ou sem a rodada anterior; 503 com `Retry-After`) e `GET` na mesma rota. As duas
+  devolvem só contagens (`pairCount`, `sittingOutCount`), nunca quem formou par com quem.
+- O próprio par: `GET /api/events/{eventId}/rounds/{number}/pairing`, com `partnerAccountId` (`null` para
+  quem ficou de fora); 404 igual para rodada inexistente e para quem não estava no sorteio.
+
 ## 0.1.0 (2026-10-05)
 
 Primeira versão publicada da spec: `POST /api/waitlist`, `GET /api/me`,
