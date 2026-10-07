@@ -9,6 +9,15 @@ Toda **breaking change** entra aqui no mesmo PR que a introduz: sem a entrada, o
 
 ## Não publicado
 
+Mudança compatível ([ADR 0018](adr/0018-erros-de-campo-no-problem-detail.md)):
+
+- O 400 de validação do corpo (`POST /api/waitlist`, `PATCH /api/me/profile`, `POST /api/reports`,
+  `POST /api/admin/events`) ganha o membro `errors`, uma lista de `{field, code}` (schemas
+  `ValidationProblemDetail` e `FieldError`). `code` é de uma lista fechada; `field` é o nome da propriedade
+  JSON e fica ausente quando o corpo inteiro não pôde ser lido (`MALFORMED_BODY`). O `detail` continua
+  igual. O `duora-web` pode trocar a leitura do texto do `detail` pelo `field` e pelo `code`, tratando
+  code desconhecido como erro genérico do campo.
+
 Mudança compatível ([ADR 0002](adr/0002-front-web-com-bff.md)):
 
 - `POST /logout` entra na spec (`operationId` `logout`, tag `session`): 200 com `{"logoutUrl": "..."}`,

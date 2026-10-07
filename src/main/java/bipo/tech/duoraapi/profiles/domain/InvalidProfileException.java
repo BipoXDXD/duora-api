@@ -1,10 +1,13 @@
 package bipo.tech.duoraapi.profiles.domain;
 
-/** Valor ou mudança de perfil fora das regras. A mensagem vai ao cliente: nunca leva o valor recebido. */
-public class InvalidProfileException extends RuntimeException {
+import bipo.tech.duoraapi.FieldErrorCode;
+import bipo.tech.duoraapi.InvalidFieldException;
 
-    public InvalidProfileException(String message) {
-        super(message);
+/** Valor ou mudança de perfil fora das regras. A mensagem vai ao cliente: nunca leva o valor recebido. */
+public class InvalidProfileException extends InvalidFieldException {
+
+    public InvalidProfileException(String field, FieldErrorCode code, String message) {
+        super(field, code, message);
     }
 
 }

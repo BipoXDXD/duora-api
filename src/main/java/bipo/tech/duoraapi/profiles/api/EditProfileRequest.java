@@ -5,6 +5,7 @@ import java.time.format.DateTimeParseException;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import bipo.tech.duoraapi.FieldErrorCode;
 import bipo.tech.duoraapi.profiles.domain.Bio;
 import bipo.tech.duoraapi.profiles.domain.DisplayName;
 import bipo.tech.duoraapi.profiles.domain.FieldChange;
@@ -83,7 +84,8 @@ final class EditProfileRequest {
         try {
             return LocalDate.parse(value);
         } catch (DateTimeParseException e) {
-            throw new InvalidProfileException("birthDate must be a date in the format 1990-05-10");
+            throw new InvalidProfileException("birthDate", FieldErrorCode.INVALID_FORMAT,
+                    "birthDate must be a date in the format 1990-05-10");
         }
     }
 

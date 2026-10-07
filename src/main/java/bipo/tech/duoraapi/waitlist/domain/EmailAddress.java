@@ -3,6 +3,8 @@ package bipo.tech.duoraapi.waitlist.domain;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
+import bipo.tech.duoraapi.FieldErrorCode;
+
 /** E-mail normalizado (sem espaços nas pontas, minúsculo). Só existe se for válido. */
 public record EmailAddress(String value) {
 
@@ -19,12 +21,13 @@ public record EmailAddress(String value) {
 
     public EmailAddress {
         if (value == null) {
-            throw new InvalidEmailAddressException("email is required");
+            throw new InvalidEmailAddressException("email", FieldErrorCode.REQUIRED, "email is required");
         }
         value = value.strip().toLowerCase(Locale.ROOT);
         if (value.length() > MAX_LENGTH || CONTROL_OR_INVISIBLE.matcher(value).find()
                 || !SHAPE.matcher(value).matches()) {
-            throw new InvalidEmailAddressException("email is not a valid address");
+            throw new InvalidEmailAddressException("email", FieldErrorCode.INVALID_FORMAT,
+                    "email is not a valid address");
         }
     }
 

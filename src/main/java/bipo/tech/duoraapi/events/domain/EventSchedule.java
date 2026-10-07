@@ -4,6 +4,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
+import bipo.tech.duoraapi.FieldErrorCode;
+
 /**
  * Quando o evento acontece, como intervalo semiaberto [startsAt, endsAt): começou no instante de
  * início e já acabou no instante de fim. Os instantes ficam em microssegundos, a precisão do
@@ -15,18 +17,19 @@ public record EventSchedule(Instant startsAt, Instant endsAt) {
 
     public EventSchedule {
         if (startsAt == null) {
-            throw new InvalidEventException("startsAt is required");
+            throw new InvalidEventException("startsAt", FieldErrorCode.REQUIRED, "startsAt is required");
         }
         if (endsAt == null) {
-            throw new InvalidEventException("endsAt is required");
+            throw new InvalidEventException("endsAt", FieldErrorCode.REQUIRED, "endsAt is required");
         }
         startsAt = startsAt.truncatedTo(ChronoUnit.MICROS);
         endsAt = endsAt.truncatedTo(ChronoUnit.MICROS);
         if (!endsAt.isAfter(startsAt)) {
-            throw new InvalidEventException("endsAt must be after startsAt");
+            throw new InvalidEventException("endsAt", FieldErrorCode.BELOW_MINIMUM, "endsAt must be after startsAt");
         }
         if (Duration.between(startsAt, endsAt).compareTo(MAX_DURATION) > 0) {
-            throw new InvalidEventException("an event lasts at most " + MAX_DURATION.toHours() + " hours");
+            throw new InvalidEventException("endsAt", FieldErrorCode.ABOVE_MAXIMUM,
+                    "an event lasts at most " + MAX_DURATION.toHours() + " hours");
         }
     }
 

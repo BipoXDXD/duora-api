@@ -13,7 +13,6 @@ import bipo.tech.duoraapi.events.application.EventNotFoundException;
 import bipo.tech.duoraapi.events.application.IncompleteProfileException;
 import bipo.tech.duoraapi.events.application.RegistrationNotFoundException;
 import bipo.tech.duoraapi.events.domain.EventStateConflictException;
-import bipo.tech.duoraapi.events.domain.InvalidEventException;
 
 /** Erros das rotas de eventos em ProblemDetail (docs/adr/0005). As mensagens nunca trazem o valor recebido. */
 @RestControllerAdvice(basePackageClasses = EventsExceptionHandler.class)
@@ -21,11 +20,6 @@ class EventsExceptionHandler {
 
     /** O teto de espera do lock do evento é de 2 s; um segundo basta para tentar de novo. */
     static final String RETRY_AFTER_SECONDS = "1";
-
-    @ExceptionHandler(InvalidEventException.class)
-    ProblemDetail handleInvalidEvent(InvalidEventException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
-    }
 
     @ExceptionHandler(InvalidPageRequestException.class)
     ProblemDetail handleInvalidPageRequest(InvalidPageRequestException exception) {

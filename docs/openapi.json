@@ -282,7 +282,7 @@
             "content" : {
               "application/problem+json" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/ProblemDetail"
+                  "$ref" : "#/components/schemas/ValidationProblemDetail"
                 }
               }
             },
@@ -2059,7 +2059,7 @@
             "content" : {
               "application/problem+json" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/ProblemDetail"
+                  "$ref" : "#/components/schemas/ValidationProblemDetail"
                 }
               }
             },
@@ -2317,7 +2317,7 @@
             "content" : {
               "application/problem+json" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/ProblemDetail"
+                  "$ref" : "#/components/schemas/ValidationProblemDetail"
                 }
               }
             },
@@ -2573,7 +2573,7 @@
             "content" : {
               "application/problem+json" : {
                 "schema" : {
-                  "$ref" : "#/components/schemas/ProblemDetail"
+                  "$ref" : "#/components/schemas/ValidationProblemDetail"
                 }
               }
             },
@@ -2991,6 +2991,24 @@
         },
         "required" : [ "description", "endsAt", "id", "startsAt", "status", "title" ]
       },
+      "FieldError" : {
+        "type" : "object",
+        "description" : "Um campo recusado e o motivo. Trate um code desconhecido como erro genérico do campo.",
+        "properties" : {
+          "code" : {
+            "type" : "string",
+            "description" : "REQUIRED: ausente, null, vazio ou apagado onde é obrigatório. TOO_SHORT e TOO_LONG: abaixo de minLength ou acima de maxLength. BELOW_MINIMUM e ABOVE_MAXIMUM: número ou instante fora da faixa (em birthDate, ABOVE_MAXIMUM é menor de idade e BELOW_MINIMUM idade implausível). INVALID_FORMAT: tipo ou formato errado. UNSUPPORTED_VALUE: fora da lista fechada. FORBIDDEN_CHARACTER: controle, invisível ou espaço especial. SELF_REFERENCE: a própria conta. UNKNOWN_FIELD: chave que o corpo não aceita. MALFORMED_BODY: o corpo não é um objeto JSON legível.",
+            "enum" : [ "REQUIRED", "TOO_SHORT", "TOO_LONG", "BELOW_MINIMUM", "ABOVE_MAXIMUM", "INVALID_FORMAT", "UNSUPPORTED_VALUE", "FORBIDDEN_CHARACTER", "SELF_REFERENCE", "UNKNOWN_FIELD", "MALFORMED_BODY" ]
+          },
+          "field" : {
+            "type" : "string",
+            "description" : "Nome da propriedade no corpo JSON, como o cliente a enviou. Ausente quando o erro é do corpo inteiro (MALFORMED_BODY) ou numa chave desconhecida fora do formato de nome.",
+            "maxLength" : 64,
+            "pattern" : "^[A-Za-z][A-Za-z0-9]*$"
+          }
+        },
+        "required" : [ "code" ]
+      },
       "FileReportRequest" : {
         "type" : "object",
         "additionalProperties" : false,
@@ -3276,6 +3294,52 @@
           }
         },
         "required" : [ "createdAt", "description", "id", "reason", "reportedAccountId", "status" ]
+      },
+      "ValidationProblemDetail" : {
+        "type" : "object",
+        "description" : "Erro de validação do corpo no formato RFC 9457. Além do detail, em inglês e para pessoas, errors diz a máquinas qual campo falhou e por quê, sem repetir o valor.",
+        "properties" : {
+          "detail" : {
+            "type" : "string",
+            "maxLength" : 1000
+          },
+          "errors" : {
+            "type" : "array",
+            "description" : "Um item por campo recusado, ordenados por campo",
+            "items" : {
+              "$ref" : "#/components/schemas/FieldError"
+            },
+            "maxItems" : 20
+          },
+          "instance" : {
+            "type" : "string",
+            "format" : "uri-reference",
+            "maxLength" : 1000
+          },
+          "requestId" : {
+            "type" : "string",
+            "description" : "Correlation ID, o mesmo do header X-Request-Id; vem nos erros inesperados (500)",
+            "maxLength" : 32,
+            "minLength" : 32,
+            "pattern" : "^[0-9a-f]{32}$"
+          },
+          "status" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 599,
+            "minimum" : 100
+          },
+          "title" : {
+            "type" : "string",
+            "maxLength" : 1000
+          },
+          "type" : {
+            "type" : "string",
+            "format" : "uri-reference",
+            "maxLength" : 1000
+          }
+        },
+        "required" : [ "status", "title" ]
       },
       "WaitlistStatsResponse" : {
         "type" : "object",

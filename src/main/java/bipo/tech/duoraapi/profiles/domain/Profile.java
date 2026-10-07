@@ -11,6 +11,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 
+import bipo.tech.duoraapi.FieldErrorCode;
+
 /**
  * Como a pessoa se apresenta no Duora. Cada conta tem exatamente um perfil, que começa vazio e é
  * preenchido aos poucos; ele está completo quando tem nome, data de nascimento de maior de idade e
@@ -105,10 +107,12 @@ public class Profile {
             throw new BirthDateAlreadySetException();
         }
         if (!AgePolicy.isAdult(requested, now)) {
-            throw new InvalidProfileException("birthDate must be at least " + AgePolicy.ADULT_AGE + " years ago");
+            throw new InvalidProfileException("birthDate", FieldErrorCode.ABOVE_MAXIMUM,
+                    "birthDate must be at least " + AgePolicy.ADULT_AGE + " years ago");
         }
         if (!AgePolicy.isPlausible(requested, now)) {
-            throw new InvalidProfileException("birthDate must be at most " + AgePolicy.MAX_PLAUSIBLE_AGE + " years ago");
+            throw new InvalidProfileException("birthDate", FieldErrorCode.BELOW_MINIMUM,
+                    "birthDate must be at most " + AgePolicy.MAX_PLAUSIBLE_AGE + " years ago");
         }
         return requested;
     }
@@ -116,7 +120,8 @@ public class Profile {
     private static <T> T required(String field, FieldChange<T> change, T current) {
         return switch (change) {
             case FieldChange.Keep<T> _ -> current;
-            case FieldChange.Clear<T> _ -> throw new InvalidProfileException(field + " cannot be removed");
+            case FieldChange.Clear<T> _ -> throw new InvalidProfileException(field, FieldErrorCode.REQUIRED,
+                    field + " cannot be removed");
             case FieldChange.SetTo<T>(T value) -> value;
         };
     }
