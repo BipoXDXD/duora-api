@@ -321,6 +321,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0014](docs/adr/0014-infraestrutura-do-piloto-na-azure.md) | Infraestrutura do piloto em Bicep, deploy por OIDC (proposta, custo pendente) |
 | [0015](docs/adr/0015-bloqueio-e-denuncia.md) | Bloqueio e denúncia entre contas |
 | [0016](docs/adr/0016-eventos-e-inscricoes.md) | Eventos e inscrições: lock do evento para a capacidade, inscrição como sub-recurso idempotente |
+| [0017](docs/adr/0017-pareamento.md) | Pareamento (proposta): rodada numerada, emparelhamento máximo com prioridade para quem ficou de fora |
 
 ## Segurança
 
