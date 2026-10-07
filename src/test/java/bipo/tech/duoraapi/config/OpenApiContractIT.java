@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.nio.charset.StandardCharsets;
@@ -182,6 +184,37 @@ class OpenApiContractIT {
                 .map(JsonNode::asString))
                 .containsExactly("PUBLISHED", "CANCELLED");
         assertThat(spec.at("/components/schemas/EventResponse/properties").has("capacity")).isFalse();
+    }
+
+    /**
+     * O logout é rota do Spring Security, sem controller (docs/adr/0002): a spec o declara à mão, e o que
+     * declara é o que a segurança faz. 200 com a URL do Entra com o token CSRF, mesmo sem sessão; 403 sem ele.
+     */
+    @Test
+    void logoutDocumentsWhatSpringSecurityDoes() throws Exception {
+        JsonNode spec = jsonMapper.readTree(generatedSpec());
+        JsonNode logout = spec.at("/paths/~1logout/post");
+        JsonNode schema = spec.at("/components/schemas/LogoutResponse");
+
+        assertThat(logout.path("operationId").asString()).isEqualTo("logout");
+        assertThat(logout.at("/tags").valueStream().map(JsonNode::asString)).containsExactly("session");
+        assertThat(logout.path("security").isArray()).as("pública: nenhuma credencial").isTrue();
+        assertThat(logout.path("security")).isEmpty();
+        assertThat(logout.has("requestBody")).isFalse();
+        assertThat(logout.at("/responses/200/content/application~1json/schema/$ref").asString())
+                .isEqualTo("#/components/schemas/LogoutResponse");
+        assertThat(documentsProblem(logout, 403)).isTrue();
+        assertThat(documentsProblem(logout, 500)).isTrue();
+        assertThat(documentsProblem(logout, 401)).as("sem sessão o logout não é 401").isFalse();
+        assertThat(schema.at("/properties/logoutUrl/format").asString()).isEqualTo("uri");
+        assertThat(schema.at("/properties/logoutUrl/maxLength").asInt()).isEqualTo(2_048);
+        assertThat(schema.at("/required").valueStream().map(JsonNode::asString)).containsExactly("logoutUrl");
+
+        mockMvc.perform(post("/logout").with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$.logoutUrl").isString());
+        mockMvc.perform(post("/logout")).andExpect(status().isForbidden());
     }
 
     /**
