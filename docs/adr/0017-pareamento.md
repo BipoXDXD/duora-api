@@ -1,7 +1,7 @@
 # 0017. Pareamento: rodadas, sorteio dos pares e quem fica de fora
 
-- **Status:** Proposta. O núcleo do sorteio está implementado; o resto é desenho para revisão com o usuário.
-  As decisões tomadas sem o usuário estão marcadas como **(autônoma)**.
+- **Status:** Aceita, provisória. Implementada sem o usuário; revisar com ele. As decisões tomadas sem o
+  usuário estão marcadas como **(autônoma)**, e as que dependem dele estão em "Pendente com o usuário".
 - **Data:** 2026-10-07
 - **Relacionadas:** [ADR 0003](0003-estilo-de-testes.md), [ADR 0004](0004-identificadores-e-unicidade.md),
   [ADR 0005](0005-contrato-da-api.md), [ADR 0007](0007-estilo-por-modulo.md),
@@ -98,8 +98,9 @@ contador.
   | **Nova API publicada no `trustsafety`: os pares bloqueados entre um conjunto de contas, numa consulta** | Uma consulta; o `trustsafety` continua dono da tabela e da regra "qualquer direção" | Mais um método publicado para manter |
   | `matching` lê `account_block` direto | Uma consulta, sem mudar o `trustsafety` | Quebra a regra de dono da tabela ([ADR 0007](0007-estilo-por-modulo.md), [ADR 0011](0011-conta-e-perfil.md)) |
 
-  **Decisão (autônoma):** a nova API publicada, a ser criada no `trustsafety` junto com a integração (ainda
-  não existe; ver "Falta implementar").
+  **Decisão (autônoma):** a nova API publicada `Blocking.blockedPairsAmong(Collection<AccountId>)`, que
+  devolve `BlockedPair` sem direção: quem bloqueou quem continua escondido também do `matching`. A consulta
+  passa os ids num array (`= any(:ids)`), um parâmetro só para qualquer tamanho de grupo.
 - **Par repetido:** sai das rodadas anteriores do mesmo evento, que são tabelas do próprio `matching`, e
   também é garantido por constraint (abaixo).
 - **Bloqueio criado depois do sorteio** (ou commitado durante ele, em READ COMMITTED): o par já formado não é
@@ -116,37 +117,55 @@ contador.
 | Agendamento (job) a partir de uma duração de rodada | Sem ação manual durante o evento | Depende da duração da rodada (pendente) e de lock entre réplicas; um sorteio errado não tem quem pare |
 
 **Decisão:** `PUT .../rounds/{number}` pelo ADMIN. Respostas: `201` + `Location` na criação, `200` com a
-mesma rodada na repetição, `409` se a rodada anterior não existe ou o evento não está em andamento, `404`
-para evento inexistente ou rascunho. Sem `Idempotency-Key` nem `If-Match`, pelos mesmos motivos da
+mesma rodada na repetição, `409` se a rodada anterior não existe ou o evento não está em andamento (inclusive
+rascunho: o ADMIN vê rascunhos, então para ele o evento existe), `404` para evento inexistente. Sem `Idempotency-Key` nem `If-Match`, pelos mesmos motivos da
 [ADR 0016](0016-eventos-e-inscricoes.md) (a chave de negócio identifica a intenção; não há corpo a perder).
 
 **Concorrência, sem checar e depois inserir:**
 
-1. `insert into round (event_id, number, ...) ... on conflict do nothing returning ...`. A PK
+1. `insert into round (event_id, number, ...) ... on conflict (event_id, number) do nothing`. A PK
    `(event_id, number)` faz a segunda transação concorrente **esperar** a primeira; quando ela commita, o
    insert não faz nada e a segunda relê e devolve a rodada vencedora (`200`). Só quem inseriu sorteia.
 2. A sequência é do banco: `round.previous_number` com FK para `(event_id, number)` da própria tabela e
-   `CHECK (number = 1 and previous_number is null or previous_number = number - 1)`. A rodada N+1 nunca
-   existe sem a N commitada: se a N ainda não commitou, a FK recusa (`409`), sem consulta prévia. O
-   comportamento exato da FK diante de uma N em voo (recusar ou esperar) será conferido no teste de
-   integração; os dois resultados preservam a sequência.
+   `CHECK (previous_number is not distinct from nullif(number - 1, 0))` (um `CHECK` comum com `or` passaria
+   com `previous_number` nulo, porque `CHECK` nulo não recusa). A rodada N+1 nunca existe sem a N commitada:
+   sem a N, a FK recusa (`409`), sem consulta prévia. Com a N em voo, o PostgreSQL pode recusar ou esperar
+   por ela; o teste de corrida aceita os dois resultados e confere que nunca há N+1 sem N.
 3. Na mesma transação, o vencedor lê inscritos, bloqueios e rodadas anteriores, sorteia e grava os assentos.
    Como a rodada N+1 só existe depois de a N commitar, os pares anteriores lidos estão completos.
-4. Teto de espera: `lock_timeout` curto, como na [ADR 0016](0016-eventos-e-inscricoes.md), com `503` e
-   `Retry-After` (repetir é seguro porque o `PUT` é idempotente).
+4. Teto de espera: `lock_timeout` de 5 s (`JdbcRoundRepository.LOCK_TIMEOUT`), com `503` e `Retry-After: 1`
+   (repetir é seguro porque o `PUT` é idempotente). É maior que os 2 s da inscrição porque quem espera aguarda
+   um sorteio inteiro, não uma contagem. O `JdbcClient` não traduz o `55P03` do PostgreSQL; o adapter o
+   converte em `CannotAcquireLockException`.
+5. Os assentos entram num insert só (`unnest` de dois arrays), sem uma ida ao banco por pessoa.
 
 Não há lock na linha do evento: ela é do `events`, e o `matching` não trava tabela alheia. A PK da rodada é
-o "registro coordenador" do plano (§4).
+o "registro coordenador" do plano (§4). Com o evento em andamento a lista de inscritos não muda (inscrever e
+sair só valem até o início, [ADR 0016](0016-eventos-e-inscricoes.md)), então lê-la sem lock é seguro. Um
+cancelamento do evento concorrente com o sorteio pode deixar uma rodada num evento recém-cancelado; a rodada
+fica gravada e não faz mal (ver pendências).
+
+O evento que já acabou continua respondendo `200` a uma rodada que já existe: a repetição do `PUT` é
+idempotente mesmo depois do horário. Só criar rodada exige o evento em andamento.
+
+**Número máximo de rodadas (autônoma):** 100 por evento (`RoundNumber.MAX`, repetido no `CHECK`), folga para
+um evento de até 12 horas. Número fora de 1 a 100 → `400`.
 
 ### Como o `matching` obtém os inscritos
 
-O `events` não publica nada sobre inscrições hoje. Ler a tabela `registration` quebraria a regra de dono.
-**Decisão (autônoma):** criar a API publicada mínima no `events`, na raiz do pacote (como
-`profiles.ProfileCompleteness`): os inscritos de um evento e se ele está em andamento num instante. É
-indispensável, mas **não foi criada neste ramo**: o `events` está em revisão em paralelo, e o pedido foi não
-mexer nos arquivos dele. Entra no passo de integração.
+Ler a tabela `registration` quebraria a regra de dono. **Decisão (autônoma):** a API publicada mínima
+`events.EventRoster.rosterOf(eventId, now)`, na raiz do pacote (como `profiles.ProfileCompleteness`), que
+devolve um tipo selado `events.Roster`: `UnknownEvent`, `NotUnderway` (rascunho, cancelado, antes do início
+ou depois do fim) ou `Underway(registrants)`, com os inscritos na ordem dos ids. "Em andamento" é regra do
+evento (`Event.isUnderway`, intervalo semiaberto `[startsAt, endsAt)`), e não do `matching`.
 
-### Modelo de dados (planejado, migration ainda não escrita)
+**Sem porta própria para as APIs publicadas (autônoma):** o `RoundService` chama `EventRoster` e `Blocking`
+direto. As duas já são a fronteira dos módulos donos, devolvem só `AccountId` e tipos simples, e rodam na
+mesma transação; uma interface no `matching` com um adapter que só repassa a chamada seria um módulo raso. A
+[ADR 0007](0007-estilo-por-modulo.md) pede portas para banco e serviços externos, o que o repositório das
+rodadas cumpre.
+
+### Modelo de dados (`V10__create_round_and_round_seat.sql`)
 
 - `round (event_id, number, previous_number, seed, started_at)`, PK `(event_id, number)`, FK para `event`
   (`on delete restrict`, como a inscrição) e a auto-FK da sequência acima. A semente fica guardada para o
@@ -157,20 +176,29 @@ mexer nos arquivos dele. Entra no passo de integração.
   - `UNIQUE (event_id, account_id, partner_account_id)`: o par não se repete no evento. Os nulos de quem
     ficou de fora não colidem entre si (`NULLS DISTINCT`, o padrão), que é o que se quer aqui: ficar de fora
     em várias rodadas é permitido.
-  - `CHECK (account_id <> partner_account_id)`; FK do parceiro para o assento dele na mesma rodada
-    (`deferrable initially deferred`, porque os dois lados entram na mesma transação).
+  - `CHECK (account_id <> partner_account_id)`.
+  - **Par recíproco garantido no banco:** FK `(event_id, round_number, partner_account_id, account_id)` para
+    `(event_id, round_number, account_id, partner_account_id)` da própria tabela, isto é, o assento do
+    parceiro precisa apontar de volta. É `deferrable initially deferred`, porque os dois lados entram na
+    mesma transação; o `unique` de quatro colunas existe só para servir de alvo à FK.
+  - FK de `account_id` para `account` e da rodada para `round`, `on delete restrict`. Não há FK para
+    `registration`: seria acoplar o `matching` a mais uma tabela do `events`, e quem entra no sorteio já vem
+    da API publicada dele.
   - "Minha dupla na rodada" é `where account_id = :eu`: a consulta só alcança o próprio assento.
-- Número da migration: `main` já tem `V7` e `V8` (`trustsafety`) e o `events` também criou uma `V7`, que vai
-  virar `V9` no merge. A do `matching` será a **`V10`**.
+- A semente vem de `ThreadLocalRandom` no serviço; o domínio só a recebe como valor.
 
-### Contrato planejado
+### Contrato
 
-- `PUT /api/admin/events/{eventId}/rounds/{number}` (ADMIN): resposta com número, `startedAt`, quantos pares
-  e quantas pessoas de fora; **sem** a lista de quem formou par com quem (o ADMIN não precisa dela para
-  conduzir o evento; ver pendências).
-- `GET /api/events/{eventId}/rounds/{number}/pairing` (a própria pessoa): o próprio parceiro ou "de fora";
-  `404` igual para rodada inexistente, evento alheio ou pessoa que não estava no sorteio. O que mostrar do
-  parceiro é pendência do usuário.
+- `PUT /api/admin/events/{eventId}/rounds/{number}` (ADMIN): `{eventId, number, startedAt, pairCount,
+  sittingOutCount}`; **sem** a lista de quem formou par com quem (o ADMIN não precisa dela para conduzir o
+  evento; ver pendências).
+- `GET /api/admin/events/{eventId}/rounds/{number}` (ADMIN): a mesma resposta, para o `Location` do `201`
+  apontar para algo legível; `404` sem a rodada.
+- `GET /api/events/{eventId}/rounds/{number}/pairing` (a própria pessoa): `{eventId, roundNumber,
+  partnerAccountId}`, com `null` para quem ficou de fora; `404` igual para rodada inexistente, evento
+  inexistente ou pessoa que não estava no sorteio. **Só o id da conta do par (autônoma, provisória):** é o
+  mínimo para o front e para um bloqueio (`POST /api/accounts/{accountId}:block`, que já recebe esse id);
+  nome, foto ou nada até o jogo começar continua pendência do usuário.
 
 ## Pendente com o usuário (decisões críticas)
 
@@ -185,19 +213,13 @@ mexer nos arquivos dele. Entra no passo de integração.
    formou par com quem (útil para moderação, sensível para privacidade).
 7. **Elegibilidade no momento do sorteio:** conta suspensa pela moderação, inscrição cancelada durante o
    sorteio, perfil que deixou de estar completo.
-8. **Aviso de "sua dupla saiu":** depende da outbox ([ADR 0009](0009-outbox-e-eventos.md)) e do Web PubSub.
-9. **jqwik:** o spike de 2026-10-07 com o jqwik 1.10.1 rodou no JUnit 6 do Boot 4 (propriedade falhando com
-   shrink e 232 testes Jupiter e jqwik juntos no `./mvnw test`), o que contradiz a anotação de que ele era
-   incompatível. Adotar é decisão de biblioteca: até lá, as propriedades rodam como casos aleatórios com
-   semente fixa num teste parametrizado (`RoundPairingRandomCasesTest`).
-
-## Falta implementar (depois da revisão)
-
-Na ordem: (1) rebase sobre a `main` com o `events` integrado (`V7` do `events` renumerada para `V9`);
-(2) API publicada de inscritos no `events` e de pares bloqueados no `trustsafety`; (3) `V10` com as tabelas
-acima e teste de schema; (4) portas e adapters JDBC; (5) caso de uso de iniciar rodada e teste de
-integração com corrida de dois `PUT` iguais e de `N` contra `N+1`; (6) as duas rotas com springdoc,
-`DenyByDefaultIT`, STRIDE e regeneração do `docs/openapi.json`.
+8. **Evento cancelado durante a rodada:** a rodada continua gravada e o par continua visível. Encerrar os
+   pares? Avisar?
+9. **Aviso de "sua dupla saiu":** depende da outbox ([ADR 0009](0009-outbox-e-eventos.md)) e do Web PubSub.
+10. **jqwik:** o spike de 2026-10-07 com o jqwik 1.10.1 rodou no JUnit 6 do Boot 4 (propriedade falhando com
+    shrink e 232 testes Jupiter e jqwik juntos no `./mvnw test`), o que contradiz a anotação de que ele era
+    incompatível. Adotar é decisão de biblioteca: até lá, as propriedades rodam como casos aleatórios com
+    semente fixa num teste parametrizado (`RoundPairingRandomCasesTest`).
 
 ## Consequências
 
@@ -207,14 +229,38 @@ integração com corrida de dois `PUT` iguais e de `N` contra `N+1`; (6) as duas
 - O algoritmo é menos óbvio que um embaralhamento; a explicação mora no Javadoc de `MaximumMatching` e
   `PriorityMatching`, e um teste quebra se o blossom for desligado.
 - A justiça vale dentro de um evento; entre eventos, ninguém carrega "rodadas sem par".
+- Duas APIs publicadas novas: `events.EventRoster` (com `events.Roster`) e
+  `trustsafety.Blocking.blockedPairsAmong` (com `trustsafety.BlockedPair`). As tabelas `round` e
+  `round_seat` têm FK `restrict` para `event` e `account`: a limpeza de dados de teste e a futura exclusão de
+  conta passam a apagar rodadas antes (`AccountTables`).
+- Não há rate limit nas rotas novas: a de ADMIN é idempotente e a de leitura é uma consulta pela PK.
+- Não há trilha de auditoria de quem iniciou cada rodada (Repudiation, abaixo); a semente guardada permite
+  reproduzir o sorteio.
 
 ## Compliance
 
-- `RoundPairingTest`: partições (0, 1, 2 pessoas, ímpar, todos os pares proibidos, grafo em que o guloso
-  falha, grafo que exige contrair um ciclo ímpar, estrela sem emparelhamento perfeito), determinismo e
-  variação pela semente.
-- `RoundPairingRandomCasesTest`: as quatro propriedades acima em 300 grupos de 0 a 9 pessoas.
-- `PairTest`, `CandidateTest`: invariantes dos valores.
-- `ArchitectureTest.coreDomainIsFrameworkFree`: o domínio do `matching` é Java puro.
-- Ao implementar o resto: teste de schema para cada constraint, IT de corrida para a rodada única e STRIDE
-  das rotas (dono só vê o próprio par; alheio → `404`).
+STRIDE do fluxo (permissão de ADMIN e dado pessoal: quem encontra quem num app de encontros):
+
+| Ameaça | Mitigação | Teste |
+|---|---|---|
+| Elevation of privilege: usuário comum inicia ou lê uma rodada | Rota `/api/admin/**` exige `ADMIN` | `RoundIT.aUserWithoutTheAdminRoleCannotStartNorReadARound` |
+| Elevation of privilege: rota nova pública por engano | Negar por padrão | `DenyByDefaultIT` (as rotas novas estão na enumeração) |
+| Tampering: CSRF inicia uma rodada pela sessão web do ADMIN | Token CSRF obrigatório | `RoundIT.anAdminWebSessionWithoutCsrfTokenCannotStartARound`, `anAdminWebSessionWithCsrfTokenStartsARound` |
+| Tampering: duas chamadas simultâneas criam duas rodadas ou dois sorteios | PK `(event_id, number)` + `insert ... on conflict do nothing`; só quem gravou sorteia | `RoundIT.concurrentStartsOfTheSameRoundCreateASingleRound`, `startingTheSameRoundAgainAnswersTheSameRound`, `MatchingSchemaIT.anEventHasOneRoundPerNumber` |
+| Tampering: rodada fora de ordem (N sem N-1) | Auto-FK `round_previous_fk` + `round_sequence_check` | `RoundIT.aRoundNeedsThePreviousOneAndWritesNothingWithoutIt`, `aRoundStartedTogetherWithThePreviousOneNeverExistsWithoutIt`; `MatchingSchemaIT.aRoundNeedsThePreviousOne`, `aRoundAfterTheFirstMustPointToThePreviousOne`, `aRoundCannotSkipNumbers` |
+| Tampering: pessoas bloqueadas formam par | Pares bloqueados entram como proibidos no sorteio | `RoundIT.peopleSeparatedByABlockAreNeverPaired`; `PairingHistoryTest.blockedPeopleAreNotPaired`; `BlockIT.blockedPairsAmongAGroupComeInEitherDirectionAndOnlyInsideTheGroup` |
+| Tampering: o mesmo par se repete no evento | Pares anteriores proibidos no sorteio + `round_seat_pair_once_per_event` | `RoundIT.aPairIsNeverFormedTwiceInTheSameEvent`; `PairingHistoryTest.aPairAlreadyFormedInTheEventIsNotFormedAgain`; `MatchingSchemaIT.thePairDoesNotRepeatInTheEvent` |
+| Tampering: par de um lado só ou pessoa em dois pares | FK recíproca deferrable + PK `(event_id, round_number, account_id)` | `MatchingSchemaIT.aOneSidedPairIsRejected`, `aPairMustBeReciprocalAndNotJustPointAtSomeonesSeat`, `aPersonHasOneSeatPerRound` |
+| Tampering: rodada em evento rascunho, cancelado, antes do início ou depois do fim | `Event.isUnderway` pela API publicada do `events` | `RoundIT.roundsDoNotStartBeforeTheEvent`, `roundsDoNotStartAfterTheEvent`, `roundsDoNotStartInACancelledEvent`, `roundsDoNotStartInADraft`; `EventTest` (bordas de `isUnderway`); `EventRosterIT` |
+| Information disclosure: alguém vê o par de outra pessoa | A consulta só alcança o assento de quem chama (sem id de pessoa na rota); `404` igual para rodada inexistente e para quem não estava nela | `RoundIT.someoneOutsideTheRoundCannotSeeAnyPairOfIt`, `aPairedPersonSeesOnlyTheirPartner` |
+| Information disclosure: o ADMIN ou a resposta expõe quem formou par com quem | Resposta do ADMIN só com contagens; conjuntos de chaves exatos | `RoundIT.theAdminReadsTheCountsOfARoundButNotWhoIsInIt`, `startingTheFirstRoundPairsEveryRegistrant` (JSON estrito), `whoSatOutSeesNoPartner` |
+| Information disclosure: o `matching` descobre quem bloqueou quem | `BlockedPair` sem direção | `BlockedPairTest.doesNotTellWhoBlockedWhom` |
+| Denial of service: número ou id inválido vira `500` | `RoundNumber` de 1 a 100 e conversão de tipo na fronteira → `400` | `RoundIT.anInvalidRoundNumberIsABadRequestAndWritesNothing`, `anEventIdThatIsNotAUuidIsABadRequest`; `RoundNumberTest` |
+| Denial of service: um pedido preso segura conexões | `lock_timeout` de 5 s → `503` com `Retry-After` | `RoundIT.aRoundStartIsRefusedWhenAnotherRequestHoldsItTooLong` |
+| Denial of service: sorteio caro demais | Emparelhamento O(n³) com n ≤ 200; pior caso medido em 1,2 s | Medição registrada acima (sem teste automático de tempo, que seria instável) |
+
+Repudiation (quem iniciou a rodada) não é tratada: não há trilha de auditoria, como nos eventos.
+
+Regras sem Spring: `RoundPairingTest`, `RoundPairingRandomCasesTest`, `PairingHistoryTest`, `RoundNumberTest`,
+`PairTest`, `CandidateTest`. Fronteira entre módulos: `ArchitectureTest.coreDomainIsFrameworkFree`,
+`coreApplicationTalksToInfrastructureThroughPorts` e `modulesUseOnlyPublishedApisOfOtherModules`.

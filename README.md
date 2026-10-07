@@ -136,7 +136,7 @@ Pacotes por módulo, cada um dividido em camadas:
 ```
 bipo.tech.duoraapi
 ├── config/              # segurança, sessão, relógio, rate limit compartilhado
-├── events/              # eventos e inscrições
+├── events/              # eventos e inscrições; EventRoster é a API publicada
 │   ├── api/             # rotas do ADMIN, lista e inscrição; paginação por keyset
 │   ├── application/     # casos de uso (administração, catálogo, inscrição)
 │   └── domain/          # evento e suas regras de estado, repositórios
@@ -144,6 +144,11 @@ bipo.tech.duoraapi
 │   ├── api/             # abre a conta e a entrega ao parâmetro AccountId
 │   ├── application/     # AccountService
 │   └── domain/          # conta, identidade externa, repositório
+├── matching/            # rodadas de pareamento de um evento
+│   ├── adapter/         # repositório JDBC das rodadas e assentos
+│   ├── api/             # rota do ADMIN e o próprio par
+│   ├── application/     # RoundService (inscritos e bloqueios pelas APIs publicadas)
+│   └── domain/          # sorteio puro (emparelhamento máximo), rodada, port do repositório
 ├── migration/           # job de migração do deploy (Flyway + papel restrito da API)
 ├── profiles/            # perfil do próprio usuário e GET /api/me; ProfileCompleteness é a API publicada
 │   ├── api/
@@ -194,6 +199,9 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 | `GET` | `/api/events/{id}/registration` | Autenticado | A própria inscrição, ou `404` |
 | `DELETE` | `/api/events/{id}/registration` | Autenticado | Cancela a própria inscrição: `204`, também sem inscrição; `409` depois do início |
 | `GET` | `/api/me/registrations` | Autenticado | As próprias inscrições em eventos que ainda não acabaram, com o resumo do evento, no mesmo envelope paginado |
+| `PUT` | `/api/admin/events/{eventId}/rounds/{number}` | `ADMIN` | Inicia a rodada com o evento em andamento e sorteia os pares entre os inscritos. `201` com `Location` na primeira vez, `200` com a mesma rodada nas repetições, inclusive simultâneas; `409` fora do horário, com evento cancelado ou rascunho, ou sem a rodada anterior; só contagens (`pairCount`, `sittingOutCount`), nunca quem |
+| `GET` | `/api/admin/events/{eventId}/rounds/{number}` | `ADMIN` | A mesma resposta da rodada, ou `404` |
+| `GET` | `/api/events/{eventId}/rounds/{number}/pairing` | Autenticado | O próprio par: `{eventId, roundNumber, partnerAccountId}`, com `null` para quem ficou de fora; `404` para quem não estava no sorteio, igual a rodada inexistente |
 | `GET` | `/actuator/health` | Público | Estado da aplicação |
 
 ### Contrato (OpenAPI)
@@ -271,6 +279,7 @@ Para o front (repositório `duora-web`):
 | Saber se está logado | `GET /api/me`: `200` com o nome de exibição e `profileComplete`, ou `401` sem sessão |
 | Completar ou editar o perfil | `GET /api/me/profile` e `PATCH /api/me/profile` com `If-Match` (o `ETag` do `GET`) e `X-XSRF-TOKEN`; em `412`, ler de novo e reaplicar |
 | Ver e se inscrever em eventos | `GET /api/events`; `PUT /api/events/{id}/registration` com `X-XSRF-TOKEN` (repetir é seguro); em `403`, levar ao cadastro do perfil |
+| Saber o próprio par na rodada | `GET /api/events/{eventId}/rounds/{number}/pairing`; `partnerAccountId` `null` é "de fora nesta rodada", e `404` é "rodada ainda não começou ou você não estava nela" |
 
 Em desenvolvimento, o Vite faz proxy da API, para front e API ficarem na mesma origem
 (`http://localhost:5173`).
@@ -321,7 +330,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0014](docs/adr/0014-infraestrutura-do-piloto-na-azure.md) | Infraestrutura do piloto em Bicep, deploy por OIDC (proposta, custo pendente) |
 | [0015](docs/adr/0015-bloqueio-e-denuncia.md) | Bloqueio e denúncia entre contas |
 | [0016](docs/adr/0016-eventos-e-inscricoes.md) | Eventos e inscrições: lock do evento para a capacidade, inscrição como sub-recurso idempotente |
-| [0017](docs/adr/0017-pareamento.md) | Pareamento (proposta): rodada numerada, emparelhamento máximo com prioridade para quem ficou de fora |
+| [0017](docs/adr/0017-pareamento.md) | Pareamento: rodada numerada por `PUT` idempotente, emparelhamento máximo com prioridade para quem ficou de fora |
 
 ## Segurança
 
@@ -346,4 +355,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 - **Eventos:** ninguém vê quem se inscreveu: cada pessoa só alcança a própria inscrição (sem id na rota), e
   o ADMIN só vê a contagem. Rascunho responde como evento inexistente. A capacidade vale sob concorrência
   ([ADR 0016](docs/adr/0016-eventos-e-inscricoes.md)).
+- **Pareamento:** pares bloqueados nunca se formam, nem o mesmo par duas vezes no evento (constraint no
+  banco); cada pessoa só lê o próprio par, e o ADMIN só vê contagens. Duas chamadas simultâneas criam uma
+  rodada só ([ADR 0017](docs/adr/0017-pareamento.md)).
 - **CI:** o gitleaks varre o histórico em busca de segredos a cada push e pull request.
