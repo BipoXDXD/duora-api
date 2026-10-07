@@ -76,6 +76,9 @@ public class SecurityConfiguration {
                 .authorizeHttpRequests(SecurityConfiguration::authorizeRoutes)
                 // Sem sessão nem cookie: não há o que o CSRF proteger.
                 .csrf(csrf -> csrf.disable())
+                // O logout padrão responderia 302 para /login?logout, antes mesmo de validar o token: sem
+                // sessão a encerrar, a porta bearer não participa do logout (docs/adr/0001).
+                .logout(logout -> logout.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(Customizer.withDefaults())

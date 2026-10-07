@@ -2,8 +2,10 @@ package bipo.tech.duoraapi.config;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.io.IOException;
@@ -23,12 +25,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Named;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -141,6 +145,40 @@ class BearerTokenValidationIT {
                 .andExpect(content().json("""
                         {"type": "about:blank", "title": "Unauthorized", "status": 401}
                         """, JsonCompareMode.STRICT));
+    }
+
+    /**
+     * A porta bearer nunca participa do login nem do logout (docs/adr/0001): rota que ela não conhece é
+     * 404 limpo, e nunca um redirect para /login (o logout padrão do Spring Security redirecionava).
+     */
+    @ParameterizedTest
+    @MethodSource("methodsAndUnknownRoutes")
+    void validTokenOnUnknownRouteIsANotFoundWithoutRedirect(HttpMethod method, String path) throws Exception {
+        var token = signed(userClaims().build());
+
+        mockMvc.perform(request(method, path).header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isNotFound())
+                .andExpect(header().doesNotExist(HttpHeaders.LOCATION))
+                .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE))
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.instance").value(path));
+    }
+
+    @ParameterizedTest
+    @MethodSource("methodsAndUnknownRoutes")
+    void invalidTokenOnUnknownRouteIsUnauthorizedWithoutRedirect(HttpMethod method, String path) throws Exception {
+        mockMvc.perform(request(method, path).header(HttpHeaders.AUTHORIZATION, bearer("not-a-jwt")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().doesNotExist(HttpHeaders.LOCATION))
+                .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, containsString("invalid_token")))
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+    }
+
+    static Stream<Arguments> methodsAndUnknownRoutes() {
+        return Stream.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.DELETE)
+                .flatMap(method -> Stream.of("/logout", "/login", "/oauth2/authorization/entra", "/nowhere")
+                        .map(path -> Arguments.of(method, path)));
     }
 
     static Stream<Named<String>> invalidTokens() {
