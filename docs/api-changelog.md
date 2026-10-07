@@ -9,6 +9,12 @@ Toda **breaking change** entra aqui no mesmo PR que a introduz: sem a entrada, o
 
 ## Não publicado
 
+Mudança compatível ([ADR 0002](adr/0002-front-web-com-bff.md)):
+
+- `POST /logout` entra na spec (`operationId` `logout`, tag `session`): 200 com `{"logoutUrl": "..."}`,
+  a URL de logout do Entra para o front navegar até ela, ou 403 sem o token CSRF. O comportamento já
+  existia (rota do Spring Security); só passou a ser documentado, com o schema `LogoutResponse`.
+
 Mudanças compatíveis ([ADR 0015](adr/0015-bloqueio-e-denuncia.md)):
 
 - Bloqueio entre contas: `POST /api/accounts/{accountId}:block` e `:unblock` (204, idempotentes) e

@@ -7,6 +7,8 @@ import java.util.Map;
 import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.PathContainer;
@@ -25,6 +27,7 @@ import io.swagger.v3.oas.models.media.ObjectSchema;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.media.StringSchema;
 import io.swagger.v3.oas.models.responses.ApiResponse;
+import io.swagger.v3.oas.models.responses.ApiResponses;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
@@ -35,6 +38,9 @@ import io.swagger.v3.oas.models.servers.Server;
  * do controller (401 e 403 da segurança, 415, 500), em {@code ProblemDetail} (docs/adr/0005), além
  * do correlation ID em toda resposta (docs/adr/0013). Operação pública declara {@code security: []}
  * no próprio controller.
+ *
+ * <p>As rotas do Spring Security (o {@code POST /logout}) não passam por controller e o springdoc não as
+ * vê: entram aqui, à mão, antes das respostas comuns, para recebê-las também.
  */
 @Configuration(proxyBeanMethods = false)
 class OpenApiConfiguration {
@@ -43,6 +49,11 @@ class OpenApiConfiguration {
     private static final String SESSION_SCHEME = "session";
     private static final String PROBLEM_SCHEMA = "ProblemDetail";
     private static final String PROBLEM_REF = "#/components/schemas/" + PROBLEM_SCHEMA;
+    private static final String LOGOUT_PATH = "/logout";
+    private static final String LOGOUT_SCHEMA = "LogoutResponse";
+    private static final String SESSION_TAG = "session";
+    /** A URL de logout do Entra (host, client_id e o redirect de volta, codificados) cabe folgada em 2 KB. */
+    private static final int LOGOUT_URL_MAX_LENGTH = 2_048;
     private static final String REQUEST_ID_HEADER = "RequestId";
     private static final String REQUEST_ID_REF = "#/components/headers/" + REQUEST_ID_HEADER;
 
@@ -99,7 +110,20 @@ class OpenApiConfiguration {
                         new SecurityRequirement().addList(SESSION_SCHEME)));
     }
 
+    /**
+     * Roda antes de {@link #crossCuttingResponses()}, que acrescenta o 500 e o X-Request-Id a toda operação.
+     */
     @Bean
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    OpenApiCustomizer springSecurityRoutes() {
+        return openApi -> {
+            openApi.getComponents().addSchemas(LOGOUT_SCHEMA, logoutResponseSchema());
+            openApi.getPaths().addPathItem(LOGOUT_PATH, new PathItem().post(logoutOperation()));
+        };
+    }
+
+    @Bean
+    @Order(Ordered.LOWEST_PRECEDENCE)
     OpenApiCustomizer crossCuttingResponses() {
         return openApi -> openApi.getPaths().forEach((path, item) -> item.readOperationsMap()
                 .forEach((method, operation) -> documentCrossCuttingResponses(path, method, operation)));
@@ -130,6 +154,39 @@ class OpenApiConfiguration {
             operation.getResponses().putIfAbsent("403",
                     problem(HttpStatus.FORBIDDEN, "Sessão web sem o token CSRF no header X-XSRF-TOKEN"));
         }
+    }
+
+    /**
+     * O logout da cadeia de sessão (WebLoginConfiguration, docs/adr/0002). Público: o LogoutFilter roda
+     * antes da autorização, então sem sessão (mas com o token CSRF) a resposta também é 200, e não 401.
+     * A cadeia bearer não o conhece: com Authorization: Bearer a rota não existe.
+     */
+    private static Operation logoutOperation() {
+        return new Operation()
+                .operationId("logout")
+                .addTagsItem(SESSION_TAG)
+                .summary("Encerra a sessão")
+                .description("""
+                        Encerra a sessão web aqui, apagando-a do servidor, e devolve a URL de logout do \
+                        Entra, para o front navegar até ela e sair também de lá. Exige o token CSRF no \
+                        header X-XSRF-TOKEN. Sem sessão ativa a resposta é a mesma. A URL leva só \
+                        client_id e post_logout_redirect_uri, nunca o ID token.""")
+                .security(List.of())
+                .responses(new ApiResponses()
+                        .addApiResponse("200", new ApiResponse()
+                                .description("Sessão encerrada; navegue até logoutUrl")
+                                .content(new Content().addMediaType(MediaType.APPLICATION_JSON_VALUE,
+                                        new io.swagger.v3.oas.models.media.MediaType()
+                                                .schema(new Schema<>().$ref("#/components/schemas/" + LOGOUT_SCHEMA)))))
+                        .addApiResponse("403", problem(HttpStatus.FORBIDDEN,
+                                "Sem o token CSRF no header X-XSRF-TOKEN; a sessão continua ativa")));
+    }
+
+    private static Schema<?> logoutResponseSchema() {
+        return new ObjectSchema()
+                .addProperty("logoutUrl", new StringSchema().format("uri").maxLength(LOGOUT_URL_MAX_LENGTH)
+                        .description("URL de logout do Entra; o front navega até ela depois do 200"))
+                .required(List.of("logoutUrl"));
     }
 
     private static boolean isPublic(Operation operation) {

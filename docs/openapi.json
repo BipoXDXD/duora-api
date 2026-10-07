@@ -2236,6 +2236,62 @@
         "summary" : "Inscreve um e-mail na lista de espera",
         "tags" : [ "waitlist" ]
       }
+    },
+    "/logout" : {
+      "post" : {
+        "description" : "Encerra a sessão web aqui, apagando-a do servidor, e devolve a URL de logout do Entra, para o front navegar até ela e sair também de lá. Exige o token CSRF no header X-XSRF-TOKEN. Sem sessão ativa a resposta é a mesma. A URL leva só client_id e post_logout_redirect_uri, nunca o ID token.",
+        "operationId" : "logout",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LogoutResponse"
+                }
+              }
+            },
+            "description" : "Sessão encerrada; navegue até logoutUrl",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem o token CSRF no header X-XSRF-TOKEN; a sessão continua ativa",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "security" : [ ],
+        "summary" : "Encerra a sessão",
+        "tags" : [ "session" ]
+      }
     }
   },
   "components" : {
@@ -2508,6 +2564,18 @@
           }
         },
         "required" : [ "email" ]
+      },
+      "LogoutResponse" : {
+        "type" : "object",
+        "properties" : {
+          "logoutUrl" : {
+            "type" : "string",
+            "format" : "uri",
+            "description" : "URL de logout do Entra; o front navega até ela depois do 200",
+            "maxLength" : 2048
+          }
+        },
+        "required" : [ "logoutUrl" ]
       },
       "MyRegistrationResponse" : {
         "type" : "object",
