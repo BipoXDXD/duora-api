@@ -106,6 +106,18 @@ class ReportIT {
         assertThat(reportRows()).hasSize(1);
     }
 
+    /** Descrição em branco, com motivo da lista, é descrição ausente, e não erro. */
+    @Test
+    void blankDescriptionWithAListedReasonCountsAsNone() throws Exception {
+        var bruno = accountIdOf("oid-bruno");
+
+        file(ana(), """
+                {"reportedAccountId": "%s", "reason": "HARASSMENT", "description": "   "}
+                """.formatted(bruno))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.description").isEmpty());
+    }
+
     @Test
     void reporterReadsTheirOwnReport() throws Exception {
         var bruno = accountIdOf("oid-bruno");
@@ -254,6 +266,48 @@ class ReportIT {
                         """, JsonCompareMode.STRICT));
 
         assertThat(reportRows()).hasSize(DAILY_QUOTA);
+    }
+
+    /** Só denúncia válida gasta a cota: quem erra o formulário não fica sem denunciar depois. */
+    @Test
+    void rejectedReportsDoNotSpendTheQuota() throws Exception {
+        var ana = accountIdOf("oid-ana");
+        var bruno = accountIdOf("oid-bruno");
+        for (int i = 0; i < DAILY_QUOTA; i++) {
+            file(ana(), harassmentOf(ana)).andExpect(status().isBadRequest());
+        }
+
+        file(ana(), harassmentOf(bruno)).andExpect(status().isCreated());
+    }
+
+    /** Contas inexistentes gastam a cota, o que limita quem tenta adivinhar ids. */
+    @Test
+    void reportsOfUnknownAccountsSpendTheQuota() throws Exception {
+        accountIdOf("oid-ana");
+        for (int i = 0; i < DAILY_QUOTA; i++) {
+            file(ana(), harassmentOf(UNKNOWN_ID)).andExpect(status().isNotFound());
+        }
+
+        file(ana(), harassmentOf(UNKNOWN_ID)).andExpect(status().isTooManyRequests());
+    }
+
+    /** Falha fechada (docs/adr/0006): sem contar a cota, a denúncia é recusada, e nada é gravado. */
+    @Test
+    void reportIsRefusedWithoutWritingWhenTheQuotaCannotBeCounted() throws Exception {
+        var bruno = accountIdOf("oid-bruno");
+        jdbcClient.sql("alter table rate_limit_bucket rename to rate_limit_bucket_unavailable").update();
+        try {
+            file(ana(), harassmentOf(bruno))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                    .andExpect(content().json("""
+                            {"title": "Service Unavailable", "status": 503, "instance": "/api/reports"}
+                            """, JsonCompareMode.STRICT));
+        } finally {
+            jdbcClient.sql("alter table rate_limit_bucket_unavailable rename to rate_limit_bucket").update();
+        }
+
+        assertThat(reportRows()).isEmpty();
     }
 
     @Test

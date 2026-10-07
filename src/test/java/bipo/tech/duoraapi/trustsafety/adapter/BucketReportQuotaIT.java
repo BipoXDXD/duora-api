@@ -61,6 +61,16 @@ class BucketReportQuotaIT {
                         assertThat(exceeded.retryAfter()).isBetween(Duration.ofMinutes(29), Duration.ofMinutes(30)));
     }
 
+    /** A tabela é compartilhada com outros limites: a chave é "<limite>:<conta>" (docs/adr/0006). */
+    @Test
+    void keepsTheBucketUnderTheReportKey() {
+        quota.consume(ANA);
+
+        var keys = jdbcClient.sql("select id from rate_limit_bucket").query(String.class).list();
+
+        assertThat(keys).containsExactly("report:01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b");
+    }
+
     @Test
     void countsEachAccountSeparately() {
         quota.consume(ANA);
