@@ -20,6 +20,15 @@ class RegionTest {
         assertThat(Region.DF.code()).isEqualTo("BR-DF");
     }
 
+    /** A lista ISO 3166-2:BR escrita à mão: um código trocado na enum não passa. */
+    @ParameterizedTest
+    @ValueSource(strings = {"BR-AC", "BR-AL", "BR-AP", "BR-AM", "BR-BA", "BR-CE", "BR-DF", "BR-ES", "BR-GO",
+            "BR-MA", "BR-MT", "BR-MS", "BR-MG", "BR-PA", "BR-PB", "BR-PR", "BR-PE", "BR-PI", "BR-RJ", "BR-RN",
+            "BR-RS", "BR-RO", "BR-RR", "BR-SC", "BR-SP", "BR-SE", "BR-TO"})
+    void everyStateCodeParsesBackToItself(String code) {
+        assertThat(Region.fromCode(code).code()).isEqualTo(code);
+    }
+
     @Test
     void coversTheTwentySixStatesAndTheFederalDistrict() {
         assertThat(Region.values()).hasSize(27);

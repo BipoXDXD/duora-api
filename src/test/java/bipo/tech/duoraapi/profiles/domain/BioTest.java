@@ -56,6 +56,30 @@ class BioTest {
                 .hasMessage("bio contains a forbidden character");
     }
 
+    /** O ZWJ une emojis compostos (família); sem ele, o emoji se desmonta. */
+    @Test
+    void acceptsEmojiJoinedByZeroWidthJoiner() {
+        var family = "Em fam\u00edlia \uD83D\uDC69\u200D\uD83D\uDC67";
+
+        assertThat(Bio.fromText(family)).map(Bio::value).hasValue(family);
+    }
+
+    @Test
+    void constructorRejectsMissingText() {
+        assertThatThrownBy(() -> new Bio(null))
+                .isInstanceOf(InvalidProfileException.class)
+                .hasMessage("bio is required");
+    }
+
+    /** Quem chega pelo construtor, e não por fromText, também não passa em branco. */
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   ", "\n\n"})
+    void constructorRejectsBlankText(String text) {
+        assertThatThrownBy(() -> new Bio(text))
+                .isInstanceOf(InvalidProfileException.class)
+                .hasMessage("bio must not be blank");
+    }
+
     @Test
     void doesNotExposeTheTextInToString() {
         assertThat(Bio.fromText("Gosto de trilhas")).hasValueSatisfying(
