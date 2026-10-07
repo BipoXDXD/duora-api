@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -70,6 +71,22 @@ class JdbcBlockRepository implements BlockRepository {
                 .param("second", second.value())
                 .query(Boolean.class)
                 .single();
+    }
+
+    /**
+     * Um array no lugar de {@code in (...)}: um parâmetro só, qualquer tamanho de grupo e o mesmo plano de
+     * consulta. A PK (blocker, blocked) atende o filtro por quem bloqueou.
+     */
+    @Override
+    public List<Block> findAmong(Collection<AccountId> accounts) {
+        UUID[] ids = accounts.stream().map(AccountId::value).toArray(UUID[]::new);
+        return jdbcClient.sql("""
+                        select %s from account_block
+                        where blocker_account_id = any(:ids) and blocked_account_id = any(:ids)
+                        """.formatted(COLUMNS))
+                .param("ids", ids)
+                .query(JdbcBlockRepository::toBlock)
+                .list();
     }
 
     @Override

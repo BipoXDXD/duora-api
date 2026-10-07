@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.trustsafety.domain;
 
+import java.util.Collection;
 import java.util.List;
 
 import bipo.tech.duoraapi.identity.AccountId;
@@ -20,6 +21,9 @@ public interface BlockRepository {
 
     /** Se uma das contas bloqueou a outra, em qualquer direção. */
     boolean existsEitherWay(AccountId first, AccountId second);
+
+    /** Os bloqueios em que as duas contas estão em {@code accounts}, numa consulta só. */
+    List<Block> findAmong(Collection<AccountId> accounts);
 
     /** Os bloqueios de {@code blocker}, do mais recente para o mais antigo, até {@code limit}. */
     List<Block> findFirstByBlocker(AccountId blocker, int limit);

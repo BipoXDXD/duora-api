@@ -411,6 +411,29 @@ class BlockIT {
         assertThat(blocking.existsBetween(bruno, ana)).isFalse();
     }
 
+    /** O pareamento pergunta por todos os pares de um grupo numa consulta, sem saber quem bloqueou quem. */
+    @Test
+    void blockedPairsAmongAGroupComeInEitherDirectionAndOnlyInsideTheGroup() throws Exception {
+        var ana = new AccountId(UUID.fromString(accountIdOf("oid-ana")));
+        var bruno = new AccountId(UUID.fromString(accountIdOf("oid-bruno")));
+        var carla = new AccountId(UUID.fromString(accountIdOf("oid-carla")));
+        var davi = new AccountId(UUID.fromString(accountIdOf("oid-davi")));
+        block(ana(), bruno.value().toString()).andExpect(status().isNoContent());
+        block(bruno(), ana.value().toString()).andExpect(status().isNoContent());
+        block(carla(), ana.value().toString()).andExpect(status().isNoContent());
+        block(davi(), bruno.value().toString()).andExpect(status().isNoContent());
+        block(carla(), davi.value().toString()).andExpect(status().isNoContent());
+
+        var pairs = blocking.blockedPairsAmong(List.of(ana, bruno, carla));
+
+        assertThat(pairs).containsExactlyInAnyOrder(BlockedPair.of(ana, bruno), BlockedPair.of(carla, ana));
+    }
+
+    @Test
+    void anEmptyGroupHasNoBlockedPairs() {
+        assertThat(blocking.blockedPairsAmong(List.of())).isEmpty();
+    }
+
     private Callable<Integer> blockAfter(CountDownLatch start, String blocked) {
         return () -> {
             start.await();

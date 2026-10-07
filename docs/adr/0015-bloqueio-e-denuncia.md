@@ -114,7 +114,9 @@ decidida, as denúncias ficam no banco, sem leitura administrativa pela API.
 
 `trustsafety.Blocking.existsBetween(AccountId, AccountId)`, na raiz do pacote (API publicada, ADR 0011):
 se uma conta bloqueou a outra, em qualquer direção. É uma consulta só; quando chamada dentro da transação
-de outro módulo, participa dela. Nada mais foi construído para chat e pareamento.
+de outro módulo, participa dela. O pareamento ([ADR 0017](0017-pareamento.md)) acrescentou
+`Blocking.blockedPairsAmong(Collection<AccountId>)`: os pares de um grupo separados por bloqueio, numa
+consulta só, como `BlockedPair` sem direção (quem bloqueou continua escondido).
 
 ## Pendente com o usuário (decisões críticas, só o mínimo implementado)
 
@@ -174,4 +176,5 @@ com teste: `?=null` virava 500 e um id inválido voltava inteiro no `detail` e n
 (`MalformedRequestInputIT`), e `maxPageSize=` vazio valia o padrão (`BlockIT.pageSizeOutsideTheLimitsIsRejected`).
 
 Fronteira entre módulos: `ArchitectureTest` (core: domínio sem Spring, aplicação por portas; outros
-módulos só usam `trustsafety.Blocking`). A consulta publicada: `BlockIT.blockingIsSeenFromBothSidesUntilUnblocked`.
+módulos só usam `trustsafety.Blocking`). A consulta publicada: `BlockIT.blockingIsSeenFromBothSidesUntilUnblocked` e
+`blockedPairsAmongAGroupComeInEitherDirectionAndOnlyInsideTheGroup`.
