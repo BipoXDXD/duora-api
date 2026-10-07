@@ -78,7 +78,7 @@ class DatabaseMigrationIT {
 
         try (var connection = DriverManager.getConnection(jdbcUrl(), appRole, "app-password-1")) {
             // Sem as tabelas na lista, a checagem seguinte passaria sem conferir nada.
-            assertThat(applicationTables(connection)).contains("waitlist_entry", "account", "profile", "account_block", "report");
+            assertThat(applicationTables(connection)).contains("waitlist_entry", "account", "profile", "account_block", "report", "event", "registration");
             assertThat(applicationTablesWithout(connection, "SELECT,INSERT,UPDATE,DELETE")).isEmpty();
             try (var statement = connection.createStatement()) {
                 statement.execute("insert into waitlist_entry (email, joined_at) values ('ana@example.com', now())");

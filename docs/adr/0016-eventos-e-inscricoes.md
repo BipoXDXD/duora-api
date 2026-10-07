@@ -132,7 +132,7 @@ chaves é conferido nos testes). Rascunho responde exatamente como evento inexis
 
 ### Modelo de dados e limites
 
-`V7__create_event_and_registration.sql`:
+`V9__create_event_and_registration.sql`:
 
 - `event (id uuid default uuidv7(), title, description, starts_at, ends_at, capacity, status, created_at,
   version)`, com `CHECK` repetindo os limites; `status` em `CHECK`, porque o conjunto é fixo no código.
@@ -160,7 +160,7 @@ próprio com o próprio PostgreSQL.
    checkout não termina, reembolso no cancelamento, `Idempotency-Key` da ADR 0005) e fica para a etapa 4.
 2. **Critérios de elegibilidade além de perfil completo e 18+.** Ainda não há: verificação real de idade
    (pendência 1 da ADR 0011), região da pessoa × local do evento, bloqueios do `trustsafety` (duas pessoas
-   que se bloquearam no mesmo evento?), faixa etária, preferências de pareamento, histórico de faltas.
+   que se bloquearam no mesmo evento? A pergunta já existe: `Blocking.existsBetween`, da [ADR 0015](0015-bloqueio-e-denuncia.md)), faixa etária, preferências de pareamento, histórico de faltas.
 3. **Local e formato do evento** (presencial, online, endereço): não modelados. Endereço preciso é dado
    sensível e mudaria a regra de visibilidade.
 4. **Lista de espera** quando o evento lota, e **prazo para cancelar a inscrição** (hoje, até o início)
