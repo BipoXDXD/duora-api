@@ -156,7 +156,7 @@ class ReportIT {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().json("""
                         {"title": "Bad Request", "status": 400, "detail": "an account cannot report itself",
-                         "instance": "/api/reports"}
+                         "instance": "/api/reports", "errors": [{"field": "reportedAccountId", "code": "SELF_REFERENCE"}]}
                         """, JsonCompareMode.STRICT));
 
         assertThat(reportRows()).isEmpty();

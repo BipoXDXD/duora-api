@@ -22,7 +22,6 @@ import bipo.tech.duoraapi.profiles.application.OutdatedProfileVersionException;
 import bipo.tech.duoraapi.profiles.application.ProfileService;
 import bipo.tech.duoraapi.profiles.application.ProfileView;
 import bipo.tech.duoraapi.profiles.domain.BirthDateAlreadySetException;
-import bipo.tech.duoraapi.profiles.domain.InvalidProfileException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
@@ -101,11 +100,6 @@ class ProfileController {
             @RequestBody EditProfileRequest request) {
         long readVersion = readVersionIn(ifMatch);
         return withETag(profiles.edit(account.value(), readVersion, request.toChanges()));
-    }
-
-    @ExceptionHandler(InvalidProfileException.class)
-    ProblemDetail handleInvalidProfile(InvalidProfileException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
     @ExceptionHandler(BirthDateAlreadySetException.class)

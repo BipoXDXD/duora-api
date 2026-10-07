@@ -196,8 +196,8 @@ class ProfileIT {
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(content().json("""
                         {"title": "Bad Request", "status": 400, "detail": "%s cannot be removed",
-                         "instance": "/api/me/profile"}
-                        """.formatted(field), JsonCompareMode.STRICT));
+                         "instance": "/api/me/profile", "errors": [{"field": "%s", "code": "REQUIRED"}]}
+                        """.formatted(field, field), JsonCompareMode.STRICT));
 
         mockMvc.perform(get(PROFILE_PATH).with(ana())).andExpect(content().json(ANA_PROFILE, JsonCompareMode.STRICT));
     }

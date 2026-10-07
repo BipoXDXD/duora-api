@@ -21,7 +21,6 @@ import bipo.tech.duoraapi.identity.AccountId;
 import bipo.tech.duoraapi.trustsafety.application.ReportQuotaExceededException;
 import bipo.tech.duoraapi.trustsafety.application.ReportQuotaUnavailableException;
 import bipo.tech.duoraapi.trustsafety.application.ReportService;
-import bipo.tech.duoraapi.trustsafety.domain.InvalidReportException;
 import bipo.tech.duoraapi.trustsafety.domain.UnknownAccountException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -101,11 +100,6 @@ class ReportController {
         return reports.reportFiledBy(caller, id)
                 .map(ReportResponse::of)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "report not found"));
-    }
-
-    @ExceptionHandler(InvalidReportException.class)
-    ProblemDetail handleInvalidReport(InvalidReportException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
     @ExceptionHandler(UnknownAccountException.class)
