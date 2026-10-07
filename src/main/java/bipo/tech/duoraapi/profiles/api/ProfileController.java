@@ -50,8 +50,12 @@ class ProfileController {
     private static final String ETAG_PATTERN = "^\"[0-9]{1,18}\"$";
     private static final int ETAG_MAX_LENGTH = 20;
 
-    /** Um ETag forte só com a versão; fraco (W/), curinga, lista ou outro formato não casa com versão nenhuma. */
-    private static final Pattern VERSION_ETAG = Pattern.compile("\"(\\d{1,18})\"");
+    /**
+     * Um ETag forte só com a versão, escrita como o servidor a escreve (sem zero à esquerda: "00" não é o ETag
+     * "0"); fraco (W/), curinga, lista ou outro formato não casa com versão nenhuma. São 18 dígitos no máximo
+     * para caber em long.
+     */
+    private static final Pattern VERSION_ETAG = Pattern.compile("\"(0|[1-9]\\d{0,17})\"");
 
     private final ProfileService profiles;
 

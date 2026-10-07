@@ -145,9 +145,12 @@ class ProfileIT {
                         """));
     }
 
-    /** If-Match compara ETags fortes, um só: fraco, lista, curinga ou sem aspas não casam com a versão. */
+    /**
+     * If-Match compara ETags fortes, um só, caractere a caractere: fraco, lista, curinga, sem aspas ou com zero
+     * à esquerda ("00" não é o ETag "0") não casam com a versão.
+     */
     @ParameterizedTest
-    @ValueSource(strings = {"W/\"0\"", "*", "0", "\"0\", \"1\"", "\"abc\"", "\"-1\"", "\"999999999999999999\"",
+    @ValueSource(strings = {"W/\"0\"", "*", "0", "\"0\", \"1\"", "\"abc\"", "\"-1\"", "\"00\"", "\"01\"", "\"999999999999999999\"",
             "\"9999999999999999999\"", "\"99999999999999999999\"", ""})
     void ifMatchThatIsNotExactlyTheCurrentETagIsRejected(String ifMatch) throws Exception {
         edit(ana(), ifMatch, anaProfileJson())
