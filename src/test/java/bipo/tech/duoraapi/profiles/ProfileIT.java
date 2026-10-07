@@ -147,7 +147,8 @@ class ProfileIT {
 
     /** If-Match compara ETags fortes, um só: fraco, lista, curinga ou sem aspas não casam com a versão. */
     @ParameterizedTest
-    @ValueSource(strings = {"W/\"0\"", "*", "0", "\"0\", \"1\"", "\"abc\"", "\"-1\"", "\"99999999999999999999\"", ""})
+    @ValueSource(strings = {"W/\"0\"", "*", "0", "\"0\", \"1\"", "\"abc\"", "\"-1\"", "\"999999999999999999\"",
+            "\"9999999999999999999\"", "\"99999999999999999999\"", ""})
     void ifMatchThatIsNotExactlyTheCurrentETagIsRejected(String ifMatch) throws Exception {
         edit(ana(), ifMatch, anaProfileJson())
                 .andExpect(status().isPreconditionFailed())
@@ -196,6 +197,23 @@ class ProfileIT {
                         """.formatted(field), JsonCompareMode.STRICT));
 
         mockMvc.perform(get(PROFILE_PATH).with(ana())).andExpect(content().json(ANA_PROFILE, JsonCompareMode.STRICT));
+    }
+
+    /** Apagar o texto no formulário envia "": é o mesmo que null, e apaga a bio. */
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   ", "\\n"})
+    void blankBioClearsIt(String blank) throws Exception {
+        edit(ana(), "\"0\"", anaProfileJson()).andExpect(status().isOk());
+
+        edit(ana(), "\"1\"", """
+                {"bio": "%s"}
+                """.formatted(blank))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, "\"2\""))
+                .andExpect(content().json("""
+                        {"displayName": "Ana Souza", "birthDate": "1990-05-10", "bio": null, "region": "BR-SP",
+                         "complete": true}
+                        """, JsonCompareMode.STRICT));
     }
 
     @ParameterizedTest
