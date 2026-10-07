@@ -331,6 +331,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0015](docs/adr/0015-bloqueio-e-denuncia.md) | Bloqueio e denúncia entre contas |
 | [0016](docs/adr/0016-eventos-e-inscricoes.md) | Eventos e inscrições: lock do evento para a capacidade, inscrição como sub-recurso idempotente |
 | [0017](docs/adr/0017-pareamento.md) | Pareamento: rodada numerada por `PUT` idempotente, emparelhamento máximo com prioridade para quem ficou de fora |
+| [0018](docs/adr/0018-erros-de-campo-no-problem-detail.md) | Erros de campo (`errors: [{field, code}]`) no ProblemDetail dos 400 de validação |
 
 ## Segurança
 
