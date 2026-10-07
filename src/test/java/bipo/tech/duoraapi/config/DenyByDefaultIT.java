@@ -55,7 +55,8 @@ class DenyByDefaultIT {
         assertThat(registeredRoutes())
                 .contains("GET /api/me", "GET /api/admin/waitlist/stats", "GET /actuator/health/**",
                         "POST /api/accounts/{accountId}:block", "GET /api/me/blocked-accounts", "POST /api/reports",
-                        "GET /api/reports/{id}")
+                        "GET /api/reports/{id}", "PUT /api/admin/events/{eventId}/rounds/{number}",
+                        "GET /api/events/{eventId}/rounds/{number}/pairing")
                 .containsAll(PUBLIC_ROUTES);
     }
 

@@ -15,6 +15,8 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import bipo.tech.duoraapi.AccountTables;
+
 /**
  * Object Mother dos testes de eventos: quem chama, o corpo de um evento válido e os passos que os
  * testes repetem pela própria API (criar e publicar um evento, completar um perfil). O jwt() pula a
@@ -104,14 +106,9 @@ public final class EventFixtures {
         mockMvc.perform(put(registrationPath(eventId)).with(person)).andExpect(status().isCreated());
     }
 
-    /** Rodadas do pareamento, inscrições, eventos, perfis e contas, nessa ordem por causa das FKs. */
+    /** Rodadas, inscrições, eventos e as contas com tudo o que é delas (bloqueios, denúncias, perfis). */
     public static void cleanDatabase(JdbcClient jdbcClient) {
-        jdbcClient.sql("delete from round_seat").update();
-        jdbcClient.sql("delete from round").update();
-        jdbcClient.sql("delete from registration").update();
-        jdbcClient.sql("delete from event").update();
-        jdbcClient.sql("delete from profile").update();
-        jdbcClient.sql("delete from account").update();
+        AccountTables.deleteAccountsAndTheirData(jdbcClient);
     }
 
     public static String randomId() {
