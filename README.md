@@ -145,6 +145,11 @@ bipo.tech.duoraapi
 │   ├── api/
 │   ├── application/
 │   └── domain/          # regras 18+, value objects, repositório
+├── trustsafety/         # bloqueio e denúncia; Blocking é a API publicada
+│   ├── adapter/         # repositórios JDBC, cota de denúncias
+│   ├── api/
+│   ├── application/     # BlockService, ReportService, port da cota
+│   └── domain/          # bloqueio, denúncia, motivos, ports dos repositórios
 └── waitlist/
     ├── api/             # controller, DTOs, rate limit
     ├── application/     # casos de uso (WaitlistService)
@@ -154,7 +159,7 @@ bipo.tech.duoraapi
 Os testes espelham a mesma estrutura. Um módulo só usa de outro a API publicada, que são as
 classes na raiz do pacote dele (como `identity.AccountId`); as camadas são internas
 ([ADR 0011](docs/adr/0011-conta-e-perfil.md)). Módulos de apoio (waitlist, identity, profiles) usam
-essas camadas simples; os do core (pareamento, minijogos, conexões, moderação) vão usar ports & adapters, com
+essas camadas simples; os do core (pareamento, minijogos, conexões, trustsafety) usam ports & adapters, com
 domínio sem framework. O `ArchitectureTest` cobra a classificação e a direção das dependências
 ([ADR 0007](docs/adr/0007-estilo-por-modulo.md)).
 
@@ -170,6 +175,11 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 | `GET` | `/api/me` | Autenticado | `200` com `{"displayName": "...", "profileComplete": false}` (`displayName` é o nome do Entra, `null` se não houver); `401` sem sessão. Abre a conta interna no primeiro acesso |
 | `GET` | `/api/me/profile` | Autenticado | `200` com `{displayName, birthDate, bio, region, complete}` e `ETag` com a versão (`"0"` antes da primeira edição) |
 | `PATCH` | `/api/me/profile` | Autenticado | Edição parcial: campo ausente não muda, `null` apaga. Exige `If-Match` com o `ETag` lido: sem ele `428`, desatualizado `412`. `200` com o perfil e o `ETag` novo; `400` para valor inválido ou campo desconhecido; `409` ao trocar a data de nascimento |
+| `POST` | `/api/accounts/{accountId}:block` | Autenticado | Bloqueia outra conta: `204`, também se já bloqueada (mantém a data do primeiro bloqueio); `400` para si mesmo ou id que não é UUID; `404` sem conta com esse id |
+| `POST` | `/api/accounts/{accountId}:unblock` | Autenticado | Desfaz o próprio bloqueio: `204`, também sem bloqueio; o bloqueio feito pela outra pessoa continua valendo |
+| `GET` | `/api/me/blocked-accounts` | Autenticado | Quem o usuário bloqueou, do mais recente ao mais antigo: `{items: [{accountId, blockedAt}], nextPageToken}`, `maxPageSize` de 1 a 100 (padrão 20), `pageToken` da página anterior; `400` fora disso |
+| `POST` | `/api/reports` | Autenticado | Denuncia outra conta com `{reportedAccountId, reason, description}`; `reason` de lista fechada, `description` até 1000 caracteres e obrigatória com `OTHER`. `201` com `Location` e a denúncia (`status` `OPEN`); `400` para si mesmo ou valor inválido; `404` sem conta; `429` com `Retry-After` acima da cota; `503` com a cota indisponível. Denunciar não bloqueia |
+| `GET` | `/api/reports/{id}` | Autenticado | A própria denúncia; de outra pessoa ou inexistente, `404` |
 | `GET` | `/actuator/health` | Público | Estado da aplicação |
 
 ### Contrato (OpenAPI)
@@ -309,4 +319,9 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 - **Perfil:** cada usuário só alcança o próprio (`/api/me/profile`, sem id na rota). Região só como
   UF (`BR-SP`), nunca localização precisa; data de nascimento só de maior de idade, informada uma vez,
   e a elegibilidade é calculada na hora, nunca guardada ([ADR 0011](docs/adr/0011-conta-e-perfil.md)).
+- **Bloqueio e denúncia:** a lista de bloqueios e as denúncias só aparecem para quem as fez; a
+  denúncia de outra pessoa responde `404`, igual a um id inexistente. A resposta de `:block` não
+  revela se a outra pessoa bloqueou você. Cada conta faz até 10 denúncias por dia
+  (`duora.trustsafety.report-rate-limit.*`), contadas no PostgreSQL, e o relato nunca vai para o log
+  ([ADR 0015](docs/adr/0015-bloqueio-e-denuncia.md)).
 - **CI:** o gitleaks varre o histórico em busca de segredos a cada push e pull request.
