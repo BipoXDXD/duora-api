@@ -21,11 +21,17 @@
     "description" : "Perfil do usuário logado",
     "name" : "profile"
   }, {
+    "description" : "O par de quem está logado em cada rodada de um evento",
+    "name" : "pairings"
+  }, {
     "description" : "Criação, publicação e cancelamento de eventos pelo ADMIN",
     "name" : "admin-events"
   }, {
     "description" : "Eventos publicados e as inscrições de quem está logado",
     "name" : "events"
+  }, {
+    "description" : "Rodadas de pareamento de um evento, iniciadas pelo ADMIN",
+    "name" : "admin-rounds"
   }, {
     "description" : "Sessão do usuário logado",
     "name" : "session"
@@ -350,6 +356,316 @@
         },
         "summary" : "Cria um evento em rascunho",
         "tags" : [ "admin-events" ]
+      }
+    },
+    "/api/admin/events/{eventId}/rounds/{number}" : {
+      "get" : {
+        "description" : "Quantos pares se formaram e quantas pessoas ficaram de fora, nunca quem.",
+        "operationId" : "getRound",
+        "parameters" : [ {
+          "description" : "Id do evento",
+          "in" : "path",
+          "name" : "eventId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        }, {
+          "description" : "Número da rodada no evento, a partir de 1",
+          "in" : "path",
+          "name" : "number",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AdminRoundResponse"
+                }
+              }
+            },
+            "description" : "A rodada",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID, ou número fora de 1 a 100",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem o papel ADMIN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "O evento não tem rodada com esse número",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lê uma rodada do evento",
+        "tags" : [ "admin-rounds" ]
+      },
+      "put" : {
+        "description" : "Sem corpo. Sorteia os pares entre os inscritos: o máximo de pares possível, sem par bloqueado nem par que já se formou no evento, com prioridade para quem ficou de fora mais vezes. Idempotente pela chave evento + número: repetir, inclusive ao mesmo tempo, devolve a mesma rodada, por isso dispensa If-Match e Idempotency-Key (docs/adr/0017). A rodada N exige a N-1, e o evento precisa estar publicado e em andamento.",
+        "operationId" : "startRound",
+        "parameters" : [ {
+          "description" : "Id do evento",
+          "in" : "path",
+          "name" : "eventId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        }, {
+          "description" : "Número da rodada no evento, a partir de 1",
+          "in" : "path",
+          "name" : "number",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AdminRoundResponse"
+                }
+              }
+            },
+            "description" : "A rodada que já existia",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AdminRoundResponse"
+                }
+              }
+            },
+            "description" : "A rodada criada",
+            "headers" : {
+              "Location" : {
+                "description" : "Endereço da rodada",
+                "required" : true,
+                "schema" : {
+                  "type" : "string",
+                  "format" : "uri",
+                  "maxLength" : 2048
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID, ou número fora de 1 a 100",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem o papel ADMIN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Não há evento com esse id",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "O evento não está em andamento (rascunho, cancelado, antes do início ou depois do fim), ou a rodada anterior ainda não começou",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "503" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Outro pedido está iniciando a mesma rodada; nada foi gravado",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até tentar de novo",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int32",
+                  "maximum" : 1,
+                  "minimum" : 1
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Inicia uma rodada de pareamento do evento",
+        "tags" : [ "admin-rounds" ]
       }
     },
     "/api/admin/events/{id}" : {
@@ -1270,6 +1586,114 @@
         },
         "summary" : "Inscreve quem chama no evento",
         "tags" : [ "events" ]
+      }
+    },
+    "/api/events/{eventId}/rounds/{number}/pairing" : {
+      "get" : {
+        "description" : "O id da conta do par, ou null se quem chama ficou de fora nesta rodada. Sem lugar na rodada, 404, exista o evento ou a rodada ou não.",
+        "operationId" : "getMyPairing",
+        "parameters" : [ {
+          "description" : "Id do evento",
+          "in" : "path",
+          "name" : "eventId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        }, {
+          "description" : "Número da rodada no evento, a partir de 1",
+          "in" : "path",
+          "name" : "number",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PairingResponse"
+                }
+              }
+            },
+            "description" : "O lugar de quem chama na rodada",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID, ou número fora de 1 a 100",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Quem chama não estava no sorteio dessa rodada",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lê o próprio par na rodada",
+        "tags" : [ "pairings" ]
       }
     },
     "/api/events/{id}" : {
@@ -2362,6 +2786,46 @@
         },
         "required" : [ "capacity", "description", "endsAt", "id", "registrationCount", "startsAt", "status", "title" ]
       },
+      "AdminRoundResponse" : {
+        "type" : "object",
+        "properties" : {
+          "eventId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Id do evento",
+            "maxLength" : 36,
+            "minLength" : 36
+          },
+          "number" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Número da rodada no evento",
+            "maximum" : 100,
+            "minimum" : 1
+          },
+          "pairCount" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Quantos pares se formaram",
+            "maximum" : 100,
+            "minimum" : 0
+          },
+          "sittingOutCount" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Quantas pessoas ficaram sem par nesta rodada",
+            "maximum" : 200,
+            "minimum" : 0
+          },
+          "startedAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Quando a rodada começou, em UTC; não muda nas repetições do PUT",
+            "maxLength" : 35
+          }
+        },
+        "required" : [ "eventId", "number", "pairCount", "sittingOutCount", "startedAt" ]
+      },
       "BlockedAccount" : {
         "type" : "object",
         "properties" : {
@@ -2657,6 +3121,33 @@
           }
         },
         "required" : [ "items", "nextPageToken" ]
+      },
+      "PairingResponse" : {
+        "type" : "object",
+        "properties" : {
+          "eventId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Id do evento",
+            "maxLength" : 36,
+            "minLength" : 36
+          },
+          "partnerAccountId" : {
+            "type" : [ "string", "null" ],
+            "format" : "uuid",
+            "description" : "Id da conta do par nesta rodada, ou null se quem chama ficou de fora",
+            "maxLength" : 36,
+            "minLength" : 36
+          },
+          "roundNumber" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Número da rodada no evento",
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        },
+        "required" : [ "eventId", "partnerAccountId", "roundNumber" ]
       },
       "ProblemDetail" : {
         "type" : "object",
