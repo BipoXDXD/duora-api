@@ -7,6 +7,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import bipo.tech.duoraapi.identity.AccountId;
 
@@ -23,6 +25,18 @@ class BlockTest {
         assertThat(block.blocker()).isEqualTo(ANA);
         assertThat(block.blocked()).isEqualTo(BRUNO);
         assertThat(block.blockedAt()).isEqualTo(NOW);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"blocker", "blocked", "blockedAt"})
+    void everyFieldMustBePresent(String missingField) {
+        var blocker = "blocker".equals(missingField) ? null : ANA;
+        var blocked = "blocked".equals(missingField) ? null : BRUNO;
+        var blockedAt = "blockedAt".equals(missingField) ? null : NOW;
+
+        assertThatThrownBy(() -> new Block(blocker, blocked, blockedAt))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage(missingField);
     }
 
     @Test

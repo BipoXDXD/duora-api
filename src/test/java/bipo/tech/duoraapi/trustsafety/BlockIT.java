@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -171,6 +172,21 @@ class BlockIT {
         assertThat(blockRows()).containsExactlyInAnyOrder(ana + " -> " + bruno, bruno + " -> " + ana);
     }
 
+    /** Desbloquear um par não mexe nos outros bloqueios de quem chama, nem nos que outras contas fizeram. */
+    @Test
+    void unblockingOnePairKeepsEveryOtherBlock() throws Exception {
+        var ana = accountIdOf("oid-ana");
+        var bruno = accountIdOf("oid-bruno");
+        var carla = accountIdOf("oid-carla");
+        block(ana(), bruno).andExpect(status().isNoContent());
+        block(ana(), carla).andExpect(status().isNoContent());
+        block(user("oid-carla"), bruno).andExpect(status().isNoContent());
+
+        unblock(ana(), bruno).andExpect(status().isNoContent());
+
+        assertThat(blockRows()).containsExactlyInAnyOrder(ana + " -> " + carla, carla + " -> " + bruno);
+    }
+
     @Test
     void unblockingRemovesOnlyTheCallersBlock() throws Exception {
         var ana = accountIdOf("oid-ana");
@@ -221,6 +237,60 @@ class BlockIT {
                 .andExpect(content().json("""
                         {"items": [{"accountId": "%s", "blockedAt": "%s"}], "nextPageToken": null}
                         """.formatted(bruno, blockedAtOf(bruno)), JsonCompareMode.STRICT));
+    }
+
+    /** A página que traz o último bloqueio fecha a lista, mesmo quando está cheia. */
+    @Test
+    void fullPageThatHoldsTheLastBlockHasNoNextPageToken() throws Exception {
+        var bruno = accountIdOf("oid-bruno");
+        var carla = accountIdOf("oid-carla");
+        block(ana(), bruno).andExpect(status().isNoContent());
+        block(ana(), carla).andExpect(status().isNoContent());
+
+        listBlocked(ana(), "?maxPageSize=2")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.nextPageToken").isEmpty());
+    }
+
+    /** Sem maxPageSize, a página é de 20; o vigésimo primeiro bloqueio vai para a seguinte. */
+    @Test
+    void listWithoutMaxPageSizeHasTwentyBlocksPerPage() throws Exception {
+        var ana = accountIdOf("oid-ana");
+        insertAccountsAndBlockThem(ana, 21);
+
+        var firstPage = listBlocked(ana(), "")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(20))
+                .andExpect(jsonPath("$.nextPageToken").isString())
+                .andReturn().getResponse().getContentAsString();
+        String nextPageToken = JsonPath.read(firstPage, "$.nextPageToken");
+
+        listBlocked(ana(), "?pageToken=" + nextPageToken)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.nextPageToken").isEmpty());
+    }
+
+    /** Bloqueios do mesmo instante: a conta bloqueada desempata, e nenhum é pulado nem repetido entre páginas. */
+    @Test
+    void blocksOfTheSameInstantAreListedOnceEachAcrossPages() throws Exception {
+        var ana = accountIdOf("oid-ana");
+        var blocked = List.of(accountIdOf("oid-bruno"), accountIdOf("oid-carla"), accountIdOf("oid-davi"));
+        var sameInstant = OffsetDateTime.parse("2026-10-05T12:00:00Z");
+        blocked.forEach(account -> insertBlock(ana, account, sameInstant));
+        var listed = new ArrayList<String>();
+
+        String query = "?maxPageSize=1";
+        while (query != null) {
+            var page = listBlocked(ana(), query).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+            List<String> accountIds = JsonPath.read(page, "$.items[*].accountId");
+            listed.addAll(accountIds);
+            String nextPageToken = JsonPath.read(page, "$.nextPageToken");
+            query = nextPageToken == null ? null : "?maxPageSize=1&pageToken=" + nextPageToken;
+        }
+
+        assertThat(listed).containsExactlyElementsOf(blocked.stream().sorted(Comparator.reverseOrder()).toList());
     }
 
     @Test
@@ -368,6 +438,34 @@ class BlockIT {
                 .query(UUID.class).single().toString();
     }
 
+    private void insertBlock(String blocker, String blocked, OffsetDateTime createdAt) {
+        jdbcClient.sql("""
+                        insert into account_block (blocker_account_id, blocked_account_id, created_at)
+                        values (:blocker, :blocked, :createdAt)
+                        """)
+                .param("blocker", UUID.fromString(blocker))
+                .param("blocked", UUID.fromString(blocked))
+                .param("createdAt", createdAt)
+                .update();
+    }
+
+    /** Abre contas direto no banco, só para ter volume: o que importa aqui é a lista, não o primeiro acesso. */
+    private void insertAccountsAndBlockThem(String blocker, int count) {
+        jdbcClient.sql("""
+                        insert into account (issuer, subject, created_at)
+                        select :issuer, 'oid-blocked-' || n, now() from generate_series(1, :count) as n
+                        """)
+                .param("issuer", ISSUER)
+                .param("count", count)
+                .update();
+        jdbcClient.sql("""
+                        insert into account_block (blocker_account_id, blocked_account_id, created_at)
+                        select :blocker, id, now() from account where subject like 'oid-blocked-%'
+                        """)
+                .param("blocker", UUID.fromString(blocker))
+                .update();
+    }
+
     private List<String> blockRows() {
         return jdbcClient.sql("select blocker_account_id, blocked_account_id from account_block")
                 .query((row, number) -> row.getString("blocker_account_id") + " -> " + row.getString("blocked_account_id"))
@@ -386,14 +484,6 @@ class BlockIT {
 
     private static RequestPostProcessor bruno() {
         return user("oid-bruno");
-    }
-
-    private static RequestPostProcessor carla() {
-        return user("oid-carla");
-    }
-
-    private static RequestPostProcessor davi() {
-        return user("oid-davi");
     }
 
     private static RequestPostProcessor user(String objectId) {

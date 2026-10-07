@@ -3,6 +3,7 @@ package bipo.tech.duoraapi.profiles.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -25,6 +26,13 @@ class ProfileTest {
         assertThat(profile.bio()).isEmpty();
         assertThat(profile.region()).isEmpty();
         assertThat(profile.version()).isZero();
+    }
+
+    @Test
+    void emptyProfileNeedsAnAccountId() {
+        assertThatThrownBy(() -> Profile.emptyFor(null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("accountId");
     }
 
     @Test
@@ -52,6 +60,37 @@ class ProfileTest {
                 FieldChange.keep(), FieldChange.setTo(Region.SP)), NOW);
 
         assertThat(profile.isComplete(NOW)).isTrue();
+    }
+
+    @Test
+    void profileWithoutNameIsIncomplete() {
+        var profile = Profile.emptyFor(ACCOUNT_ID);
+
+        profile.apply(new ProfileChanges(FieldChange.keep(), FieldChange.setTo(ADULT_BIRTH_DATE),
+                FieldChange.keep(), FieldChange.setTo(Region.SP)), NOW);
+
+        assertThat(profile.isComplete(NOW)).isFalse();
+    }
+
+    @Test
+    void profileWithoutBirthDateIsIncomplete() {
+        var profile = Profile.emptyFor(ACCOUNT_ID);
+
+        profile.apply(new ProfileChanges(FieldChange.setTo(new DisplayName("Ana")), FieldChange.keep(),
+                FieldChange.keep(), FieldChange.setTo(Region.SP)), NOW);
+
+        assertThat(profile.isComplete(NOW)).isFalse();
+    }
+
+    /** A idade é calculada no instante pedido, e não guardada: um dia antes dos 18, o perfil não está completo. */
+    @Test
+    void completenessFollowsTheAgeAtTheGivenInstant() {
+        var profile = Profile.emptyFor(ACCOUNT_ID);
+        profile.apply(new ProfileChanges(FieldChange.setTo(new DisplayName("Ana")),
+                FieldChange.setTo(LocalDate.parse("2008-10-05")), FieldChange.keep(), FieldChange.setTo(Region.SP)), NOW);
+
+        assertThat(profile.isComplete(NOW)).isTrue();
+        assertThat(profile.isComplete(NOW.minus(Duration.ofDays(1)))).isFalse();
     }
 
     @Test
