@@ -70,6 +70,30 @@ class ReportDescriptionTest {
                 .hasMessage("description contains a forbidden character");
     }
 
+    /** O ZWJ une emojis compostos (família); sem ele, o emoji se desmonta. */
+    @Test
+    void acceptsEmojiJoinedByZeroWidthJoiner() {
+        var family = "Ele me chamou de \uD83D\uDC69\u200D\uD83D\uDC67";
+
+        assertThat(ReportDescription.fromText(family)).map(ReportDescription::value).hasValue(family);
+    }
+
+    @Test
+    void constructorRejectsMissingText() {
+        assertThatThrownBy(() -> new ReportDescription(null))
+                .isInstanceOf(InvalidReportException.class)
+                .hasMessage("description is required");
+    }
+
+    /** Quem chega pelo construtor, e não por fromText, também não passa em branco. */
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   ", "\n\n"})
+    void constructorRejectsBlankText(String text) {
+        assertThatThrownBy(() -> new ReportDescription(text))
+                .isInstanceOf(InvalidReportException.class)
+                .hasMessage("description must not be blank");
+    }
+
     @Test
     void doesNotExposeTheTextInToString() {
         assertThat(ReportDescription.fromText("ameaçou me encontrar")).hasValueSatisfying(
