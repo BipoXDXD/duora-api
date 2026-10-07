@@ -23,6 +23,12 @@ class AdminEventController {
 
     static final String PATH = "/api/admin/events";
 
+    /**
+     * O id sem ":": sem o filtro, GET em {@code {id}:publish} cairia na leitura com o id "uuid:publish" (400),
+     * e o OPTIONS das ações anunciaria um GET que elas não têm. Com ele, a rota da ação responde 405 ao GET.
+     */
+    private static final String EVENT_PATH = PATH + "/{id:[^:]+}";
+
     private final EventAdministrationService administration;
 
     AdminEventController(EventAdministrationService administration) {
@@ -36,7 +42,7 @@ class AdminEventController {
         return ResponseEntity.created(URI.create(PATH + "/" + event.id())).body(AdminEventResponse.of(event));
     }
 
-    @GetMapping(PATH + "/{id}")
+    @GetMapping(EVENT_PATH)
     AdminEventResponse find(@PathVariable UUID id) {
         return AdminEventResponse.of(administration.find(id));
     }

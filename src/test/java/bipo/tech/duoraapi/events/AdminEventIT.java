@@ -11,9 +11,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Instant;
@@ -251,6 +255,22 @@ class AdminEventIT {
         mockMvc.perform(adminRequest(route, "not-a-uuid").with(admin()))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+    }
+
+    /**
+     * A ação é outra rota, não um id: GET em {@code {id}:publish} não pode cair na leitura do evento com
+     * o id "uuid:publish". O fuzzing achou o OPTIONS anunciando GET nessas rotas.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {":publish", ":cancel"})
+    void actionRouteAnswersOnlyToPost(String action) throws Exception {
+        String path = adminEventPath(randomId()) + action;
+
+        mockMvc.perform(get(path).with(admin()))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(header().string(HttpHeaders.ALLOW, not(containsString("GET"))));
+        mockMvc.perform(options(path).with(admin()))
+                .andExpect(header().string(HttpHeaders.ALLOW, not(containsString("GET"))));
     }
 
     @Test
