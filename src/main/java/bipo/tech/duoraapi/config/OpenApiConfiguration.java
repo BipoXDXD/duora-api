@@ -3,6 +3,7 @@ package bipo.tech.duoraapi.config;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springframework.context.annotation.Bean;
@@ -21,6 +22,7 @@ import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.PathItem;
 import io.swagger.v3.oas.models.headers.Header;
 import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.media.ArraySchema;
 import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.media.IntegerSchema;
 import io.swagger.v3.oas.models.media.ObjectSchema;
@@ -31,6 +33,8 @@ import io.swagger.v3.oas.models.responses.ApiResponses;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
+
+import bipo.tech.duoraapi.FieldErrorCode;
 
 /**
  * O que a spec gerada pelo springdoc não sabe sozinha (docs/adr/0012): as duas portas de entrada como
@@ -49,6 +53,9 @@ class OpenApiConfiguration {
     private static final String SESSION_SCHEME = "session";
     private static final String PROBLEM_SCHEMA = "ProblemDetail";
     private static final String PROBLEM_REF = "#/components/schemas/" + PROBLEM_SCHEMA;
+    private static final String VALIDATION_PROBLEM_SCHEMA = "ValidationProblemDetail";
+    private static final String VALIDATION_PROBLEM_REF = "#/components/schemas/" + VALIDATION_PROBLEM_SCHEMA;
+    private static final String FIELD_ERROR_SCHEMA = "FieldError";
     private static final String LOGOUT_PATH = "/logout";
     private static final String LOGOUT_SCHEMA = "LogoutResponse";
     private static final String SESSION_TAG = "session";
@@ -125,8 +132,15 @@ class OpenApiConfiguration {
     @Bean
     @Order(Ordered.LOWEST_PRECEDENCE)
     OpenApiCustomizer crossCuttingResponses() {
-        return openApi -> openApi.getPaths().forEach((path, item) -> item.readOperationsMap()
-                .forEach((method, operation) -> documentCrossCuttingResponses(path, method, operation)));
+        return openApi -> {
+            // Aqui, e não no bean OpenAPI: lá o springdoc descarta os schemas que nenhuma anotação
+            // referencia, e só o documentFieldErrors abaixo passa a referenciar estes.
+            openApi.getComponents()
+                    .addSchemas(VALIDATION_PROBLEM_SCHEMA, validationProblemDetailSchema())
+                    .addSchemas(FIELD_ERROR_SCHEMA, fieldErrorSchema());
+            openApi.getPaths().forEach((path, item) -> item.readOperationsMap()
+                    .forEach((method, operation) -> documentCrossCuttingResponses(path, method, operation)));
+        };
     }
 
     private static void documentCrossCuttingResponses(String path, PathItem.HttpMethod method, Operation operation) {
@@ -142,6 +156,7 @@ class OpenApiConfiguration {
         if (operation.getRequestBody() != null) {
             operation.getResponses().addApiResponse("415",
                     problem(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Corpo em outro formato que não application/json"));
+            documentFieldErrors(operation);
         }
         if (isPublic(operation)) {
             return;
@@ -154,6 +169,18 @@ class OpenApiConfiguration {
             operation.getResponses().putIfAbsent("403",
                     problem(HttpStatus.FORBIDDEN, "Sessão web sem o token CSRF no header X-XSRF-TOKEN"));
         }
+    }
+
+    /**
+     * RequestBodyProblemHandler: o 400 de uma operação com corpo diz o campo e o motivo em errors
+     * (docs/adr/0018). A descrição do controller fica; só o schema muda.
+     */
+    private static void documentFieldErrors(Operation operation) {
+        ApiResponse badRequest = operation.getResponses().get("400");
+        String description = badRequest == null ? "Corpo inválido" : badRequest.getDescription();
+        operation.getResponses().addApiResponse("400", new ApiResponse()
+                .description(description)
+                .content(problemContent(VALIDATION_PROBLEM_REF)));
     }
 
     /**
@@ -196,8 +223,12 @@ class OpenApiConfiguration {
     private static ApiResponse problem(HttpStatus status, String description) {
         return new ApiResponse()
                 .description(description)
-                .content(new Content().addMediaType(MediaType.APPLICATION_PROBLEM_JSON_VALUE,
-                        new io.swagger.v3.oas.models.media.MediaType().schema(new Schema<>().$ref(PROBLEM_REF))));
+                .content(problemContent(PROBLEM_REF));
+    }
+
+    private static Content problemContent(String schemaRef) {
+        return new Content().addMediaType(MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                new io.swagger.v3.oas.models.media.MediaType().schema(new Schema<>().$ref(schemaRef)));
     }
 
     /**
@@ -225,6 +256,46 @@ class OpenApiConfiguration {
         // Sem "type", vale about:blank (RFC 9457); o Spring o omite nesse caso.
         schema.setRequired(List.of("title", "status"));
         return schema;
+    }
+
+    /**
+     * O ProblemDetail dos 400 de validação do corpo, com o membro de extensão errors (RFC 9457, seção
+     * 3.2). errors é opcional no schema porque um 400 de fora do controller, como a recusa do firewall
+     * do Spring Security, chega sem ele.
+     */
+    private static Schema<?> validationProblemDetailSchema() {
+        return problemDetailSchema()
+                .description("""
+                        Erro de validação do corpo no formato RFC 9457. Além do detail, em inglês e para \
+                        pessoas, errors diz a máquinas qual campo falhou e por quê, sem repetir o valor.""")
+                .addProperty(RequestBodyProblemHandler.ERRORS_PROPERTY, new ArraySchema()
+                        .items(new Schema<>().$ref("#/components/schemas/" + FIELD_ERROR_SCHEMA))
+                        .maxItems(RequestBodyProblemHandler.MAX_ERRORS)
+                        .description("Um item por campo recusado, ordenados por campo"));
+    }
+
+    private static Schema<?> fieldErrorSchema() {
+        return new ObjectSchema()
+                .description("Um campo recusado e o motivo. Trate um code desconhecido como erro genérico do campo.")
+                .addProperty("field", new StringSchema()
+                        .pattern(RequestBodyProblemHandler.FIELD_NAME_PATTERN)
+                        .maxLength(RequestBodyProblemHandler.FIELD_NAME_MAX_LENGTH)
+                        .description("""
+                                Nome da propriedade no corpo JSON, como o cliente a enviou. Ausente quando o \
+                                erro é do corpo inteiro (MALFORMED_BODY) ou numa chave desconhecida fora do \
+                                formato de nome."""))
+                .addProperty("code", new StringSchema()
+                        ._enum(Stream.of(FieldErrorCode.values()).map(Enum::name).toList())
+                        .description("""
+                                REQUIRED: ausente, null, vazio ou apagado onde é obrigatório. TOO_SHORT e \
+                                TOO_LONG: abaixo de minLength ou acima de maxLength. BELOW_MINIMUM e \
+                                ABOVE_MAXIMUM: número ou instante fora da faixa (em birthDate, ABOVE_MAXIMUM é \
+                                menor de idade e BELOW_MINIMUM idade implausível). INVALID_FORMAT: tipo ou \
+                                formato errado. UNSUPPORTED_VALUE: fora da lista fechada. FORBIDDEN_CHARACTER: \
+                                controle, invisível ou espaço especial. SELF_REFERENCE: a própria conta. \
+                                UNKNOWN_FIELD: chave que o corpo não aceita. MALFORMED_BODY: o corpo não é um \
+                                objeto JSON legível."""))
+                .required(List.of("code"));
     }
 
     private static Schema<String> traceIdSchema() {

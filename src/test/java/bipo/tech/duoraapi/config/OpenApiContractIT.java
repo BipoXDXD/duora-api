@@ -29,6 +29,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import bipo.tech.duoraapi.FieldErrorCode;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -83,6 +84,33 @@ class OpenApiContractIT {
                 .isEqualTo("#/components/headers/RequestId"));
         assertThat(spec.at("/components/schemas/ProblemDetail/properties/requestId/pattern").asString())
                 .isEqualTo("^[0-9a-f]{32}$");
+    }
+
+    /**
+     * O 400 de toda operação com corpo declara a lista errors (docs/adr/0018), e os codes da spec são
+     * exatamente os do FieldErrorCode: o front gera o tipo deles daqui.
+     */
+    @Test
+    void bodyValidationProblemsDocumentTheFieldErrors() throws Exception {
+        JsonNode spec = jsonMapper.readTree(generatedSpec());
+        List<JsonNode> operationsWithBody = spec.at("/paths").valueStream()
+                .flatMap(item -> HTTP_METHODS.stream().filter(item::has).map(item::get))
+                .filter(operation -> operation.has("requestBody"))
+                .toList();
+        JsonNode errors = spec.at("/components/schemas/ValidationProblemDetail/properties/errors");
+        JsonNode fieldError = spec.at("/components/schemas/FieldError");
+
+        assertThat(operationsWithBody).isNotEmpty().allSatisfy(operation -> assertThat(operation
+                .at("/responses/400/content/application~1problem+json/schema/$ref").asString())
+                .as("400 de %s", operation.path("operationId").asString())
+                .isEqualTo("#/components/schemas/ValidationProblemDetail"));
+        assertThat(errors.at("/items/$ref").asString()).isEqualTo("#/components/schemas/FieldError");
+        assertThat(errors.at("/maxItems").asInt()).isEqualTo(RequestBodyProblemHandler.MAX_ERRORS);
+        assertThat(fieldError.at("/properties/code/enum").valueStream().map(JsonNode::asString))
+                .containsExactly(Stream.of(FieldErrorCode.values()).map(Enum::name).toArray(String[]::new));
+        assertThat(fieldError.at("/properties/field/pattern").asString())
+                .isEqualTo(RequestBodyProblemHandler.FIELD_NAME_PATTERN);
+        assertThat(fieldError.at("/required").valueStream().map(JsonNode::asString)).containsExactly("code");
     }
 
     /** A conta de quem chama vem do token ou da sessão; um parâmetro na spec convidaria o cliente a mandá-la. */
