@@ -2,24 +2,30 @@ package bipo.tech.duoraapi.profiles.domain;
 
 import java.util.Optional;
 
+import bipo.tech.duoraapi.FieldErrorCode;
+
 /** Apresentação curta, em parágrafos: até 300 caracteres, sem invisíveis. */
 public record Bio(String value) {
 
     public static final int MAX_LENGTH = 300;
 
+    private static final String FIELD = "bio";
+
     public Bio {
         if (value == null) {
-            throw new InvalidProfileException("bio is required");
+            throw new InvalidProfileException(FIELD, FieldErrorCode.REQUIRED, "bio is required");
         }
         value = ProfileText.normalize(value);
         if (value.isEmpty()) {
-            throw new InvalidProfileException("bio must not be blank");
+            throw new InvalidProfileException(FIELD, FieldErrorCode.REQUIRED, "bio must not be blank");
         }
         if (ProfileText.length(value) > MAX_LENGTH) {
-            throw new InvalidProfileException("bio must have at most " + MAX_LENGTH + " characters");
+            throw new InvalidProfileException(FIELD, FieldErrorCode.TOO_LONG,
+                    "bio must have at most " + MAX_LENGTH + " characters");
         }
         if (ProfileText.FORBIDDEN_IN_PARAGRAPHS.matcher(value).find()) {
-            throw new InvalidProfileException("bio contains a forbidden character");
+            throw new InvalidProfileException(FIELD, FieldErrorCode.FORBIDDEN_CHARACTER,
+                    "bio contains a forbidden character");
         }
     }
 

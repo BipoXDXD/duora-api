@@ -15,6 +15,8 @@ import jakarta.persistence.Version;
 
 import org.hibernate.annotations.UuidGenerator;
 
+import bipo.tech.duoraapi.FieldErrorCode;
+
 /**
  * Um encontro com horário e vagas, criado como rascunho pelo ADMIN e publicado para as inscrições. O
  * ciclo guardado é rascunho → publicado → cancelado; "em andamento" e "encerrado" vêm do horário.
@@ -74,10 +76,11 @@ public class Event {
         Objects.requireNonNull(description, "description");
         Objects.requireNonNull(capacity, "capacity");
         if (!schedule.startsAt().isAfter(now)) {
-            throw new InvalidEventException("startsAt must be in the future");
+            throw new InvalidEventException("startsAt", FieldErrorCode.BELOW_MINIMUM, "startsAt must be in the future");
         }
         if (schedule.startsAt().isAfter(now.plus(MAX_LEAD))) {
-            throw new InvalidEventException("startsAt must be at most " + MAX_LEAD.toDays() + " days ahead");
+            throw new InvalidEventException("startsAt", FieldErrorCode.ABOVE_MAXIMUM,
+                    "startsAt must be at most " + MAX_LEAD.toDays() + " days ahead");
         }
         return new Event(title, description, schedule, capacity, now);
     }

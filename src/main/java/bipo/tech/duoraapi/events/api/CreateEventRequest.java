@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 
+import bipo.tech.duoraapi.FieldErrorCode;
 import bipo.tech.duoraapi.events.domain.Capacity;
 import bipo.tech.duoraapi.events.domain.EventDescription;
 import bipo.tech.duoraapi.events.domain.EventSchedule;
@@ -50,7 +51,7 @@ record CreateEventRequest(
 
     Capacity eventCapacity() {
         if (capacity == null) {
-            throw new InvalidEventException("capacity is required");
+            throw new InvalidEventException("capacity", FieldErrorCode.REQUIRED, "capacity is required");
         }
         return new Capacity(capacity);
     }
@@ -63,7 +64,8 @@ record CreateEventRequest(
         try {
             return OffsetDateTime.parse(value).toInstant();
         } catch (DateTimeParseException e) {
-            throw new InvalidEventException(field + " must be a date and time with offset, like 2026-11-01T22:00:00Z");
+            throw new InvalidEventException(field, FieldErrorCode.INVALID_FORMAT,
+                    field + " must be a date and time with offset, like 2026-11-01T22:00:00Z");
         }
     }
 

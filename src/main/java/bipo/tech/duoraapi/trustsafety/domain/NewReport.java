@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 
+import bipo.tech.duoraapi.FieldErrorCode;
 import bipo.tech.duoraapi.identity.AccountId;
 
 /**
@@ -28,10 +29,12 @@ public final class NewReport {
         this.filedAt = Objects.requireNonNull(filedAt, "filedAt");
         this.description = description;
         if (reporter.equals(reported)) {
-            throw new InvalidReportException("an account cannot report itself");
+            throw new InvalidReportException("reportedAccountId", FieldErrorCode.SELF_REFERENCE,
+                    "an account cannot report itself");
         }
         if (reason == ReportReason.OTHER && description == null) {
-            throw new InvalidReportException("description is required when the reason is OTHER");
+            throw new InvalidReportException("description", FieldErrorCode.REQUIRED,
+                    "description is required when the reason is OTHER");
         }
     }
 

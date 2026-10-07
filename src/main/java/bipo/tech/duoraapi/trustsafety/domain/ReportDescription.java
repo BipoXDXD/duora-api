@@ -4,6 +4,8 @@ import java.text.Normalizer;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
+import bipo.tech.duoraapi.FieldErrorCode;
+
 /**
  * O relato livre de quem denuncia, em parágrafos: até 1000 caracteres, sem controle nem invisíveis.
  * É dado sensível (pode citar terceiros e o próprio denunciante): nunca vai para log.
@@ -11,6 +13,8 @@ import java.util.regex.Pattern;
 public record ReportDescription(String value) {
 
     public static final int MAX_LENGTH = 1000;
+
+    private static final String FIELD = "description";
 
     /**
      * Controle (NUL incluso: o PostgreSQL o recusa), formatação invisível e espaços que não são o
@@ -20,17 +24,19 @@ public record ReportDescription(String value) {
 
     public ReportDescription {
         if (value == null) {
-            throw new InvalidReportException("description is required");
+            throw new InvalidReportException(FIELD, FieldErrorCode.REQUIRED, "description is required");
         }
         value = normalize(value);
         if (value.isEmpty()) {
-            throw new InvalidReportException("description must not be blank");
+            throw new InvalidReportException(FIELD, FieldErrorCode.REQUIRED, "description must not be blank");
         }
         if (value.codePointCount(0, value.length()) > MAX_LENGTH) {
-            throw new InvalidReportException("description must have at most " + MAX_LENGTH + " characters");
+            throw new InvalidReportException(FIELD, FieldErrorCode.TOO_LONG,
+                    "description must have at most " + MAX_LENGTH + " characters");
         }
         if (FORBIDDEN.matcher(value).find()) {
-            throw new InvalidReportException("description contains a forbidden character");
+            throw new InvalidReportException(FIELD, FieldErrorCode.FORBIDDEN_CHARACTER,
+                    "description contains a forbidden character");
         }
     }
 

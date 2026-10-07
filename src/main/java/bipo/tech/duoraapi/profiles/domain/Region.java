@@ -1,5 +1,7 @@
 package bipo.tech.duoraapi.profiles.domain;
 
+import bipo.tech.duoraapi.FieldErrorCode;
+
 /**
  * Região aproximada: a unidade da federação, pelo código ISO 3166-2. Lista fechada de propósito: texto
  * livre poderia trazer endereço, e o Duora não guarda localização precisa.
@@ -28,7 +30,8 @@ public enum Region {
                 return region;
             }
         }
-        throw new InvalidProfileException("region must be the ISO 3166-2 code of a Brazilian state, like BR-SP");
+        throw new InvalidProfileException("region", FieldErrorCode.UNSUPPORTED_VALUE,
+                "region must be the ISO 3166-2 code of a Brazilian state, like BR-SP");
     }
 
 }
