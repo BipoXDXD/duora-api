@@ -18,6 +18,16 @@ Mudanças compatíveis ([ADR 0015](adr/0015-bloqueio-e-denuncia.md)):
 - Path ou query que não converte para o tipo do parâmetro responde 400 com `detail` sem o valor
   recebido; query string malformada (`?=null`) deixa de responder 500.
 
+Mudanças compatíveis ([ADR 0016](adr/0016-eventos-e-inscricoes.md)):
+
+- Eventos para o ADMIN: `POST /api/admin/events` (201 com `Location`; o evento nasce rascunho),
+  `GET /api/admin/events/{id}` e as ações `:publish` e `:cancel` (409 para estado inválido).
+- Eventos para quem está logado: `GET /api/events`, paginada por `maxPageSize` (1 a 50) e `pageToken`, como
+  `GET /api/me/blocked-accounts`, e `GET /api/events/{id}` (rascunho responde 404).
+- Inscrição: `PUT /api/events/{eventId}/registration` (201 com `Location` na primeira vez, 200 nas
+  repetições; 403 com perfil incompleto; 409 com evento cancelado, começado ou lotado; 503 com
+  `Retry-After`), `GET` e `DELETE` (204, idempotente) na mesma rota, e `GET /api/me/registrations`.
+
 ## 0.1.0 (2026-10-05)
 
 Primeira versão publicada da spec: `POST /api/waitlist`, `GET /api/me`,

@@ -145,6 +145,45 @@ class OpenApiContractIT {
                 .isEqualTo(1000);
     }
 
+    /** Eventos e inscrições (docs/adr/0016): erros, Location, paginação e estados aparecem na spec. */
+    @Test
+    void eventsAndRegistrationsDocumentTheirContract() throws Exception {
+        JsonNode spec = jsonMapper.readTree(generatedSpec());
+        JsonNode create = spec.at("/paths/~1api~1admin~1events/post");
+        JsonNode publish = spec.at("/paths/~1api~1admin~1events~1{id}:publish/post");
+        JsonNode list = spec.at("/paths/~1api~1events/get");
+        JsonNode register = spec.at("/paths/~1api~1events~1{eventId}~1registration/put");
+        JsonNode unregister = spec.at("/paths/~1api~1events~1{eventId}~1registration/delete");
+
+        assertThat(create.at("/responses/201/headers/Location/required").asBoolean()).isTrue();
+        assertThat(documentsProblem(create, 400)).isTrue();
+        assertThat(spec.at("/components/schemas/CreateEventRequest/additionalProperties").asBoolean(true)).isFalse();
+        assertThat(spec.at("/components/schemas/CreateEventRequest/properties/capacity/maximum").asInt())
+                .isEqualTo(200);
+        for (int status : new int[] {404, 409}) {
+            assertThat(documentsProblem(publish, status)).as(":publish documenta o %d", status).isTrue();
+        }
+        assertThat(list.get("parameters").valueStream().map(parameter -> parameter.path("name").asString()))
+                .containsExactlyInAnyOrder("maxPageSize", "pageToken");
+        assertThat(list.get("parameters").valueStream()
+                .map(parameter -> parameter.path("name").asString() + ":" + parameter.at("/schema/maximum").asString()))
+                .contains("maxPageSize:50");
+        assertThat(register.at("/responses/201/headers/Location/required").asBoolean()).isTrue();
+        assertThat(register.at("/responses/503/headers/Retry-After/required").asBoolean()).isTrue();
+        for (int status : new int[] {403, 404, 409, 503}) {
+            assertThat(documentsProblem(register, status)).as("PUT da inscrição documenta o %d", status).isTrue();
+        }
+        assertThat(register.at("/responses/403/description").asString()).contains("Perfil incompleto", "X-XSRF-TOKEN");
+        assertThat(unregister.at("/responses/204").isMissingNode()).isFalse();
+        assertThat(spec.at("/components/schemas/AdminEventResponse/properties/status/enum").valueStream()
+                .map(JsonNode::asString))
+                .containsExactly("DRAFT", "PUBLISHED", "CANCELLED");
+        assertThat(spec.at("/components/schemas/EventResponse/properties/status/enum").valueStream()
+                .map(JsonNode::asString))
+                .containsExactly("PUBLISHED", "CANCELLED");
+        assertThat(spec.at("/components/schemas/EventResponse/properties").has("capacity")).isFalse();
+    }
+
     /**
      * Operação pública declara {@code security: []}; as outras declaram a resposta 401 e recebem 401
      * sem credencial. Assim a spec não promete acesso que a segurança nega, nem o contrário.

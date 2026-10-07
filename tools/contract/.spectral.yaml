@@ -21,9 +21,11 @@ overrides:
     rules:
       owasp:api2:2023-write-restricted: off
   # pageToken é o cursor opaco da paginação (docs/adr/0005), não uma credencial: só marca a posição
-  # na lista de quem chama, que a consulta filtra de qualquer jeito (docs/adr/0015). O nome segue o
+  # na lista de quem chama, que a consulta filtra de qualquer jeito (docs/adr/0015, 0016). O nome segue o
   # padrão de paginação do contrato; a regra só olha o nome do parâmetro.
   - files:
       - "../../docs/openapi.json#/paths/~1api~1me~1blocked-accounts/get"
+      - "../../docs/openapi.json#/paths/~1api~1events/get"
+      - "../../docs/openapi.json#/paths/~1api~1me~1registrations/get"
     rules:
       owasp:api2:2023-no-credentials-in-url: off
