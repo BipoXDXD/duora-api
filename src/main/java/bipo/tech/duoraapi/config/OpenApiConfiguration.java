@@ -205,24 +205,34 @@ class OpenApiConfiguration {
      * Spring, que mostraria o mapa interno "properties" como campo.
      */
     private static Schema<?> problemDetailSchema() {
-        return new ObjectSchema()
-                .description("Erro no formato RFC 9457. Sem stack trace, SQL nem nome de classe.")
-                .addProperty("type", new StringSchema().format("uri-reference").maxLength(PROBLEM_TEXT_MAX_LENGTH))
-                .addProperty("title", new StringSchema().maxLength(PROBLEM_TEXT_MAX_LENGTH))
-                .addProperty("status", new IntegerSchema().format("int32")
-                        .minimum(BigDecimal.valueOf(MIN_HTTP_STATUS))
-                        .maximum(BigDecimal.valueOf(MAX_HTTP_STATUS)))
-                .addProperty("detail", new StringSchema().maxLength(PROBLEM_TEXT_MAX_LENGTH))
-                .addProperty("instance", new StringSchema().format("uri-reference").maxLength(PROBLEM_TEXT_MAX_LENGTH))
-                // Só no 500: o mesmo valor do header X-Request-Id, para quem reporta o erro.
-                .addProperty("requestId", traceIdSchema()
-                        .description("Correlation ID, o mesmo do header X-Request-Id; vem nos erros inesperados (500)"))
-                // Sem "type", vale about:blank (RFC 9457); o Spring o omite nesse caso.
-                .required(List.of("title", "status"));
+        // Os métodos fluentes do swagger-models devolvem o tipo raw Schema; por isso a configuração
+        // vai em chamadas separadas sobre o ObjectSchema tipado, sem supressão de aviso.
+        var schema = new ObjectSchema();
+        schema.setDescription("Erro no formato RFC 9457. Sem stack trace, SQL nem nome de classe.");
+        schema.addProperty("type",
+                new StringSchema().format("uri-reference").maxLength(PROBLEM_TEXT_MAX_LENGTH));
+        schema.addProperty("title", new StringSchema().maxLength(PROBLEM_TEXT_MAX_LENGTH));
+        schema.addProperty("status", new IntegerSchema().format("int32")
+                .minimum(BigDecimal.valueOf(MIN_HTTP_STATUS))
+                .maximum(BigDecimal.valueOf(MAX_HTTP_STATUS)));
+        schema.addProperty("detail", new StringSchema().maxLength(PROBLEM_TEXT_MAX_LENGTH));
+        schema.addProperty("instance",
+                new StringSchema().format("uri-reference").maxLength(PROBLEM_TEXT_MAX_LENGTH));
+        // Só no 500: o mesmo valor do header X-Request-Id, para quem reporta o erro.
+        var requestId = traceIdSchema();
+        requestId.setDescription("Correlation ID, o mesmo do header X-Request-Id; vem nos erros inesperados (500)");
+        schema.addProperty("requestId", requestId);
+        // Sem "type", vale about:blank (RFC 9457); o Spring o omite nesse caso.
+        schema.setRequired(List.of("title", "status"));
+        return schema;
     }
 
     private static Schema<String> traceIdSchema() {
-        return new StringSchema().pattern(TRACE_ID_PATTERN).minLength(TRACE_ID_LENGTH).maxLength(TRACE_ID_LENGTH);
+        var schema = new StringSchema();
+        schema.setPattern(TRACE_ID_PATTERN);
+        schema.setMinLength(TRACE_ID_LENGTH);
+        schema.setMaxLength(TRACE_ID_LENGTH);
+        return schema;
     }
 
 }
