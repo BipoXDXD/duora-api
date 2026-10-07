@@ -130,7 +130,7 @@ class EventCatalogIT {
         createPublishedEvent(mockMvc);
         createPublishedEvent(mockMvc);
 
-        mockMvc.perform(get(EVENTS_PATH).param("pageSize", "2").with(user("ana")))
+        mockMvc.perform(get(EVENTS_PATH).param("maxPageSize", "2").with(user("ana")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(2))
                 .andExpect(jsonPath("$.nextPageToken").value(nullValue()));
@@ -149,11 +149,14 @@ class EventCatalogIT {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"0", "-1", "51", "abc", "1.5", "99999999999"})
-    void invalidPageSizeIsABadRequest(String pageSize) throws Exception {
-        mockMvc.perform(get(EVENTS_PATH).param("pageSize", pageSize).with(user("ana")))
+    @ValueSource(strings = {"0", "-1", "51", "abc", "1.5", "99999999999", "", " "})
+    void invalidPageSizeIsABadRequest(String maxPageSize) throws Exception {
+        mockMvc.perform(get(EVENTS_PATH).param("maxPageSize", maxPageSize).with(user("ana")))
                 .andExpect(status().isBadRequest())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(content().json("""
+                        {"detail": "maxPageSize must be between 1 and 50"}
+                        """));
     }
 
     /** Os dois últimos são cursores bem formados com anos que o timestamptz não guarda (+999999999, +200000). */
@@ -254,7 +257,7 @@ class EventCatalogIT {
             pages++;
             assertThat(pages).as("pages fetched; a keyset that repeats items would loop forever").isLessThanOrEqualTo(
                     MAX_PAGES_TO_FOLLOW);
-            var request = get(EVENTS_PATH).param("pageSize", Integer.toString(pageSize)).with(user("ana"));
+            var request = get(EVENTS_PATH).param("maxPageSize", Integer.toString(pageSize)).with(user("ana"));
             if (token != null) {
                 request.param("pageToken", token);
             }

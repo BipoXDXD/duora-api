@@ -514,13 +514,13 @@ class RegistrationIT {
             created.add(eventId);
         }
 
-        String first = mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("pageSize", "2").with(ana()))
+        String first = mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("maxPageSize", "2").with(ana()))
                 .andExpect(jsonPath("$.items[0].eventId").value(created.get(0)))
                 .andExpect(jsonPath("$.items[1].eventId").value(created.get(1)))
                 .andReturn().getResponse().getContentAsString();
         String token = JsonPath.read(first, "$.nextPageToken");
 
-        mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("pageSize", "2").param("pageToken", token).with(ana()))
+        mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("maxPageSize", "2").param("pageToken", token).with(ana()))
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].eventId").value(created.get(2)))
                 .andExpect(jsonPath("$.nextPageToken").value(nullValue()));
@@ -528,7 +528,9 @@ class RegistrationIT {
 
     @Test
     void invalidPageOfOwnRegistrationsIsABadRequest() throws Exception {
-        mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("pageSize", "51").with(ana()))
+        mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("maxPageSize", "51").with(ana()))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("maxPageSize", "").with(ana()))
                 .andExpect(status().isBadRequest());
         mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("pageToken", "AAAA").with(ana()))
                 .andExpect(status().isBadRequest());

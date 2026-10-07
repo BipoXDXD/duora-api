@@ -24,9 +24,9 @@ class EventController {
     }
 
     @GetMapping(PATH)
-    PageResponse<EventResponse> upcoming(@RequestParam(required = false) Integer pageSize,
+    PageResponse<EventResponse> upcoming(@RequestParam(name = "maxPageSize", required = false) String maxPageSize,
             @RequestParam(required = false) String pageToken) {
-        int size = PageSize.of(pageSize);
+        int size = PageSize.of(maxPageSize);
         ResultPage<EventView> page = pageToken == null
                 ? catalog.firstUpcoming(size)
                 : catalog.upcomingAfter(PageToken.decode(pageToken), size);

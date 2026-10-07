@@ -60,9 +60,9 @@ class RegistrationController {
 
     /** As inscrições de quem chama em eventos que ainda não acabaram, pelo início do evento. */
     @GetMapping(MINE_PATH)
-    PageResponse<MyRegistrationResponse> mine(AccountId account, @RequestParam(required = false) Integer pageSize,
+    PageResponse<MyRegistrationResponse> mine(AccountId account, @RequestParam(name = "maxPageSize", required = false) String maxPageSize,
             @RequestParam(required = false) String pageToken) {
-        int size = PageSize.of(pageSize);
+        int size = PageSize.of(maxPageSize);
         ResultPage<RegisteredEvent> page = pageToken == null
                 ? registrations.firstOf(account, size)
                 : registrations.ofAfter(account, PageToken.decode(pageToken), size);

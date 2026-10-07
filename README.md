@@ -188,7 +188,7 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 | `GET` | `/api/admin/events/{id}` | `ADMIN` | `200` com o evento, o `status` (`DRAFT`, `PUBLISHED`, `CANCELLED`) e `registrationCount`; nunca a lista de inscritos |
 | `POST` | `/api/admin/events/{id}:publish` | `ADMIN` | `200` com o evento publicado; `409` se não for rascunho ou já tiver começado |
 | `POST` | `/api/admin/events/{id}:cancel` | `ADMIN` | `200` com o evento cancelado; `409` se já cancelado ou encerrado |
-| `GET` | `/api/events` | Autenticado | Publicados que ainda não começaram, por início: `{items, nextPageToken}`, `pageSize` de 1 a 50 (padrão 10), `pageToken` da página anterior |
+| `GET` | `/api/events` | Autenticado | Publicados que ainda não começaram, por início: `{items, nextPageToken}`, `maxPageSize` de 1 a 50 (padrão 10; vazio ou não inteiro `400`), `pageToken` da página anterior |
 | `GET` | `/api/events/{id}` | Autenticado | `200` com `{id, title, description, startsAt, endsAt, status}`; rascunho ou inexistente `404` |
 | `PUT` | `/api/events/{id}/registration` | Autenticado | Inscreve quem chama: `201` com `Location` na primeira vez, `200` com a mesma inscrição nas repetições; `403` com perfil incompleto; `409` com evento cancelado, começado ou lotado |
 | `GET` | `/api/events/{id}/registration` | Autenticado | A própria inscrição, ou `404` |

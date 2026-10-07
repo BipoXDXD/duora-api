@@ -15,17 +15,18 @@ class PageSizeTest {
     }
 
     @ParameterizedTest
-    @ValueSource(ints = {1, 50})
-    void acceptsTheLimits(int pageSize) {
-        assertThat(PageSize.of(pageSize)).isEqualTo(pageSize);
+    @ValueSource(strings = {"1", "50"})
+    void acceptsTheLimits(String maxPageSize) {
+        assertThat(PageSize.of(maxPageSize)).isEqualTo(Integer.parseInt(maxPageSize));
     }
 
+    /** Vazio não é ausente: {@code maxPageSize=} é um valor que não é número. */
     @ParameterizedTest
-    @ValueSource(ints = {Integer.MIN_VALUE, -1, 0, 51, Integer.MAX_VALUE})
-    void rejectsOutsideTheLimits(int pageSize) {
-        assertThatThrownBy(() -> PageSize.of(pageSize))
+    @ValueSource(strings = {"-2147483648", "-1", "0", "51", "2147483647", "2147483648", "1.5", "abc", "", " "})
+    void rejectsOutsideTheLimits(String maxPageSize) {
+        assertThatThrownBy(() -> PageSize.of(maxPageSize))
                 .isInstanceOf(InvalidPageRequestException.class)
-                .hasMessage("pageSize must be between 1 and 50");
+                .hasMessage("maxPageSize must be between 1 and 50");
     }
 
 }

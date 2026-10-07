@@ -122,7 +122,9 @@ chaves é conferido nos testes). Rascunho responde exatamente como evento inexis
 
 - Keyset por `(startsAt, id)`, sem `OFFSET`; envelope `{items, nextPageToken}` da ADR 0005, sem total;
   `nextPageToken` é `null` quando não há mais itens (a consulta pede um item a mais para saber).
-- `pageSize` de 1 a 50, padrão 10; fora disso, `400`.
+- `maxPageSize` de 1 a 50, padrão 10; fora disso, vazio ou não inteiro, `400`. O nome e o tratamento são os
+  de `GET /api/me/blocked-accounts` ([ADR 0015](0015-bloqueio-e-denuncia.md)), para o contrato ter uma
+  paginação só.
 - O token é Base64 URL-safe de "início id", **não cifrado**: só carrega o que o cliente já viu na página, e
   toda consulta continua filtrando por estado e por dono. Adulterá-lo só muda onde a lista recomeça. Token
   malformado, ou com instante fora de 1970 a 9999 (o `Instant` aceita anos que o `timestamptz` recusaria
@@ -205,7 +207,7 @@ STRIDE do fluxo (permissão de ADMIN e dado pessoal: quem vai a qual encontro):
 | Information disclosure: lista de participantes ou contagem para usuários | Nenhuma rota de participantes; respostas com allowlist de chaves | `EventCatalogIT.readsAPublishedEvent`, `listsOnlyPublishedEventsThatHaveNotStartedInStartOrder` (conjunto exato), `RegistrationIT.adminSeesHowManyPeopleRegisteredButNotWho` |
 | Information disclosure: usuário B vê as inscrições de A | Consultas filtram pela conta autenticada | `RegistrationIT.anotherUserNeitherSeesNorCancelsTheRegistration`, `listsOwnRegistrationsOfEventsThatHaveNotEndedInStartOrder` |
 | Information disclosure: rascunho descoberto por id | Rascunho responde igual a inexistente | `EventCatalogIT.draftLooksExactlyLikeAnEventThatDoesNotExist` |
-| Denial of service: entrada inválida ou enorme vira `500` | Limites em todo campo, horário com fuso, inteiro estrito, `pageSize` e token limitados | `AdminEventIT.invalidInputIsRejectedWithoutWriting`, `acceptsValuesOnTheBorder`, `sqlInTheTitleIsStoredAsPlainText`, `EventCatalogIT.invalidPageSizeIsABadRequest`, `invalidPageTokenIsABadRequest` (inclusive ano fora do `timestamptz`), `RegistrationIT.invalidPageOfOwnRegistrationsIsABadRequest`; `PageTokenTest`, `PageSizeTest` |
+| Denial of service: entrada inválida ou enorme vira `500` | Limites em todo campo, horário com fuso, inteiro estrito, `maxPageSize` e token limitados | `AdminEventIT.invalidInputIsRejectedWithoutWriting`, `acceptsValuesOnTheBorder`, `sqlInTheTitleIsStoredAsPlainText`, `EventCatalogIT.invalidPageSizeIsABadRequest`, `invalidPageTokenIsABadRequest` (inclusive ano fora do `timestamptz`), `RegistrationIT.invalidPageOfOwnRegistrationsIsABadRequest`; `PageTokenTest`, `PageSizeTest` |
 | Denial of service: inscrição presa no lock segura conexões | `lock_timeout` de 2 s → `503` com `Retry-After` | `RegistrationIT.registrationThatWaitsTooLongForTheEventLockIsRefused` |
 
 Repudiation (quem criou, publicou ou cancelou) não é tratada: não há trilha de auditoria. Entra junto com a
