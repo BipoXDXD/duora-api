@@ -6,12 +6,15 @@ import static bipo.tech.duoraapi.matching.api.ApiSchemas.PROBLEM_SCHEMA;
 import java.net.URI;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import bipo.tech.duoraapi.config.AccountRateLimit;
+import bipo.tech.duoraapi.identity.AccountId;
 import bipo.tech.duoraapi.matching.application.RoundOutcome;
 import bipo.tech.duoraapi.matching.application.RoundService;
 import bipo.tech.duoraapi.matching.domain.RoundNumber;
@@ -25,7 +28,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * Rodadas de pareamento para o ADMIN (docs/adr/0017). O papel é conferido pela rota /api/admin/** em
- * SecurityConfiguration. A rodada é criada por PUT no próprio número: repetir devolve a mesma.
+ * SecurityConfiguration. A rodada é criada por PUT no próprio número: repetir devolve a mesma. O PUT gasta o
+ * limite da conta ADMIN antes de tocar o banco, inclusive na repetição, que também lê os inscritos e trava
+ * a rodada (docs/adr/0017).
  */
 @RestController
 @Tag(name = "admin-rounds", description = "Rodadas de pareamento de um evento, iniciadas pelo ADMIN")
@@ -34,9 +39,12 @@ class AdminRoundController {
     static final String PATH = "/api/admin/events/{eventId}/rounds/{number}";
 
     private final RoundService rounds;
+    private final AccountRateLimit rateLimit;
 
-    AdminRoundController(RoundService rounds) {
+    AdminRoundController(RoundService rounds,
+            @Qualifier(RoundRateLimitConfiguration.BEAN_NAME) AccountRateLimit rateLimit) {
         this.rounds = rounds;
+        this.rateLimit = rateLimit;
     }
 
     /** 201 com Location na primeira vez; 200 com a mesma rodada nas repetições. */
@@ -46,7 +54,8 @@ class AdminRoundController {
                     + "bloqueado nem par que já se formou no evento, com prioridade para quem ficou de fora mais "
                     + "vezes. Idempotente pela chave evento + número: repetir, inclusive ao mesmo tempo, devolve "
                     + "a mesma rodada, por isso dispensa If-Match e Idempotency-Key (docs/adr/0017). A rodada N "
-                    + "exige a N-1, e o evento precisa estar publicado e em andamento.")
+                    + "exige a N-1, e o evento precisa estar publicado e em andamento. Cada chamada, repetida ou "
+                    + "não, gasta o limite da conta ADMIN: 30 por hora, repostas aos poucos.")
     @ApiResponse(responseCode = "201", description = "A rodada criada",
             headers = @Header(name = "Location", required = true, description = "Endereço da rodada",
                     schema = @Schema(type = "string", format = "uri", maxLength = ApiSchemas.LOCATION_MAX_LENGTH)))
@@ -59,7 +68,15 @@ class AdminRoundController {
             description = "O evento não está em andamento (rascunho, cancelado, antes do início ou depois do fim), "
                     + "ou a rodada anterior ainda não começou",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
-    @ApiResponse(responseCode = "503", description = "Outro pedido está iniciando a mesma rodada; nada foi gravado",
+    @ApiResponse(responseCode = "429", description = "Limite de rodadas desta conta ADMIN esgotado",
+            headers = @Header(name = "Retry-After", required = true,
+                    description = "Segundos até a próxima chamada ficar disponível",
+                    schema = @Schema(type = "integer", format = "int64", minimum = "0",
+                            maximum = AccountRateLimit.MAX_RETRY_AFTER_SECONDS)),
+            content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
+    @ApiResponse(responseCode = "503",
+            description = "Outro pedido está iniciando a mesma rodada, ou o limite desta conta não pôde ser contado; "
+                    + "nada foi gravado",
             headers = @Header(name = "Retry-After", required = true, description = "Segundos até tentar de novo",
                     schema = @Schema(type = "integer", format = "int32",
                             minimum = MatchingExceptionHandler.RETRY_AFTER_SECONDS,
@@ -71,7 +88,8 @@ class AdminRoundController {
             @PathVariable UUID eventId,
             @Parameter(description = ApiSchemas.ROUND_NUMBER_DESCRIPTION, schema = @Schema(type = "integer",
                     format = "int32", minimum = "" + RoundNumber.FIRST, maximum = "" + RoundNumber.MAX))
-            @PathVariable int number) {
+            @PathVariable int number, AccountId admin) {
+        rateLimit.consume(admin);
         RoundOutcome outcome = rounds.start(eventId, new RoundNumber(number));
         var body = AdminRoundResponse.of(outcome.round());
         if (outcome.created()) {

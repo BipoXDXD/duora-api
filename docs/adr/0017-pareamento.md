@@ -4,8 +4,8 @@
   usuário estão marcadas como **(autônoma)**, e as que dependem dele estão em "Pendente com o usuário".
 - **Data:** 2026-10-07
 - **Relacionadas:** [ADR 0003](0003-estilo-de-testes.md), [ADR 0004](0004-identificadores-e-unicidade.md),
-  [ADR 0005](0005-contrato-da-api.md), [ADR 0007](0007-estilo-por-modulo.md),
-  [ADR 0009](0009-outbox-e-eventos.md), [ADR 0011](0011-conta-e-perfil.md),
+  [ADR 0005](0005-contrato-da-api.md), [ADR 0006](0006-rate-limit-no-postgresql.md),
+  [ADR 0007](0007-estilo-por-modulo.md), [ADR 0009](0009-outbox-e-eventos.md), [ADR 0011](0011-conta-e-perfil.md),
   [ADR 0015](0015-bloqueio-e-denuncia.md), [ADR 0016](0016-eventos-e-inscricoes.md)
 
 ## Contexto
@@ -151,6 +151,33 @@ idempotente mesmo depois do horário. Só criar rodada exige o evento em andamen
 **Número máximo de rodadas (autônoma):** 100 por evento (`RoundNumber.MAX`, repetido no `CHECK`), folga para
 um evento de até 12 horas. Número fora de 1 a 100 → `400`.
 
+### Rate limit **(autônoma)**
+
+A versão inicial não limitava o `PUT` da rodada: a rota é de ADMIN e idempotente. O custo, porém, não depende
+do efeito. Cada chamada abre uma transação, lê os inscritos pela API do `events` e disputa a chave da rodada
+(`insert ... on conflict`, que faz a chamada esperar a concorrente até o teto de 5 s); a que cria a rodada
+ainda roda o emparelhamento O(n³), medido em 1,2 s no pior caso (n = 200). Um ADMIN com o token vazado, um
+script do front em laço ou um clique repetido mantêm conexões do pool presas por segundos. Uma rota de
+ADMIN reduz quem pode abusar, mas não o estrago de um só.
+
+**Decisão:** limite por conta ADMIN, num bucket `round:<conta>` da tabela `rate_limit_bucket` ([ADR
+0006](0006-rate-limit-no-postgresql.md)), consumido no controller antes de ler os inscritos. Por conta, e não
+por evento: o recurso caro é a capacidade do servidor, e o ADMIN com vários eventos em andamento divide o
+mesmo saldo. A leitura (`GET`) é uma consulta pela chave primária e não gasta.
+
+**Valores:** 30 chamadas por hora, repostas aos poucos (uma a cada 2 minutos), em
+`duora.matching.round-rate-limit.capacity` e `.period`. Uso normal é uma rodada a cada poucos minutos por
+evento (o máximo é 100 rodadas, folga para 12 horas), com alguns eventos simultâneos e o clique duplo
+ocasional: bem abaixo de 30 por hora. O saldo cheio de 30 ainda deixa o ADMIN corrigir uma sequência de
+`409`/`404`, e quem esgota espera 2 minutos. Valor inválido derruba a subida (`RequiredRateLimitSettingsIT`).
+
+**A repetição idempotente também gasta**, pelo mesmo motivo da [ADR 0016](0016-eventos-e-inscricoes.md): o
+`200` da rodada que já existe paga a leitura dos inscritos e a espera pela chave. O `404` de evento
+inexistente e o `409` de rodada fora de ordem gastam também. O `403` de quem não é ADMIN e o `400` de número
+inválido são barrados antes do controller e não gastam. `429` com `Retry-After`; bucket impossível de
+contar → `503` com `Retry-After: 1`, sem sorteio (falha fechada). Como o `AccountId` do ADMIN passa a ser
+resolvido, a primeira chamada abre a conta dele, se ainda não existir.
+
 ### Como o `matching` obtém os inscritos
 
 Ler a tabela `registration` quebraria a regra de dono. **Decisão (autônoma):** a API publicada mínima
@@ -233,7 +260,8 @@ rodadas cumpre.
   `trustsafety.Blocking.blockedPairsAmong` (com `trustsafety.BlockedPair`). As tabelas `round` e
   `round_seat` têm FK `restrict` para `event` e `account`: a limpeza de dados de teste e a futura exclusão de
   conta passam a apagar rodadas antes (`AccountTables`).
-- Não há rate limit nas rotas novas: a de ADMIN é idempotente e a de leitura é uma consulta pela PK.
+- O `PUT` da rodada tem limite por conta ADMIN (seção "Rate limit"): 30 por hora. A leitura não tem, por ser
+  uma consulta pela PK. A tabela `rate_limit_bucket` ganha uma linha por ADMIN que sorteia.
 - Não há trilha de auditoria de quem iniciou cada rodada (Repudiation, abaixo); a semente guardada permite
   reproduzir o sorteio.
 
@@ -257,6 +285,8 @@ STRIDE do fluxo (permissão de ADMIN e dado pessoal: quem encontra quem num app 
 | Information disclosure: o `matching` descobre quem bloqueou quem | `BlockedPair` sem direção | `BlockedPairTest.doesNotTellWhoBlockedWhom` |
 | Denial of service: número ou id inválido vira `500` | `RoundNumber` de 1 a 100 e conversão de tipo na fronteira → `400` | `RoundIT.anInvalidRoundNumberIsABadRequestAndWritesNothing`, `anEventIdThatIsNotAUuidIsABadRequest`; `RoundNumberTest` |
 | Denial of service: um pedido preso segura conexões | `lock_timeout` de 5 s → `503` com `Retry-After` | `RoundIT.aRoundStartIsRefusedWhenAnotherRequestHoldsItTooLong` |
+| Denial of service: um ADMIN (ou token vazado) repete o `PUT` e prende conexões com leituras e sorteios | 30 chamadas por hora por conta ADMIN, entre réplicas; `429` + `Retry-After`; repetição idempotente também gasta | `RoundRateLimitIT.callsAboveTheLimitAreRejectedWithRetryAfterAndStartNoRound`, `idempotentRepeatsSpendTheLimit`, `callsForUnknownEventsSpendTheLimit`, `theLimitIsCountedForEachAdminAccountSeparately`, `readingARoundDoesNotSpendTheLimit`, `callsRefusedByTheRoleDoNotSpendTheLimit` |
+| Denial of service: limite que cai com o banco deixa passar | Falha fechada: `503` com `Retry-After: 1`, sem sorteio | `RoundRateLimitIT.roundIsRefusedWithoutWritingWhenTheLimitCannotBeCounted`; `AccountRateLimitIT.rejectsWhenTheStoreIsDown` |
 | Denial of service: sorteio caro demais | Emparelhamento O(n³) com n ≤ 200; pior caso medido em 1,2 s | Medição registrada acima (sem teste automático de tempo, que seria instável) |
 
 Repudiation (quem iniciou a rodada) não é tratada: não há trilha de auditoria, como nos eventos.

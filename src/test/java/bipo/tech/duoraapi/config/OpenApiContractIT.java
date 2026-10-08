@@ -200,9 +200,16 @@ class OpenApiContractIT {
                 .contains("maxPageSize:50");
         assertThat(register.at("/responses/201/headers/Location/required").asBoolean()).isTrue();
         assertThat(register.at("/responses/503/headers/Retry-After/required").asBoolean()).isTrue();
-        for (int status : new int[] {403, 404, 409, 503}) {
+        for (int status : new int[] {403, 404, 409, 429, 503}) {
             assertThat(documentsProblem(register, status)).as("PUT da inscrição documenta o %d", status).isTrue();
         }
+        for (JsonNode operation : List.of(register, unregister)) {
+            assertThat(operation.at("/responses/429/headers/Retry-After/required").asBoolean()).isTrue();
+            assertThat(operation.at("/responses/429/headers/Retry-After/schema/maximum").asInt()).isEqualTo(86_400);
+        }
+        assertThat(documentsProblem(unregister, 429)).isTrue();
+        assertThat(documentsProblem(unregister, 503)).isTrue();
+        assertThat(unregister.at("/responses/503/headers/Retry-After/required").asBoolean()).isTrue();
         assertThat(register.at("/responses/403/description").asString()).contains("Perfil incompleto", "X-XSRF-TOKEN");
         assertThat(unregister.at("/responses/204").isMissingNode()).isFalse();
         assertThat(spec.at("/components/schemas/AdminEventResponse/properties/status/enum").valueStream()
@@ -212,6 +219,19 @@ class OpenApiContractIT {
                 .map(JsonNode::asString))
                 .containsExactly("PUBLISHED", "CANCELLED");
         assertThat(spec.at("/components/schemas/EventResponse/properties").has("capacity")).isFalse();
+    }
+
+    /** Rodadas (docs/adr/0017): o limite por conta ADMIN aparece como 429 com Retry-After e 503. */
+    @Test
+    void startRoundDocumentsItsRateLimit() throws Exception {
+        JsonNode spec = jsonMapper.readTree(generatedSpec());
+        JsonNode start = spec.at("/paths/~1api~1admin~1events~1{eventId}~1rounds~1{number}/put");
+
+        assertThat(documentsProblem(start, 429)).isTrue();
+        assertThat(start.at("/responses/429/headers/Retry-After/required").asBoolean()).isTrue();
+        assertThat(start.at("/responses/429/headers/Retry-After/schema/maximum").asInt()).isEqualTo(86_400);
+        assertThat(documentsProblem(start, 503)).isTrue();
+        assertThat(start.at("/responses/503/headers/Retry-After/required").asBoolean()).isTrue();
     }
 
     /**
