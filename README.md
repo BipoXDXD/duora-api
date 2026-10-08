@@ -102,8 +102,8 @@ java -cp app.jar bipo.tech.duoraapi.migration.DatabaseMigration
 Os testes seguem o estilo de Khorikov ([ADR 0003](docs/adr/0003-estilo-de-testes.md)): o domínio é
 testado sem mocks; o banco próprio é sempre real (Testcontainers com `@ServiceConnection`, nunca
 H2); controllers e segurança passam por `@SpringBootTest` + MockMvc com os serviços de verdade.
-Mockito (`@MockitoBean`) só entra para dependências externas que a API não controla, como o Entra,
-o Web PubSub ou um serviço de e-mail.
+Mockito (`@MockitoBean`) só entra para dependências externas que a API não controla, como o Entra
+ou um serviço de e-mail (e o Web PubSub, se um dia entrar; [ADR 0021](docs/adr/0021-chat-temporario-e-reconexao.md)).
 
 | Tipo | Exemplo |
 |---|---|
@@ -333,7 +333,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0006](docs/adr/0006-rate-limit-no-postgresql.md) | Rate limit com estado no PostgreSQL |
 | [0007](docs/adr/0007-estilo-por-modulo.md) | Ports & adapters no core, camadas simples no supporting |
 | [0008](docs/adr/0008-imagem-e-let-it-crash.md) | Dockerfile multi-stage; queda só em estado irrecuperável |
-| [0009](docs/adr/0009-outbox-e-eventos.md) | Outbox próprio, eventos por chave, partição por limiar |
+| [0009](docs/adr/0009-outbox-e-eventos.md) | Outbox próprio, eventos por chave, partição por limiar (atualizada em 2026-10-08 pela 0021: destino da outbox) |
 | [0010](docs/adr/0010-sem-refresh-token.md) | Login web sem refresh token |
 | [0011](docs/adr/0011-conta-e-perfil.md) | Conta por emissor + `oid`; perfil singular com `If-Match`; regras 18+ |
 | [0012](docs/adr/0012-contrato-openapi.md) | Spec OpenAPI gerada e versionada; Spectral, oasdiff e Schemathesis no CI |

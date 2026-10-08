@@ -1,6 +1,6 @@
 # 0009. Outbox próprio, eventos de tempo real por chave e particionamento por limiar
 
-- **Status:** Aceita; ainda sem código (entra com o primeiro evento da Etapa 2)
+- **Status:** Aceita; ainda sem código (entra com o primeiro evento da Etapa 2). Atualizada em 2026-10-08 pela [ADR 0021](0021-chat-temporario-e-reconexao.md): ver a seção final.
 - **Data:** 2026-10-05
 
 ## Contexto
@@ -73,3 +73,30 @@ Quando o código existir, cada item ganha teste de integração com PostgreSQL r
 - o JSON publicado tem exatamente as chaves `type`, `sessionId`, `version` (e o id do evento);
 - relay derrubado põe a liveness em `BROKEN`;
 - linhas publicadas são apagadas pela limpeza.
+
+## Atualização 2026-10-08 (ADR 0021)
+
+A decisão acima não foi reescrita. A [ADR 0021](0021-chat-temporario-e-reconexao.md), aceita pelo usuário em
+2026-10-08, trocou o transporte de tempo real: **polling curto agora e SSE no próprio Spring (com `NOTIFY`)
+depois**, e o Azure Web PubSub só se o k6 mostrar necessidade. O que muda aqui:
+
+- **Para quem o relay entrega.** O destino "navegadores pelo Web PubSub" do Contexto não existe no início.
+  Com polling, o chat não tem aviso e **não usa outbox na primeira fatia**. Com SSE, o aviso do chat sai por
+  `NOTIFY` na transação de envio, sem passar pela outbox. O relay passa a servir às **entregas externas ou
+  que não podem se perder** (e-mail pelo Communication Services, push) e, se o Web PubSub entrar, a ele
+  também (ADR 0021, seção 5).
+- **Gatilho de implementação.** "Entra com o primeiro evento da Etapa 2" deixa de valer para o chat: a
+  outbox entra com a primeira entrega externa ou, antes disso, com a decisão da pendência abaixo. As
+  notificações de domínio (`connection.formed`, `event.cancelled`) só usam outbox se houver entrega externa.
+- **Pendência registrada e aberta com o usuário (ADR 0021, "Pendente com o usuário", item 1):** o aviso de
+  chat por `NOTIFY` fora da outbox contraria a regra desta ADR para avisos internos. Enquanto o usuário não
+  decidir, esta ADR continua sendo a regra para qualquer aviso de tempo real que não seja o do chat.
+- **O que permanece.** Outbox próprio com `SKIP LOCKED` e lease, backoff com jitter, revalidação dos
+  destinatários, deduplicação por id e versão, let it crash do relay, evento por chave sem dado privado
+  (agora valendo também para o aviso do SSE), e a regra de particionamento por limiar.
+- **Efeitos nas consequências e na compliance.** "O relay exige no mínimo uma réplica sempre ativa" vale
+  quando o relay existir; com SSE, uma aba aberta também mantém a réplica ativa. O teste do JSON com
+  exatamente as chaves `type`, `sessionId` e `version` passa a cobrir o aviso do SSE (`ChatHintTest` na
+  ADR 0021) e, se vier, o publicado no Web PubSub. Os demais testes de relay valem quando o relay existir.
+- **Quando rever.** Se o k6 (fatia 7 da ADR 0021) levar ao Web PubSub, a outbox volta a ser obrigatória para
+  o aviso, como no desenho original acima, com revalidação dos destinatários antes de publicar.

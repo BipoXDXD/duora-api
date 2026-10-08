@@ -5,7 +5,9 @@
 
 > Proposta ajustável para uma equipe pequena e um piloto fechado. Bibliotecas, infraestrutura, limites e organização podem mudar conforme protótipos, custos e testes.
 
-**Resumo:** React + TypeScript no frontend; Java + Spring Boot em um monólito modular; PostgreSQL; Azure Container Apps; tempo real com Web PubSub. Sem Kubernetes próprio ou microsserviços no início.
+> **Atualização 2026-10-08 ([ADR 0021](adr/0021-chat-temporario-e-reconexao.md)):** o transporte de tempo real deixou de ser o Azure Web PubSub. O caminho decidido é **polling curto agora e SSE no próprio Spring (com `NOTIFY` do PostgreSQL) depois**. O Web PubSub fica como evolução, só se o teste de carga com k6 mostrar conexões ou latência que a API não sustenta. O texto original foi mantido riscado onde mudou.
+
+**Resumo:** React + TypeScript no frontend; Java + Spring Boot em um monólito modular; PostgreSQL; Azure Container Apps; tempo real por polling curto e depois SSE no Spring (~~com Web PubSub~~, que fica como evolução condicionada ao k6; ADR 0021). Sem Kubernetes próprio ou microsserviços no início.
 
 ## 1. Frontend
 
@@ -21,7 +23,7 @@ Aplicação web com prioridade para celular e área administrativa. Sem app nati
 | Formulários | [React Hook Form + Zod](https://ui.shadcn.com/docs/forms/react-hook-form) | Perfis e inscrições; validação também no servidor. |
 | Estilo e componentes | [Tailwind CSS](https://tailwindcss.com/docs/installation/using-vite) + [shadcn/ui](https://ui.shadcn.com/docs) | Componentes adaptados à identidade visual, não um tema genérico intocado. |
 | Cliente HTTP | `fetch` + tipos gerados por [openapi-typescript](https://openapi-ts.dev/introduction) | Contrato compartilhado, erros e credenciais tratados em um único cliente. |
-| Tempo real | SDK JavaScript do [Azure Web PubSub](https://learn.microsoft.com/en-us/azure/azure-web-pubsub/overview) | Receber atualizações autorizadas; ações continuam passando pela API. |
+| Tempo real | `fetch` com polling curto (a cada 2 s, só com a aba visível) e depois `EventSource` (SSE) em `GET /api/me/stream`, na mesma origem do BFF ([ADR 0021](adr/0021-chat-temporario-e-reconexao.md)). ~~SDK JavaScript do [Azure Web PubSub](https://learn.microsoft.com/en-us/azure/azure-web-pubsub/overview)~~ fica como evolução, só se o k6 exigir. | Receber avisos por chave e reler o estado autorizado pela API; ações continuam passando pela API. |
 | Qualidade | [oxlint](https://oxc.rs/docs/guide/usage/linter.html) e `tsc` (`typecheck`) | Lint com avisos como erro e checagem de tipos separada do build, no editor e na integração contínua. |
 
 **Design:** Figma, tokens visuais e componentes reutilizáveis; estética adulta e lúdica. Testar teclado, foco, contraste, redução de movimento e acesso permanente a sair/denunciar. Animações CSS primeiro.
@@ -59,10 +61,16 @@ flowchart TD
     A <-->|OIDC: autenticação| I[Entra External ID]
     A -->|Transações e sessões| D[(PostgreSQL privado)]
     A --> B[Blob Storage: arquivos privados]
+    F -->|Polling curto: GET com cursor| A
+    D -->|NOTIFY / LISTEN por réplica| A
+    A -->|SSE: avisos por chave| F
     D -->|Outbox lida pelo backend| A
-    A -->|Publicação autorizada| W[Web PubSub]
-    W -->|WSS: atualizações| F
+    A -->|Entregas externas| C[Communication Services: e-mail]
+    A -.->|Evolução, só se o k6 exigir| W[Web PubSub]
+    W -.->|WSS: avisos| F
 ```
+
+Linhas contínuas valem para o caminho decidido na [ADR 0021](adr/0021-chat-temporario-e-reconexao.md): polling no início e SSE com `NOTIFY` depois. As tracejadas (Web PubSub) são só a evolução condicionada ao k6. O aviso interno por `NOTIFY` sem passar pela outbox é uma pendência aberta com o usuário (ADR 0021, "Pendente com o usuário", item 1).
 
 | Módulo | Responsabilidade |
 |---|---|
@@ -75,9 +83,9 @@ flowchart TD
 
 Módulos conversam por operações explícitas, não por manipulação cruzada de tabelas. Usar [Spring Modulith](https://docs.spring.io/spring-modulith/reference/) inicialmente para verificar fronteiras e ciclos.
 
-**Fluxo de uma ação:** navegador → API valida usuário, participação e estado → transação salva alteração + evento na outbox → publicador envia atualização → cliente reconcilia sua visualização. PostgreSQL guarda a verdade; Web PubSub transporta notificações, não decide resultados.
+**Fluxo de uma ação:** navegador → API valida usuário, participação e estado → transação salva a alteração → o cliente descobre a mudança por polling curto (no início) ou por aviso por chave via SSE (`NOTIFY` na transação, depois) e relê o estado pela API → reconcilia sua visualização. A outbox continua para entregas externas ou que não podem se perder (e-mail, push) e, se um dia entrar, para o Web PubSub ([ADR 0009](adr/0009-outbox-e-eventos.md), atualizada pela [ADR 0021](adr/0021-chat-temporario-e-reconexao.md)). PostgreSQL guarda a verdade; o canal de tempo real transporta avisos, não decide resultados. ~~Transação salva alteração + evento na outbox → publicador envia atualização pelo Web PubSub~~ (texto original, revisto em 2026-10-08).
 
-**Reconexão:** recuperar estado autorizado pela API; eventos têm identificador e versão. Ignorar duplicados e buscar novamente quando houver lacunas.
+**Reconexão:** recuperar estado autorizado pela API; eventos têm identificador e versão. Ignorar duplicados e buscar novamente quando houver lacunas. No chat, o cursor é a sequência da mensagem (`afterSeq`): aviso repetido, perdido ou fora de ordem leva ao mesmo `GET` de recuperação ([ADR 0021](adr/0021-chat-temporario-e-reconexao.md)).
 
 ## 4. Banco de dados
 
@@ -109,7 +117,7 @@ Fotos no Blob Storage; dados sintéticos nos testes. Retenção e exclusão por 
 | **Transactional Outbox** | Persistir uma mudança e a intenção de notificá-la na mesma transação. | Publicação pode repetir; destinatários deduplicam. Não prometer entrega “exatamente uma vez”. |
 | **Idempotência** | Ações reenviadas, pagamentos e webhooks. | Chave + usuário + operação, com validação do payload e resultado persistido. |
 
-Outbox com tentativas limitadas, atraso progressivo, falhas reprocessáveis e coordenação no banco entre réplicas. Revalidar destinatários antes da publicação.
+Outbox com tentativas limitadas, atraso progressivo, falhas reprocessáveis e coordenação no banco entre réplicas. Revalidar destinatários antes da publicação. Desde a [ADR 0021](adr/0021-chat-temporario-e-reconexao.md), o destino da outbox são as entregas externas ou que não podem se perder (e-mail, push e, se vier, Web PubSub); o aviso interno do chat por `NOTIFY` fica fora dela, pendente de decisão do usuário.
 
 **Fora do início:** event sourcing, CQRS com bancos separados, Kafka, service mesh e cache distribuído.
 
@@ -123,7 +131,7 @@ Outbox com tentativas limitadas, atraso progressivo, falhas reprocessáveis e co
 | [Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/overview) | Frontend estático com domínio e HTTPS; Free na homologação e Standard na produção. API publicada separadamente. |
 | [Container Apps](https://learn.microsoft.com/en-us/azure/container-apps/java-overview) | Perfil Consumption; ponto inicial de **1 vCPU, 2 GiB e 1–3 réplicas** na produção. Health checks de startup, readiness e liveness. |
 | [PostgreSQL Flexible Server](https://learn.microsoft.com/en-us/azure/postgresql/compute-storage/concepts-compute) | Burstable B2s e 32 GiB como hipótese para o piloto; monitorar créditos de CPU e conexões. Sem HA inicialmente, aceitando o risco de indisponibilidade. |
-| [Web PubSub](https://learn.microsoft.com/en-us/azure/azure-web-pubsub/overview) | Free para desenvolvimento; Standard na produção, dimensionado por conexões simultâneas e mensagens. |
+| [Web PubSub](https://learn.microsoft.com/en-us/azure/azure-web-pubsub/overview) | ~~Free para desenvolvimento; Standard na produção, dimensionado por conexões simultâneas e mensagens.~~ Revisto em 2026-10-08 ([ADR 0021](adr/0021-chat-temporario-e-reconexao.md)): **fora do primeiro deploy**. O tempo real começa por polling e SSE no próprio Container Apps, sem recurso novo. Entra (com Bicep e papel RBAC) só se o k6 mostrar mais de ~1.000 streams por réplica, `LISTEN/NOTIFY` pesando no commit ou latência que o SSE não dá. |
 | Blob Storage | StorageV2, containers privados, uploads em quarentena e acesso autorizado a fotos aprovadas. |
 | Container Registry | Basic, imagens identificadas por commit e publicadas por digest. |
 | Key Vault + [Managed Identity](https://learn.microsoft.com/en-us/azure/container-apps/managed-identity) | Segredos fora do repositório; identidades e permissões mínimas para os recursos suportados. |
@@ -134,7 +142,7 @@ Outbox com tentativas limitadas, atraso progressivo, falhas reprocessáveis e co
 
 **Domínios:** `app.<domínio>` e `api.<domínio>` no mesmo domínio registrável, ainda a adquirir. CORS/cookies explícitos; homologação com credenciais e domínios próprios.
 
-**Disponibilidade:** [mínimo de uma réplica](https://learn.microsoft.com/en-us/azure/container-apps/scale-app) para manter tarefas internas e outbox. Reavaliar PostgreSQL General Purpose, HA e capacidade antes de expandir eventos pagos.
+**Disponibilidade:** [mínimo de uma réplica](https://learn.microsoft.com/en-us/azure/container-apps/scale-app) para manter tarefas internas e outbox. Com SSE, a réplica também fica ativa enquanto houver aba aberta, o que entra no custo ([ADR 0021](adr/0021-chat-temporario-e-reconexao.md)). Reavaliar PostgreSQL General Purpose, HA e capacidade antes de expandir eventos pagos.
 
 **Backups:** [retenção de 14 dias e restauração isolada testada](https://learn.microsoft.com/en-us/azure/postgresql/backup-restore/concepts-backup-restore). Definir perda tolerável e prazo de recuperação após os testes; backup não substitui HA.
 
@@ -151,7 +159,7 @@ Revisar com [OWASP API Security Top 10](https://api-security.owasp.org/editions/
 | Login | OIDC Authorization Code no backend, com `state`, `nonce` e PKCE. Tokens do provedor ficam no servidor; navegador recebe sessão opaca em cookie `Secure`, `HttpOnly` e `SameSite=Lax`. Expiração, rotação e revogação testadas. |
 | Sessão e navegador | [CSRF habilitado](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html), inclusive na integração SPA; CORS restrito às origens autorizadas. Não armazenar tokens de login em `localStorage`. |
 | Autorização | Checar dono, participante, bloqueio e estado em cada operação. Perfis administrativos separados, menor privilégio e MFA. Esconder botão não concede segurança. |
-| Tempo real | [Permissões restritas](https://learn.microsoft.com/en-us/azure/azure-web-pubsub/concept-client-protocols), tokens curtos e associação a canais controlada pelo servidor. Nada de publicar ou entrar livremente em grupos. Ao bloquear, impedir novos envios e revogar acesso às conexões/canais afetados. |
+| Tempo real | Polling e SSE na mesma origem do BFF: o cookie de sessão vai sozinho, sem token na URL; `Origin` na allowlist ao abrir o stream; limite de streams por conta e stream fechado antes do timeout do ingress; aviso só por chave, nunca com conteúdo; autorização refeita a cada leitura. Ao bloquear, impedir novos envios (o chat fecha igual ao de uma rodada encerrada) ([ADR 0021](adr/0021-chat-temporario-e-reconexao.md)). Se o Web PubSub entrar: [permissões restritas](https://learn.microsoft.com/en-us/azure/azure-web-pubsub/concept-client-protocols), tokens curtos e associação a canais controlada pelo servidor; nada de publicar ou entrar livremente em grupos; revogar as conexões/canais afetados ao bloquear. |
 | API | DTOs permitidos, limites de tamanho, consultas parametrizadas, erros sem stack trace e cabeçalhos de segurança. Limitar por conta/IP/operação e coordenar limites entre réplicas. Actuator e Swagger administrativos restritos. |
 | Arquivos e conteúdo | Validar tipo real, tamanho e dimensões; remover metadados, reprocessar imagens e revisar fotos. Não aceitar HTML, SVG ou anexos no chat inicialmente. |
 | Produto 18+ | Controles de idade, denúncia, bloqueio e moderação desde o piloto; login social não comprova maioridade. Preferências e rejeições privadas; região aproximada em vez de localização precisa. |
@@ -170,7 +178,7 @@ Antes do piloto, revisar finalidades, bases legais, operadores, transferências 
 | Frontend | [Vitest](https://vitest.dev/guide/), [Testing Library](https://testing-library.com/docs/react-testing-library/intro/) e [MSW](https://mswjs.io/docs/): formulários, erros, reconexão e acessibilidade. |
 | Ponta a ponta | [Playwright](https://playwright.dev/docs/intro): dois contextos de navegador completam encontro e interesse mútuo; terceiro usuário tenta acessar sala indevida. Incluir teclado, celular e revisão manual com leitor de tela. |
 | Segurança e contratos | Validar contrato OpenAPI, CSRF, acessos entre usuários, campos privados, uploads e webhooks adulterados. Varredura automatizada em ambiente autorizado e revisão de ameaças. |
-| Carga e falhas | [k6](https://grafana.com/docs/k6/latest/): entrada simultânea, chat e ações; testar reinício, queda do PubSub, reenvio da outbox e restauração do banco. |
+| Carga e falhas | [k6](https://grafana.com/docs/k6/latest/): entrada simultânea, chat e ações; testar reinício, stream SSE reaberto antes do timeout do ingress, reenvio da outbox e restauração do banco. O k6 também decide se o SSE basta ou se o Web PubSub entra ([ADR 0021](adr/0021-chat-temporario-e-reconexao.md), fatia 7); ~~queda do PubSub~~ só se ele for adotado. |
 
 **Casos prioritários:** dois aceites simultâneos criam uma única conexão; ação repetida não avança duas etapas; bloqueio durante conversa impede novos envios; usuário não lê pistas ou decisões alheias; reconexão preserva o progresso.
 
@@ -180,7 +188,7 @@ Antes do piloto, revisar finalidades, bases legais, operadores, transferências 
 
 **Repositório:** `frontend/`, `backend/`, `infra/` e `docs/adr/`. Registrar decisões relevantes em notas curtas: contexto, escolha, consequências e motivo para rever.
 
-**Local:** Docker Compose para PostgreSQL e Azurite; frontend e Spring executados pela IDE. Adaptadores simulados para testes rápidos; integração com identidade e PubSub reais em ambiente isolado.
+**Local:** Docker Compose para PostgreSQL e Azurite; frontend e Spring executados pela IDE. Adaptadores simulados para testes rápidos; integração com identidade real (e com o Web PubSub, se for adotado) em ambiente isolado.
 
 **Infraestrutura:** Bicep parametrizado por ambiente. GitHub Actions: lint, tipos, testes, segurança e build; [federação OIDC para Azure](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect). Credenciais específicas de deploy, quando exigidas, com escopo mínimo.
 

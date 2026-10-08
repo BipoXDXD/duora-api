@@ -141,6 +141,12 @@ papéis por `pgaadauth_create_principal`; fica como evolução (pendência abaix
 (e-mail). A etapa 1 não tem foto, sala nem convite; cada um entra com a funcionalidade que o pede.
 Static Web Apps fica no repositório `duora-web`.
 
+**Atualização 2026-10-08 (ADR 0021):** o Web PubSub deixou de ser um recurso planejado do primeiro
+deploy. O tempo real começa por polling curto e depois SSE no próprio Spring, sem recurso novo na Azure
+([ADR 0021](0021-chat-temporario-e-reconexao.md)). Ele só entra, com Bicep e papel RBAC, se o k6 mostrar
+necessidade. O custo a acompanhar passa a ser a réplica ativa enquanto houver aba aberta e as requisições
+do polling na cota grátis do Container Apps.
+
 O motivo técnico é ter os dois ambientes recriáveis a partir do Git, sem segredo de longa duração
 fora do Key Vault e com a API sem privilégio de DDL. O motivo de negócio é o custo: o menor tier que
 roda o fluxo inteiro, com orçamento e teto de logs, até o piloto medir carga.
