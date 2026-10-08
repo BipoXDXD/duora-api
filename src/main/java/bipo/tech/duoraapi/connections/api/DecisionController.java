@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import bipo.tech.duoraapi.config.AccountRateLimit;
 import bipo.tech.duoraapi.connections.application.DecisionOutcome;
 import bipo.tech.duoraapi.connections.application.DecisionService;
 import bipo.tech.duoraapi.identity.AccountId;
@@ -29,7 +31,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * A decisão privada de quem chama sobre o par de uma rodada, como sub-recurso singular (docs/adr/0019): não
- * há id de pessoa na rota, então não há como ler ou gravar a decisão de outra pessoa.
+ * há id de pessoa na rota, então não há como ler ou gravar a decisão de outra pessoa. O PUT gasta o limite
+ * da conta antes de abrir a transação que serializa o par por advisory lock, inclusive na repetição, que
+ * também paga o lock (docs/adr/0019, "Rate limit").
  */
 @RestController
 @Tag(name = "connections", description = "Decisão privada depois de cada rodada e conexões por interesse mútuo")
@@ -38,9 +42,12 @@ class DecisionController {
     static final String PATH = "/api/events/{eventId}/rounds/{number}/decision";
 
     private final DecisionService decisions;
+    private final AccountRateLimit rateLimit;
 
-    DecisionController(DecisionService decisions) {
+    DecisionController(DecisionService decisions,
+            @Qualifier(DecisionRateLimitConfiguration.BEAN_NAME) AccountRateLimit rateLimit) {
         this.decisions = decisions;
+        this.rateLimit = rateLimit;
     }
 
     /** 201 com Location na primeira vez; 200 com a mesma decisão nas repetições com a mesma escolha. */
@@ -48,7 +55,8 @@ class DecisionController {
     @Operation(operationId = "decideAboutMyPartner", summary = "Decide se continua em contato com o par da rodada",
             description = "Uma decisão por pessoa e rodada, e final: repetir a mesma escolha devolve a mesma "
                     + "decisão (200); a outra escolha é recusada (409). A resposta é a mesma qualquer que seja a "
-                    + "decisão do par; se os dois disserem sim, a conexão aparece em listMyConnections.")
+                    + "decisão do par; se os dois disserem sim, a conexão aparece em listMyConnections. Cada "
+                    + "chamada, repetida ou não, gasta o limite da conta: 120 por hora, repostas aos poucos.")
     @ApiResponse(responseCode = "201", description = "A decisão gravada",
             headers = @Header(name = "Location", required = true, description = "Endereço da decisão",
                     schema = @Schema(type = "string", format = "uri", maxLength = ApiSchemas.LOCATION_MAX_LENGTH)))
@@ -63,8 +71,15 @@ class DecisionController {
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     @ApiResponse(responseCode = "409", description = "Quem chama já decidiu nessa rodada, com a outra escolha",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
+    @ApiResponse(responseCode = "429", description = "Limite de decisões desta conta esgotado; nada foi gravado",
+            headers = @Header(name = "Retry-After", required = true,
+                    description = "Segundos até a próxima chamada ficar disponível",
+                    schema = @Schema(type = "integer", format = "int64", minimum = "0",
+                            maximum = AccountRateLimit.MAX_RETRY_AFTER_SECONDS)),
+            content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     @ApiResponse(responseCode = "503",
-            description = "A decisão do par na mesma rodada demorou além do teto; nada foi gravado",
+            description = "A decisão do par na mesma rodada demorou além do teto, ou o limite desta conta não pôde "
+                    + "ser contado; nada foi gravado",
             headers = @Header(name = "Retry-After", required = true, description = "Segundos até tentar de novo",
                     schema = @Schema(type = "integer", format = "int32",
                             minimum = ConnectionsExceptionHandler.RETRY_AFTER_SECONDS,
@@ -80,6 +95,7 @@ class DecisionController {
             AccountId account,
             @Valid @RequestBody DecideRequest request) {
         int roundNumber = RoundNumberParameter.validated(number);
+        rateLimit.consume(account);
         DecisionOutcome outcome = decisions.decide(eventId, roundNumber, account, request.interested());
         var body = DecisionResponse.of(outcome.decision());
         if (outcome.created()) {
