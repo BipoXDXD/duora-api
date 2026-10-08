@@ -52,6 +52,12 @@ checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 
 include-name = "GET /api/me/registrations"
 checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 429, "5xx"]
 
+# Conexões (docs/adr/0019): o mesmo pageToken opaco que só vale se a própria API o gerou
+# (ConnectionIT.aPageTokenTheApiDidNotIssueIsABadRequest).
+[[operations]]
+include-name = "GET /api/me/connections"
+checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 429, "5xx"]
+
 # O logout é rota da cadeia de sessão do Spring Security (docs/adr/0002, 0012). O fuzzing manda sempre
 # Authorization: Bearer, o que leva a requisição à cadeia bearer, que não participa do logout
 # (docs/adr/0001): 404 em qualquer método com token válido e 401 com token inválido, como numa rota
