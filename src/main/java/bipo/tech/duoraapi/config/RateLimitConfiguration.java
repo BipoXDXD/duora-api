@@ -40,6 +40,11 @@ class RateLimitConfiguration {
 
     @Bean
     PostgreSQLSelectForUpdateBasedProxyManager<String> rateLimitBuckets(DataSource dataSource) {
+        return bucketsOn(dataSource);
+    }
+
+    /** Os buckets sobre {@code dataSource}, com o teto e a expiração de produção. */
+    static PostgreSQLSelectForUpdateBasedProxyManager<String> bucketsOn(DataSource dataSource) {
         return Bucket4jPostgreSQL.selectForUpdateBasedBuilder(dataSource)
                 .primaryKeyMapper(PrimaryKeyMapper.STRING)
                 .table(TABLE)
