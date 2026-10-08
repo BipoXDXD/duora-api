@@ -110,6 +110,7 @@ ou um serviço de e-mail (e o Web PubSub, se um dia entrar; [ADR 0021](docs/adr/
 | Unitário puro (JUnit + AssertJ) | `waitlist/domain/EmailAddressTest`, `profiles/domain/ProfileTest` |
 | `@SpringBootTest` + MockMvc, ponta a ponta | `waitlist/JoinWaitlistIT`, `profiles/ProfileIT` |
 | Concorrência (primeiro acesso, edições simultâneas) | `identity/AccountProvisioningIT`, `profiles/ProfileIT` |
+| Concorrência no chat (sequência sem lacunas, mesma `Idempotency-Key` em paralelo) | `chat/ChatIT` |
 | Spring Security (401/403) | `waitlist/WaitlistSecurityIT` |
 | Validação de JWT (tokens reais, JWKS local) | `config/BearerTokenValidationIT` |
 | Login web (BFF): sessão, cookie, CSRF, logout | `config/WebLoginIT` |
@@ -151,13 +152,18 @@ Pacotes por módulo, cada um dividido em camadas:
 
 ```
 bipo.tech.duoraapi
+├── chat/                # chat temporário do par de cada rodada
+│   ├── adapter/         # repositório JDBC; o chat travado define a sequência das mensagens
+│   ├── api/             # chat como sub-recurso singular da rodada, mensagens com cursor afterSeq
+│   ├── application/     # ChatService (par, horário do evento e bloqueio pelas APIs publicadas)
+│   └── domain/          # chat aberto ou fechado, sequência, texto validado, Idempotency-Key, port
 ├── config/              # segurança, sessão, relógio, rate limit compartilhado
 ├── connections/         # decisão privada depois da rodada e conexões por interesse mútuo
 │   ├── adapter/         # repositórios JDBC; advisory lock por par e rodada
 │   ├── api/             # decisão como sub-recurso singular da rodada, lista das próprias conexões
 │   ├── application/     # DecisionService (par e bloqueio pelas APIs publicadas), ConnectionService
 │   └── domain/          # decisão final, regra do interesse mútuo, par normalizado, ports
-├── events/              # eventos e inscrições; EventRoster é a API publicada
+├── events/              # eventos e inscrições; EventRoster e EventCalendar são as APIs publicadas
 │   ├── api/             # rotas do ADMIN, lista e inscrição; paginação por keyset
 │   ├── application/     # casos de uso (administração, catálogo, inscrição)
 │   └── domain/          # evento e suas regras de estado, repositórios
@@ -189,7 +195,7 @@ bipo.tech.duoraapi
 Os testes espelham a mesma estrutura. Um módulo só usa de outro a API publicada, que são as
 classes na raiz do pacote dele (como `identity.AccountId`); as camadas são internas
 ([ADR 0011](docs/adr/0011-conta-e-perfil.md)). Módulos de apoio (waitlist, identity, profiles, events) usam
-essas camadas simples; os do core (pareamento, minijogos, conexões, trustsafety) usam ports & adapters, com
+essas camadas simples; os do core (pareamento, minijogos, conexões, chat, trustsafety) usam ports & adapters, com
 domínio sem framework. O `ArchitectureTest` cobra a classificação e a direção das dependências
 ([ADR 0007](docs/adr/0007-estilo-por-modulo.md)).
 
@@ -226,6 +232,10 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 | `PUT` | `/api/events/{eventId}/rounds/{number}/decision` | Autenticado | Decide em privado se continua em contato com o par da rodada: `{"interested": true\|false}`. `201` com `Location` na primeira vez, `200` repetindo a mesma escolha, `409` com a outra (decisão final, `reason` `DECISION_ALREADY_MADE`); `404` para quem não formou par. A resposta nunca diz nada da decisão do par; com dois "sim" e sem bloqueio, a conexão aparece em `/api/me/connections` |
 | `GET` | `/api/events/{eventId}/rounds/{number}/decision` | Autenticado | A própria decisão, ou `404` |
 | `GET` | `/api/me/connections` | Autenticado | As próprias conexões, da mais recente à mais antiga: `{items: [{accountId, connectedAt}], nextPageToken}`, `maxPageSize` de 1 a 100 (padrão 20) |
+| `GET` | `/api/events/{eventId}/rounds/{number}/chat` | Autenticado | O chat com o par da rodada: `{chatId, open, lastSeq}`. `open` é falso quando a rodada seguinte começou, o evento acabou, o chat tem 300 mensagens ou há bloqueio, sem dizer qual; `404` para quem não formou par, igual a rodada inexistente |
+| `GET` | `/api/events/{eventId}/rounds/{number}/chat/messages` | Autenticado | As mensagens depois de `afterSeq` (0 a 300, padrão 0), em ordem de posição: `{items: [{seq, fromMe, text, sentAt}], nextAfterSeq}`, `maxPageSize` de 1 a 100 (padrão 50). O front faz polling com a maior posição vista |
+| `GET` | `/api/events/{eventId}/rounds/{number}/chat/messages/{seq}` | Autenticado | Uma mensagem, ou `404` |
+| `POST` | `/api/events/{eventId}/rounds/{number}/chat/messages` | Autenticado | Envia `{"text": "..."}` (1 a 500 caracteres, sem invisíveis) com o header `Idempotency-Key` (UUID). `201` com `Location`; `200` com a mesma mensagem ao repetir chave e texto; `409` com `reason` `IDEMPOTENCY_KEY_REUSED` (chave com outro texto) ou `CHAT_CLOSED`; `429` acima de 20 por minuto |
 | `GET` | `/actuator/health` | Público | Estado da aplicação |
 
 ### Contrato (OpenAPI)
@@ -398,4 +408,11 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
   formam exatamente uma conexão, e um bloqueio em qualquer direção impede que ela se forme. Cada conta
   pode enviar 120 decisões por hora (`duora.connections.decision-rate-limit.*`), repetições idempotentes
   incluídas, com `429` e `Retry-After` ([ADR 0019](docs/adr/0019-decisao-privada-e-conexoes.md)).
+- **Chat temporário:** só as duas pessoas do par da rodada leem e escrevem; para qualquer outra a resposta é
+  `404`, igual a rodada inexistente, sem nada da conversa. O chat fecha para envio na rodada seguinte, no fim
+  do evento, com 300 mensagens ou com um bloqueio em qualquer direção, sempre com a mesma resposta, para o
+  bloqueio não se revelar; fechado, continua legível pelos dois. A sequência das mensagens é atribuída com o
+  chat travado, sem lacunas; o reenvio com a mesma `Idempotency-Key` (escopada por quem envia) grava uma vez
+  só. Texto de 1 a 500 caracteres, sem invisíveis, nunca no log; cada conta envia até 20 mensagens por minuto
+  (`duora.chat.message-rate-limit.*`), repetições incluídas ([ADR 0021](docs/adr/0021-chat-temporario-e-reconexao.md)).
 - **CI:** o gitleaks varre o histórico em busca de segredos a cada push e pull request.
