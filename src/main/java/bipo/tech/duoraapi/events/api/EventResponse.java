@@ -10,7 +10,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
  * O evento para quem está logado. Sem capacidade, contagem nem inscritos: quem vai a um encontro não
- * aparece para os outros (docs/adr/0016). {@code status}: PUBLISHED ou CANCELLED.
+ * aparece para os outros (docs/adr/0016). {@code status}: PUBLISHED ou CANCELLED. {@code currentRound}: só o
+ * número, sem pares nem inscritos (docs/adr/0017).
  */
 record EventResponse(
         @Schema(requiredMode = Schema.RequiredMode.REQUIRED, minLength = ApiSchemas.UUID_LENGTH,
@@ -30,11 +31,20 @@ record EventResponse(
         Instant endsAt,
         @Schema(requiredMode = Schema.RequiredMode.REQUIRED, allowableValues = {"PUBLISHED", "CANCELLED"},
                 description = "Publicado ou cancelado; em andamento e encerrado se leem dos horários")
-        String status) {
+        String status,
+        @Schema(requiredMode = Schema.RequiredMode.REQUIRED, types = {"integer", "null"}, format = "int32",
+                minimum = "" + EventResponse.FIRST_ROUND, maximum = "" + EventResponse.MAX_ROUND,
+                description = "Número da última rodada iniciada, ou null antes da primeira. Na lista, sempre null: "
+                        + "ela só traz eventos que ainda não começaram")
+        Integer currentRound) {
+
+    /** Os limites do número da rodada no matching (RoundNumber), repetidos aqui para a spec. */
+    static final int FIRST_ROUND = 1;
+    static final int MAX_ROUND = 100;
 
     static EventResponse of(EventView event) {
         return new EventResponse(event.id(), event.title(), event.description(), event.startsAt(), event.endsAt(),
-                event.status().name());
+                event.status().name(), event.currentRound());
     }
 
 }

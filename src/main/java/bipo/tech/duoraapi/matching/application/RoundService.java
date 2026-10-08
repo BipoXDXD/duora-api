@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -67,6 +68,12 @@ public class RoundService {
     @Transactional(readOnly = true)
     public RoundSummary find(UUID eventId, RoundNumber number) {
         return rounds.findSummary(eventId, number).orElseThrow(RoundNotFoundException::new);
+    }
+
+    /** A última rodada iniciada no evento; vazio se nenhuma começou ou o evento não existe. */
+    @Transactional(readOnly = true)
+    public Optional<RoundNumber> latestStartedOf(UUID eventId) {
+        return rounds.findLatestNumber(eventId);
     }
 
     /** @throws SeatNotFoundException se a rodada não existe ou a pessoa não estava nela */

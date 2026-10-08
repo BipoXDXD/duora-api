@@ -8,6 +8,7 @@ import static bipo.tech.duoraapi.events.EventFixtures.eventJson;
 import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
 import static bipo.tech.duoraapi.events.EventFixtures.user;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -465,6 +466,48 @@ class RoundIT {
         }
         assertThat(roundRows(eventId)).isZero();
         assertThat(seatRows(eventId)).isZero();
+    }
+
+    /**
+     * Quem está logado vê o número da última rodada iniciada no próprio evento (docs/adr/0017), sem pares nem
+     * inscritos: o mesmo conjunto de chaves de antes, mais currentRound. Vale também para quem não se inscreveu.
+     */
+    @Test
+    void theEventTellsItsLatestStartedRound() throws Exception {
+        String eventId = underwayEventWith("ana", "bruno", "carla");
+        startRound(eventId, 1).andExpect(status().isCreated());
+        startRound(eventId, 2).andExpect(status().isCreated());
+
+        for (String name : List.of("ana", "davi")) {
+            mockMvc.perform(get("/api/events/" + eventId).with(user(name)))
+                    .andExpect(status().isOk())
+                    .andExpect(content().json("""
+                            {"id": "%s", "title": "Noite de jogos", "description": "Jogos de tabuleiro em dupla.",
+                             "startsAt": "%s", "endsAt": "%s", "status": "PUBLISHED", "currentRound": 2}
+                            """.formatted(eventId, EventFixtures.STARTS_AT, EventFixtures.ENDS_AT),
+                            JsonCompareMode.STRICT));
+        }
+    }
+
+    @Test
+    void anUnderwayEventWithoutRoundsHasNoCurrentRound() throws Exception {
+        String eventId = underwayEventWith("ana", "bruno");
+
+        mockMvc.perform(get("/api/events/" + eventId).with(user("ana")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentRound").value(nullValue()));
+    }
+
+    /** As rodadas de um evento não aparecem em outro. */
+    @Test
+    void theCurrentRoundBelongsToItsOwnEvent() throws Exception {
+        String withRounds = underwayEventWith("ana", "bruno");
+        startRound(withRounds, 1).andExpect(status().isCreated());
+        clock.setTo(TestClockConfiguration.NOW);
+        String other = underwayEventWith();
+
+        mockMvc.perform(get("/api/events/" + other).with(user("ana")))
+                .andExpect(jsonPath("$.currentRound").value(nullValue()));
     }
 
     /** Publica um evento, inscreve as pessoas com o perfil completo e leva o relógio ao início. */

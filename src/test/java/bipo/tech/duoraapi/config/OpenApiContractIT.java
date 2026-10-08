@@ -138,6 +138,16 @@ class OpenApiContractIT {
                 .containsExactly(Stream.of(RefusalReason.values()).map(Enum::name).toArray(String[]::new));
     }
 
+    /** O evento diz a rodada atual (docs/adr/0017): um número ou null, nunca ausente. */
+    @Test
+    void theEventDocumentsItsCurrentRound() throws Exception {
+        JsonNode event = jsonMapper.readTree(generatedSpec()).at("/components/schemas/EventResponse");
+
+        assertThat(event.at("/properties/currentRound/type").valueStream().map(JsonNode::asString))
+                .containsExactlyInAnyOrder("integer", "null");
+        assertThat(event.at("/required").valueStream().map(JsonNode::asString)).contains("currentRound");
+    }
+
     /** A conta de quem chama vem do token ou da sessão; um parâmetro na spec convidaria o cliente a mandá-la. */
     @Test
     void noOperationAsksTheClientForTheCallersAccount() throws Exception {

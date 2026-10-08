@@ -3554,6 +3554,13 @@
       "EventResponse" : {
         "type" : "object",
         "properties" : {
+          "currentRound" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32",
+            "description" : "Número da última rodada iniciada, ou null antes da primeira. Na lista, sempre null: ela só traz eventos que ainda não começaram",
+            "maximum" : 100,
+            "minimum" : 1
+          },
           "description" : {
             "type" : "string",
             "description" : "Descrição curta, em parágrafos",
@@ -3589,7 +3596,7 @@
             "maxLength" : 80
           }
         },
-        "required" : [ "description", "endsAt", "id", "startsAt", "status", "title" ]
+        "required" : [ "currentRound", "description", "endsAt", "id", "startsAt", "status", "title" ]
       },
       "FieldError" : {
         "type" : "object",

@@ -28,6 +28,9 @@ public interface RoundRepository {
 
     Optional<RoundSummary> findSummary(UUID eventId, RoundNumber number);
 
+    /** O maior número de rodada gravado no evento; como a sequência não tem buracos, é a última iniciada. */
+    Optional<RoundNumber> findLatestNumber(UUID eventId);
+
     /** Os pares e as rodadas sem par de todas as rodadas já gravadas do evento. */
     PairingHistory historyOf(UUID eventId);
 

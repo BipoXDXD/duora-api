@@ -273,7 +273,7 @@ class EventCatalogIT {
     private static String event(String id, String startsAt, String endsAt, String status) {
         return """
                 {"id": "%s", "title": "Noite de jogos", "description": "Jogos de tabuleiro em dupla.",
-                 "startsAt": "%s", "endsAt": "%s", "status": "%s"}
+                 "startsAt": "%s", "endsAt": "%s", "status": "%s", "currentRound": null}
                 """.formatted(id, startsAt, endsAt, status);
     }
 
