@@ -288,6 +288,10 @@ buracos (FK da rodada anterior), o maior número é a última iniciada.
   uma consulta pela PK. A tabela `rate_limit_bucket` ganha uma linha por ADMIN que sorteia.
 - Não há trilha de auditoria de quem iniciou cada rodada (Repudiation, abaixo); a semente guardada permite
   reproduzir o sorteio.
+- **Medido no k6** ([ADR 0022](0022-teste-de-carga-com-k6.md), `tools/load/RESULTS.md`): o ADMIN iniciando a
+  rodada em 50 eventos de 4 inscritos, cada pedido em dobro, deu sempre um sorteio por (evento, número) e p95 de
+  0,46 a 0,59 s frio, sem `503`; o teto de 5 s do lock não foi tocado. O pior caso de 200 candidatos num evento
+  só continua sem medição no k6.
 
 ## Compliance
 

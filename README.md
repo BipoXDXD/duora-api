@@ -122,6 +122,20 @@ o Web PubSub ou um serviço de e-mail.
 | Migrations Flyway | `FlywayMigrationIT` |
 | Regras de arquitetura (ArchUnit) | `ArchitectureTest`, `ArchitectureRulesTest` |
 
+### Carga (k6)
+
+Três cenários manuais medem as disputas que as ADRs 0016, 0017 e 0019 deixaram para o k6: 100 contas
+disputando um evento de capacidade 50, o ADMIN sorteando 50 eventos em paralelo e 100 pares decidindo ao mesmo
+tempo. O `run.sh` sobe PostgreSQL e a imagem da API com os limites de produção, roda o k6 por container e confere
+as invariantes no banco. Não roda no CI (custo de minutos); os números não são capacidade garantida.
+
+```bash
+docker build -t duora-api:load-local . && tools/load/run.sh duora-api:load-local
+```
+
+Detalhes em [`tools/load/README.md`](tools/load/README.md), resultados em [`tools/load/RESULTS.md`](tools/load/RESULTS.md)
+e decisões na [ADR 0022](docs/adr/0022-teste-de-carga-com-k6.md).
+
 ### Cobertura
 
 O JaCoCo gera relatório sem meta mínima por enquanto:
@@ -345,6 +359,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0018](docs/adr/0018-erros-de-campo-no-problem-detail.md) | Erros de campo (`errors: [{field, code}]`) no ProblemDetail dos 400 de validação |
 | [0019](docs/adr/0019-decisao-privada-e-conexoes.md) | Decisão privada e final por rodada; conexão por interesse mútuo, serializada por advisory lock e única pelo par normalizado |
 | [0020](docs/adr/0020-motivo-das-recusas-no-problem-detail.md) | Motivo (`reason`) no ProblemDetail dos 409 e 403 de regra de negócio |
+| [0022](docs/adr/0022-teste-de-carga-com-k6.md) | Teste de carga manual com k6 contra a imagem, com invariantes conferidas no banco |
 
 ## Segurança
 

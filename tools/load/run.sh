@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Teste de carga manual com k6 (docs/adr/0020): sobe um PostgreSQL descartável e a imagem da API, como o
+# Teste de carga manual com k6 (docs/adr/0022): sobe um PostgreSQL descartável e a imagem da API, como o
 # infra/docker/contract-test.sh, e roda os cenários que medem as disputas das ADRs 0016, 0017 e 0019:
 #   registration  100 contas se inscrevem ao mesmo tempo num evento de capacidade 50
 #   rounds        o ADMIN inicia a rodada em 50 eventos em paralelo (cada pedido em dobro)
