@@ -1,6 +1,6 @@
 # 0021. Chat temporário da rodada, transporte de tempo real e reconexão
 
-- **Status:** Proposta — aguarda decisão do usuário. Nenhum código existe; esta ADR só planeja.
+- **Status:** Aceita em 2026-10-08 pelo usuário: transporte (d) polling e depois (b) SSE, e os defaults de produto da seção 1. Os demais itens de "Pendente com o usuário" seguem abertos.
 - **Data:** 2026-10-08
 - **Relacionadas:** [ADR 0002](0002-front-web-com-bff.md) (BFF), [ADR 0005](0005-contrato-da-api.md),
   [ADR 0006](0006-rate-limit-no-postgresql.md), [ADR 0007](0007-estilo-por-modulo.md),
@@ -342,19 +342,21 @@ Cada fatia é um PR, com testes primeiro.
 | 6 | **Notificações de domínio** no mesmo canal: `connection.formed`, `event.cancelled` | `ConnectionHintIT` (sem aviso para "sim" sem conexão); conjunto de chaves exato; outbox só se houver entrega externa |
 | 7 | **Carga:** k6 com 50 chats e 100 participantes em homologação | Latência p95 do envio ao aviso, consultas/s no B1ms, conexões e custo do dia registrados; decisão de manter (b) ou subir para (a) registrada aqui |
 
+## Decidido pelo usuário (2026-10-08)
+
+- **Produto:** os defaults propostos na seção 1 valem para a primeira versão. O significado de "dupla saiu"
+  continua indefinido, porque o produto ainda não define sair de uma rodada.
+- **Transporte:** (d) polling e depois (b) SSE. O plano (§1, §3, §6) e a [ADR 0009](0009-outbox-e-eventos.md),
+  que citam o Web PubSub, precisam ser atualizados para refletir isso.
+
 ## Pendente com o usuário (decisões críticas)
 
-1. **Produto:** as 10 perguntas da seção 1, principalmente abertura, fechamento, expurgo (24 h proposto),
-   histórico para a conexão e o significado de "dupla saiu".
-2. **Transporte:** (a), (b), (c) ou (d). Recomendado: (d) e depois (b). Escolher (b) ou (d) muda o plano
-   (§1, §3, §6) e a [ADR 0009](0009-outbox-e-eventos.md), que citam o Web PubSub.
-3. **Aviso de chat sem outbox** (por `NOTIFY` transacional) em (b), contrariando a regra da
+1. **Aviso de chat sem outbox** (por `NOTIFY` transacional) em (b), contrariando a regra da
    [ADR 0009](0009-outbox-e-eventos.md) para avisos internos e recuperáveis.
-4. **Resíduo do bloqueio concorrente** (milissegundos) aceito, ou fechado com lock compartilhado.
-5. **Stream e sessão:** a reabertura do SSE renova os 30 min de inatividade da sessão ([ADR 0002](0002-front-web-com-bff.md))?
+2. **Resíduo do bloqueio concorrente** (milissegundos) aceito, ou fechado com lock compartilhado.
+3. **Stream e sessão:** a reabertura do SSE renova os 30 min de inatividade da sessão ([ADR 0002](0002-front-web-com-bff.md))?
    Proposto: não; só requisições do usuário renovam (exige não tocar a sessão no stream).
-6. **Base legal e política de privacidade** para conversa como dado sensível, com apoio jurídico.
-7. **Custo:** se a escolha for (a), aprovar ≈ US$ 49/mês (Standard) ou US$ 1,61 por dia de evento.
+4. **Base legal e política de privacidade** para conversa como dado sensível, com apoio jurídico.
 
 ## Consequências
 

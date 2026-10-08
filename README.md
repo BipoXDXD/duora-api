@@ -345,7 +345,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0018](docs/adr/0018-erros-de-campo-no-problem-detail.md) | Erros de campo (`errors: [{field, code}]`) no ProblemDetail dos 400 de validação |
 | [0019](docs/adr/0019-decisao-privada-e-conexoes.md) | Decisão privada e final por rodada; conexão por interesse mútuo, serializada por advisory lock e única pelo par normalizado |
 | [0020](docs/adr/0020-motivo-das-recusas-no-problem-detail.md) | Motivo (`reason`) no ProblemDetail dos 409 e 403 de regra de negócio |
-| [0021](docs/adr/0021-chat-temporario-e-reconexao.md) | Chat temporário da rodada, transporte de tempo real e reconexão por cursor de sequência (proposta, aguarda decisão) |
+| [0021](docs/adr/0021-chat-temporario-e-reconexao.md) | Chat temporário da rodada, transporte de tempo real e reconexão por cursor de sequência; polling e depois SSE |
 
 ## Segurança
 
