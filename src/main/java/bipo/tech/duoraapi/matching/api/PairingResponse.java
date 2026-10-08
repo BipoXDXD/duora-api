@@ -25,7 +25,7 @@ record PairingResponse(
     static PairingResponse of(UUID eventId, RoundNumber number, Seat seat) {
         UUID partner = switch (seat) {
             case Seat.Paired paired -> paired.partner().value();
-            case Seat.SittingOut sittingOut -> null;
+            case Seat.SittingOut _ -> null;
         };
         return new PairingResponse(eventId, number.value(), partner);
     }

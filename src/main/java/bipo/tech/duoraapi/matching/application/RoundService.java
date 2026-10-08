@@ -55,8 +55,8 @@ public class RoundService {
     public RoundOutcome start(UUID eventId, RoundNumber number) {
         Instant now = clock.instant();
         return switch (eventRoster.rosterOf(eventId, now)) {
-            case Roster.UnknownEvent unknown -> throw new UnknownEventException();
-            case Roster.NotUnderway notUnderway -> rounds.findSummary(eventId, number)
+            case Roster.UnknownEvent _ -> throw new UnknownEventException();
+            case Roster.NotUnderway _ -> rounds.findSummary(eventId, number)
                     .map(RoundOutcome::existing)
                     .orElseThrow(EventNotUnderwayException::new);
             case Roster.Underway underway -> startWhileUnderway(eventId, number, underway.registrants(), now);
