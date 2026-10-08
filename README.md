@@ -377,6 +377,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
   `429` e `Retry-After` ([ADR 0017](docs/adr/0017-pareamento.md)).
 - **Decisão privada e conexões:** só decide quem formou o par na rodada; cada pessoa lê só a própria decisão,
   e nenhuma resposta muda conforme a decisão do par (disse não ou ainda não decidiu). Dois "sim" simultâneos
-  formam exatamente uma conexão, e um bloqueio em qualquer direção impede que ela se forme
-  ([ADR 0019](docs/adr/0019-decisao-privada-e-conexoes.md)).
+  formam exatamente uma conexão, e um bloqueio em qualquer direção impede que ela se forme. Cada conta
+  pode enviar 120 decisões por hora (`duora.connections.decision-rate-limit.*`), repetições idempotentes
+  incluídas, com `429` e `Retry-After` ([ADR 0019](docs/adr/0019-decisao-privada-e-conexoes.md)).
 - **CI:** o gitleaks varre o histórico em busca de segredos a cada push e pull request.
