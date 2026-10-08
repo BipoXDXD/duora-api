@@ -1803,7 +1803,7 @@
         "tags" : [ "connections" ]
       },
       "put" : {
-        "description" : "Uma decisão por pessoa e rodada, e final: repetir a mesma escolha devolve a mesma decisão (200); a outra escolha é recusada (409). A resposta é a mesma qualquer que seja a decisão do par; se os dois disserem sim, a conexão aparece em listMyConnections.",
+        "description" : "Uma decisão por pessoa e rodada, e final: repetir a mesma escolha devolve a mesma decisão (200); a outra escolha é recusada (409). A resposta é a mesma qualquer que seja a decisão do par; se os dois disserem sim, a conexão aparece em listMyConnections. Cada chamada, repetida ou não, gasta o limite da conta: 120 por hora, repostas aos poucos.",
         "operationId" : "decideAboutMyPartner",
         "parameters" : [ {
           "description" : "Id do evento",
@@ -1969,6 +1969,32 @@
               }
             }
           },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Limite de decisões desta conta esgotado; nada foi gravado",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até a próxima chamada ficar disponível",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int64",
+                  "maximum" : 86400,
+                  "minimum" : 0
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
           "500" : {
             "content" : {
               "application/problem+json" : {
@@ -1992,7 +2018,7 @@
                 }
               }
             },
-            "description" : "A decisão do par na mesma rodada demorou além do teto; nada foi gravado",
+            "description" : "A decisão do par na mesma rodada demorou além do teto, ou o limite desta conta não pôde ser contado; nada foi gravado",
             "headers" : {
               "Retry-After" : {
                 "description" : "Segundos até tentar de novo",

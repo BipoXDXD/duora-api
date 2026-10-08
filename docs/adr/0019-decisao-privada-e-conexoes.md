@@ -4,7 +4,7 @@
   usuário estão marcadas como **(autônoma)**, e as que dependem dele estão em "Pendente com o usuário".
 - **Data:** 2026-10-08
 - **Relacionadas:** [ADR 0003](0003-estilo-de-testes.md), [ADR 0005](0005-contrato-da-api.md),
-  [ADR 0007](0007-estilo-por-modulo.md), [ADR 0009](0009-outbox-e-eventos.md),
+  [ADR 0006](0006-rate-limit-no-postgresql.md), [ADR 0007](0007-estilo-por-modulo.md), [ADR 0009](0009-outbox-e-eventos.md),
   [ADR 0011](0011-conta-e-perfil.md), [ADR 0015](0015-bloqueio-e-denuncia.md),
   [ADR 0017](0017-pareamento.md), [ADR 0018](0018-erros-de-campo-no-problem-detail.md)
 
@@ -146,6 +146,53 @@ adulterado só muda onde a própria lista recomeça; instantes fora de 1970 a 99
 erro do banco. A consulta junta as duas metades (`first = eu` e `second = eu`) com `union all`, cada uma
 pelo próprio índice.
 
+### Rate limit **(autônoma)**
+
+A versão inicial não limitava o `PUT` da decisão, sob o argumento de que ele é idempotente, autenticado e
+uma decisão por rodada. O argumento falha no custo, como na inscrição ([ADR 0016](0016-eventos-e-inscricoes.md)):
+cada chamada abre uma transação, disputa o advisory lock do par e lê a decisão do par e o bloqueio, mesmo
+quando só devolve a decisão que já existe. Uma conta que repete a chamada em laço (um script do front, um
+token vazado, um clique repetido) mantém conexões do pool presas, e as chamadas concorrentes sobre o mesmo
+par esperam até o teto de 2 s, que só transforma a espera em `503` para quem não abusou. A idempotência faz
+cada repetição responder `200`, então nada sinaliza o abuso. A [ADR 0006](0006-rate-limit-no-postgresql.md)
+resolve isso com o mesmo mecanismo das denúncias, das inscrições e das rodadas.
+
+| Opção | Prós | Contras |
+|---|---|---|
+| Sem limite, só o `lock_timeout` | Nada a mudar | Uma conta aumenta a latência das decisões do par e ocupa o pool; o `503` cai em quem não abusou |
+| Limite por IP, como a fila de espera | Barra antes de autenticar | A decisão exige login e o IP é compartilhado (rede do local do evento, operadora): pune quem está na mesma rede; trocar de rede renova o limite |
+| **Limite por conta, um bucket para o `PUT`** | A conta é o que o abuso repete; trocar de rede não renova; vale entre réplicas | Uma ida ao banco por chamada (transação curta, em outra conexão e antes da transação da decisão) |
+| Limite por conta e rodada | Um laço numa rodada não esgota as outras | Abrir um bucket por (conta, rodada) multiplica as linhas da tabela por até 100 e não limita o que importa, que é a capacidade do servidor |
+
+**Decisão:** um bucket por conta, chave `decision:<conta>` na tabela `rate_limit_bucket` ([ADR
+0006](0006-rate-limit-no-postgresql.md)), consumido no controller depois de validar o número da rodada e
+antes de abrir a transação. Por conta, e não por rodada: o recurso caro é a conexão e o lock, e quem decide
+em vários eventos divide o mesmo saldo. A leitura (`GET`) é uma consulta pela chave primária de quem chama e
+não gasta. Acima do limite, `429` com `Retry-After` em segundos (teto documentado de 86400, garantido porque
+o período configurado é validado no boot); com o bucket impossível de contar, `503` com `Retry-After: 1` e
+nada é gravado (falha fechada).
+
+**Valores:** 120 chamadas por hora, repostas aos poucos (uma a cada 30 segundos), em
+`duora.connections.decision-rate-limit.capacity` e `.period`. Uso humano normal é uma decisão por rodada, e
+uma rodada dura minutos: algumas por hora durante o evento. O caso mais pesado é decidir tudo de uma vez
+depois do encontro (estimativa: um evento tem até umas 20 rodadas; o máximo de 100 é folga): 20 decisões, ou
+40 com uma repetição do front em cada, cabem no saldo com folga, e o clique duplo gasta duas. O teto de 120
+é o dobro do das inscrições porque aqui o ciclo é por rodada, e não por evento; ainda assim, o abuso fica
+em cerca de 2880 chamadas por dia por conta, cada uma curta (lock de até 2 s e duas ou três linhas). Quem
+esgota espera 30 segundos por chamada. A capacidade é positiva e o período vai até um dia: qualquer outro
+valor derruba a subida (`RequiredRateLimitSettingsIT`).
+
+**A repetição idempotente também gasta.** O `200` da mesma escolha paga a transação e o lock por inteiro;
+isentá-la deixaria justamente o abuso mais barato (repetir a mesma chamada) sem freio. O `404` de quem não
+formou par e o `409` da outra escolha gastam também, o que limita quem tenta adivinhar ids de evento e
+números de rodada. Não gastam: id que não é UUID, número fora de 1 a 100 e corpo inválido (`400`, recusados
+antes de tocar o banco), falta de credencial (`401`) e sessão sem CSRF (`403`). A resposta do `429` não traz
+nada da decisão nem do par, e o `429` não revela nada que a pessoa não saiba: depende só de quantas chamadas
+ela mesma fez.
+
+O limite é consumido no controller, antes de chamar o serviço: ele protege a borda HTTP, e a ida ao bucket
+acontece fora da transação da decisão, para a espera pelo bucket não segurar o advisory lock do par.
+
 ## Pendente com o usuário (decisões críticas)
 
 1. **Mudar a decisão até um prazo** em vez de decisão final (implementado: final, `409`). Com prazo, um
@@ -172,7 +219,10 @@ pelo próprio índice.
   para não colidir com outro uso futuro.
 - A regra do interesse mútuo é uma função pura testada sem banco; atomicidade e unicidade ficam no banco e
   são testadas com PostgreSQL real.
-- Não há rate limit nas rotas novas: a decisão é idempotente e uma por rodada, e a leitura é pela PK.
+- A decisão tem limite por conta (seção "Rate limit"): 120 por hora. A leitura da decisão e a lista de
+  conexões não têm, por serem consultas pela chave de quem chama. A tabela `rate_limit_bucket` ganha uma
+  linha por conta que decide, apagada pela limpeza da [ADR 0006](0006-rate-limit-no-postgresql.md) depois
+  da reposição. O limite adiciona uma ida ao banco por chamada; medir no k6 com o B2s junto com o lock.
 - `StrictBooleanDeserializer` é local ao módulo; se outro corpo ganhar booleano, a mesma questão de coerção
   volta (candidato a configuração global, que mudaria outros corpos).
 
@@ -195,6 +245,8 @@ STRIDE do fluxo (dado pessoal sensível: interesse de uma pessoa por outra num a
 | Tampering: "sim" de outra rodada, evento ou pessoa completa o interesse mútuo | `Decision.answers` exige mesmo evento, rodada e par cruzado | `ConnectionTest.aYesFromAnotherRoundFormsNothing`, `aYesFromAnotherEventFormsNothing`, `aYesAboutSomeoneElseFormsNothing` |
 | Denial of service: número, id, `maxPageSize` ou `pageToken` inválidos viram `500` | Validação na fronteira → `400`; instante do token limitado | `ConnectionIT.anInvalidRoundNumberIsABadRequestAndWritesNothing`, `anEventIdThatIsNotAUuidIsABadRequest`, `anInvalidPageSizeIsABadRequest`, `aPageTokenTheApiDidNotIssueIsABadRequest` |
 | Denial of service: uma decisão presa segura conexões | `lock_timeout` de 2 s → `503` com `Retry-After` | `ConnectionIT.aDecisionIsRefusedWhenThePartnersTakesTooLong` |
+| Denial of service: uma conta (ou token vazado) repete o `PUT` e prende conexões e o lock do par | 120 chamadas por hora por conta, entre réplicas; `429` + `Retry-After`; repetição idempotente também gasta | `DecisionRateLimitIT.callsAboveTheLimitAreRejectedWithRetryAfterAndRecordNothing`, `idempotentRepeatsSpendTheLimit`, `callsFromWhoFormedNoPairSpendTheLimit`, `theLimitIsCountedForEachAccountSeparately`, `callsRefusedBeforeTheDatabaseDoNotSpendTheLimit`, `readingTheDecisionDoesNotSpendTheLimit`, `theBucketLivesUnderTheDecisionKeyOfTheAccount`; `RequiredRateLimitSettingsIT` |
+| Denial of service: limite que cai com o banco deixa passar | Falha fechada: `503` com `Retry-After: 1`, nada gravado | `DecisionRateLimitIT.decisionIsRefusedWithoutWritingWhenTheLimitCannotBeCounted`; `AccountRateLimitIT.rejectsWhenTheStoreIsDown` |
 
 Repudiation: a decisão guarda quem e quando (`decided_at`); não há outra trilha de auditoria.
 

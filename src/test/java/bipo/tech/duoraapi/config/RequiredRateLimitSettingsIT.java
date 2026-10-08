@@ -13,7 +13,7 @@ import bipo.tech.duoraapi.DuoraApiApplication;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
 /**
- * Os limites por conta de inscrições e de rodadas não sobem com valor inválido: capacidade zero bloquearia
+ * Os limites por conta de inscrições, de rodadas e de decisões não sobem com valor inválido: capacidade zero bloquearia
  * todo mundo, e período zero ou acima de um dia quebra o teto do Retry-After documentado na spec.
  */
 class RequiredRateLimitSettingsIT {
@@ -39,7 +39,11 @@ class RequiredRateLimitSettingsIT {
             "duora.matching.round-rate-limit.capacity, 0, capacity",
             "duora.matching.round-rate-limit.capacity, -1, capacity",
             "duora.matching.round-rate-limit.period, PT0S, period",
-            "duora.matching.round-rate-limit.period, P2D, period"})
+            "duora.matching.round-rate-limit.period, P2D, period",
+            "duora.connections.decision-rate-limit.capacity, 0, capacity",
+            "duora.connections.decision-rate-limit.capacity, -1, capacity",
+            "duora.connections.decision-rate-limit.period, PT0S, period",
+            "duora.connections.decision-rate-limit.period, P2D, period"})
     void applicationRefusesToStartWithAnInvalidLimit(String property, String value, String field) {
         String[] arguments = {
                 "--server.port=0",
