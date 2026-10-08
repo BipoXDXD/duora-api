@@ -225,6 +225,10 @@ acontece fora da transação da decisão, para a espera pelo bucket não segurar
   da reposição. O limite adiciona uma ida ao banco por chamada; medir no k6 com o B2s junto com o lock.
 - `StrictBooleanDeserializer` é local ao módulo; se outro corpo ganhar booleano, a mesma questão de coerção
   volta (candidato a configuração global, que mudaria outros corpos).
+- **Medido no k6** ([ADR 0022](0022-teste-de-carga-com-k6.md), `tools/load/RESULTS.md`): 200 decisões
+  simultâneas (100 pares) deram sempre 25 conexões, as dos pares com dois sim, sem `503`; p95 de 1,4 a 1,7 s
+  frio e 0,75 a 0,9 s aquecido, com no máximo 1 conexão esperando o advisory lock. O teto de 2 s não foi
+  atingido; a latência é fila de CPU da API.
 
 ## Compliance
 

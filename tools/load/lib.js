@@ -1,4 +1,4 @@
-// Utilidades comuns aos cenários k6 (docs/adr/0020). Roda dentro do container do k6, onde run.sh copia
+// Utilidades comuns aos cenários k6 (docs/adr/0022). Roda dentro do container do k6, onde run.sh copia
 // os scripts e os dois arquivos gerados por execução para /work:
 //   tokens.json  {admin, users: [{subject, token}]}   tokens JWT de teste, assinados com a chave da execução
 //   data.json    {users: [{subject, accountId}], events: [{id}]}   ids lidos do banco depois do preparo

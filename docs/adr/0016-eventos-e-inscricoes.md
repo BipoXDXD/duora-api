@@ -232,6 +232,11 @@ próprio com o próprio PostgreSQL.
 - O plano (§4) chama a tabela de `registrations`; aqui as tabelas são no singular, como `account` e `profile`.
 - A migration é a `V7`. Se outro ramo em paralelo também criar uma `V7`, o Flyway falha na subida com
   versão duplicada, e uma das duas é renumerada antes do merge.
+- **Medido no k6** ([ADR 0022](0022-teste-de-carga-com-k6.md), `tools/load/RESULTS.md`): 100 contas ao mesmo
+  tempo num evento de 50 vagas dão sempre 50 inscritas, p95 de 1,5 a 1,7 s com a JVM fria e 0,5 s aquecida
+  (1 vCPU); o contador com `CHECK` não se justifica por esses números. O teto de 2 s do lock nunca disparou:
+  os raros `503` (0 a 1 por execução; 18 com 200 contas) vieram do teto de 1 s do limite por conta esperando
+  conexão do pool de 10.
 
 ## Compliance
 
