@@ -43,7 +43,7 @@ public class Pairings {
         return rounds.findSeat(eventId, new RoundNumber(roundNumber), account)
                 .flatMap(seat -> switch (seat) {
                     case Seat.Paired paired -> Optional.of(paired.partner());
-                    case Seat.SittingOut sittingOut -> Optional.<AccountId>empty();
+                    case Seat.SittingOut _ -> Optional.<AccountId>empty();
                 });
     }
 
