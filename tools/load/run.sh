@@ -15,7 +15,9 @@
 # Variáveis: ACCOUNTS (200 contas sintéticas), REGISTRATION_ACCOUNTS (100) e REGISTRATION_CAPACITY (50), do
 # cenário da inscrição; REPEAT (1), quantas vezes cada cenário roda na mesma subida (a segunda em diante
 # acha a JVM aquecida); API_CPUS (1) e API_MEMORY (2g), que são os da produção (ADR 0014);
-# DB_CPUS (2) e DB_MEMORY (4g), um B2s hipotético (plano §6); LOAD_RESULTS_DIR (tools/load/results/<data>).
+# DB_CPUS (2) e DB_MEMORY (4g), um B2s hipotético (plano §6); LOAD_RESULTS_DIR (tools/load/results/<data>);
+# API_ENV_FILE (nenhum), um arquivo do `docker run --env-file` com variáveis a mais para a API, para comparar
+# configurações (pool, timeouts) sem reconstruir a imagem.
 set -euo pipefail
 
 image="${1:?uso: $0 <imagem> [registration|rounds|decisions|all]}"
@@ -33,6 +35,7 @@ api_cpus="${API_CPUS:-1}"
 api_memory="${API_MEMORY:-2g}"
 db_cpus="${DB_CPUS:-2}"
 db_memory="${DB_MEMORY:-4g}"
+api_env_file="${API_ENV_FILE:-}"
 rooms=50
 people_per_room=4
 startup_timeout_seconds=90
@@ -45,6 +48,7 @@ api="$run_id-api"
 workdir="$(mktemp -d)"
 results="${LOAD_RESULTS_DIR:-$here/results/$(date +%Y%m%dT%H%M%S)}"
 mkdir -p "$results"
+[[ -n "$api_env_file" ]] && cp "$api_env_file" "$results/api.env"
 sampler_pids=()
 
 # Os mesmos valores vão para a API e para os tokens; nenhum vale fora deste teste.
@@ -145,6 +149,7 @@ docker run -d --name "$api" --network "$network" -p 127.0.0.1::8080 \
   -e DUORA_TRUSTED_PROXIES=192.0.2.0/24 \
   -e DUORA_MATCHING_ROUNDRATELIMIT_CAPACITY=1000000 \
   -e DUORA_CONNECTIONS_DECISIONRATELIMIT_CAPACITY=1000000 \
+  ${api_env_file:+--env-file "$api_env_file"} \
   "$image" >/dev/null
 
 port="$(docker port "$api" 8080/tcp | head -1 | cut -d: -f2)"
