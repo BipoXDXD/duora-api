@@ -16,6 +16,7 @@ import jakarta.persistence.Version;
 import org.hibernate.annotations.UuidGenerator;
 
 import bipo.tech.duoraapi.FieldErrorCode;
+import bipo.tech.duoraapi.RefusalReason;
 
 /**
  * Um encontro com horário e vagas, criado como rascunho pelo ADMIN e publicado para as inscrições. O
@@ -29,6 +30,9 @@ public class Event {
 
     /** Evento marcado para daqui a mais de um ano é quase sempre erro de digitação no ano. */
     public static final Duration MAX_LEAD = Duration.ofDays(365);
+
+    private static final String ONLY_A_DRAFT_CAN_BE_PUBLISHED = "only a draft can be published";
+    private static final String ENDED = "the event has already ended";
 
     @Id
     @GeneratedValue
@@ -86,11 +90,12 @@ public class Event {
     }
 
     public void publish(Instant now) {
-        if (status != EventStatus.DRAFT) {
-            throw new EventStateConflictException("only a draft can be published");
-        }
-        if (schedule().hasStarted(now)) {
-            throw new EventStateConflictException("the event has already started");
+        switch (status) {
+            case PUBLISHED -> throw new EventStateConflictException(RefusalReason.EVENT_ALREADY_PUBLISHED,
+                    ONLY_A_DRAFT_CAN_BE_PUBLISHED);
+            case CANCELLED -> throw new EventStateConflictException(RefusalReason.EVENT_CANCELLED,
+                    ONLY_A_DRAFT_CAN_BE_PUBLISHED);
+            case DRAFT -> ensureNotStarted(now);
         }
         status = EventStatus.PUBLISHED;
     }
@@ -98,10 +103,10 @@ public class Event {
     /** Cancela até o fim, inclusive durante o evento; as inscrições continuam guardadas. */
     public void cancel(Instant now) {
         if (status == EventStatus.CANCELLED) {
-            throw new EventStateConflictException("the event is already cancelled");
+            throw new EventStateConflictException(RefusalReason.EVENT_CANCELLED, "the event is already cancelled");
         }
         if (schedule().hasEnded(now)) {
-            throw new EventStateConflictException("the event has already ended");
+            throw new EventStateConflictException(RefusalReason.EVENT_ENDED, ENDED);
         }
         status = EventStatus.CANCELLED;
     }
@@ -122,14 +127,14 @@ public class Event {
      */
     public void ensureAcceptsRegistration(long registrations, Instant now) {
         switch (status) {
-            case DRAFT -> throw new EventStateConflictException("the event is not published");
-            case CANCELLED -> throw new EventStateConflictException("the event was cancelled");
+            case DRAFT -> throw new EventStateConflictException(RefusalReason.EVENT_NOT_PUBLISHED,
+                    "the event is not published");
+            case CANCELLED -> throw new EventStateConflictException(RefusalReason.EVENT_CANCELLED,
+                    "the event was cancelled");
             case PUBLISHED -> {
-                if (schedule().hasStarted(now)) {
-                    throw new EventStateConflictException("the event has already started");
-                }
+                ensureNotStarted(now);
                 if (capacity().isFilledBy(registrations)) {
-                    throw new EventStateConflictException("the event is full");
+                    throw new EventStateConflictException(RefusalReason.EVENT_FULL, "the event is full");
                 }
             }
         }
@@ -137,8 +142,16 @@ public class Event {
 
     /** Depois do início, a vaga já foi usada (ou desperdiçada): sair não é mais possível. */
     public void ensureAllowsLeaving(Instant now) {
+        ensureNotStarted(now);
+    }
+
+    /** Começado e encerrado são motivos diferentes para quem chama, embora os dois fechem a ação. */
+    private void ensureNotStarted(Instant now) {
+        if (schedule().hasEnded(now)) {
+            throw new EventStateConflictException(RefusalReason.EVENT_ENDED, ENDED);
+        }
         if (schedule().hasStarted(now)) {
-            throw new EventStateConflictException("the event has already started");
+            throw new EventStateConflictException(RefusalReason.EVENT_STARTED, "the event has already started");
         }
     }
 

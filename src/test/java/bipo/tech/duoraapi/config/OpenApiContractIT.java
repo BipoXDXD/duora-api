@@ -30,6 +30,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import bipo.tech.duoraapi.FieldErrorCode;
+import bipo.tech.duoraapi.RefusalReason;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -111,6 +112,40 @@ class OpenApiContractIT {
         assertThat(fieldError.at("/properties/field/pattern").asString())
                 .isEqualTo(RequestBodyProblemHandler.FIELD_NAME_PATTERN);
         assertThat(fieldError.at("/required").valueStream().map(JsonNode::asString)).containsExactly("code");
+    }
+
+    /**
+     * Todo 409, e o 403 de regra de negócio, declaram o motivo em reason (docs/adr/0020), e os motivos da spec
+     * são exatamente os do RefusalReason: o front gera o tipo deles daqui.
+     */
+    @Test
+    void refusalsDocumentTheirReason() throws Exception {
+        JsonNode spec = jsonMapper.readTree(generatedSpec());
+        List<JsonNode> conflicts = spec.at("/paths").valueStream()
+                .flatMap(item -> HTTP_METHODS.stream().filter(item::has).map(item::get))
+                .filter(operation -> operation.at("/responses").has("409"))
+                .toList();
+        JsonNode register = spec.at("/paths/~1api~1events~1{eventId}~1registration/put");
+
+        assertThat(conflicts).hasSizeGreaterThanOrEqualTo(5).allSatisfy(operation -> assertThat(operation
+                .at("/responses/409/content/application~1problem+json/schema/$ref").asString())
+                .as("409 de %s", operation.path("operationId").asString())
+                .isEqualTo("#/components/schemas/RefusalProblemDetail"));
+        assertThat(register.at("/responses/403/content/application~1problem+json/schema/$ref").asString())
+                .isEqualTo("#/components/schemas/RefusalProblemDetail");
+        assertThat(spec.at("/components/schemas/RefusalProblemDetail/properties/reason/enum").valueStream()
+                .map(JsonNode::asString))
+                .containsExactly(Stream.of(RefusalReason.values()).map(Enum::name).toArray(String[]::new));
+    }
+
+    /** O evento diz a rodada atual (docs/adr/0017): um número ou null, nunca ausente. */
+    @Test
+    void theEventDocumentsItsCurrentRound() throws Exception {
+        JsonNode event = jsonMapper.readTree(generatedSpec()).at("/components/schemas/EventResponse");
+
+        assertThat(event.at("/properties/currentRound/type").valueStream().map(JsonNode::asString))
+                .containsExactlyInAnyOrder("integer", "null");
+        assertThat(event.at("/required").valueStream().map(JsonNode::asString)).contains("currentRound");
     }
 
     /** A conta de quem chama vem do token ou da sessão; um parâmetro na spec convidaria o cliente a mandá-la. */

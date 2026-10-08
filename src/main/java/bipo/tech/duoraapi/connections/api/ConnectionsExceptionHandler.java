@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import bipo.tech.duoraapi.connections.application.DecisionNotFoundException;
 import bipo.tech.duoraapi.connections.application.NotPairedException;
-import bipo.tech.duoraapi.connections.domain.DecisionAlreadyMadeException;
 
 /**
  * Erros das rotas de conexões em ProblemDetail (docs/adr/0005). As mensagens nunca trazem o valor recebido
@@ -35,11 +34,6 @@ class ConnectionsExceptionHandler {
     @ExceptionHandler(DecisionNotFoundException.class)
     ProblemDetail handleDecisionNotFound(DecisionNotFoundException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
-    }
-
-    @ExceptionHandler(DecisionAlreadyMadeException.class)
-    ProblemDetail handleDecisionAlreadyMade(DecisionAlreadyMadeException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
     }
 
     /**

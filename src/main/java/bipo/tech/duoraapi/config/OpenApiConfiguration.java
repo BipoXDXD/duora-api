@@ -3,6 +3,7 @@ package bipo.tech.duoraapi.config;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Stream;
 
 import org.springdoc.core.customizers.OpenApiCustomizer;
@@ -35,6 +36,7 @@ import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
 
 import bipo.tech.duoraapi.FieldErrorCode;
+import bipo.tech.duoraapi.RefusalReason;
 
 /**
  * O que a spec gerada pelo springdoc não sabe sozinha (docs/adr/0012): as duas portas de entrada como
@@ -56,6 +58,8 @@ class OpenApiConfiguration {
     private static final String VALIDATION_PROBLEM_SCHEMA = "ValidationProblemDetail";
     private static final String VALIDATION_PROBLEM_REF = "#/components/schemas/" + VALIDATION_PROBLEM_SCHEMA;
     private static final String FIELD_ERROR_SCHEMA = "FieldError";
+    private static final String REFUSAL_PROBLEM_SCHEMA = "RefusalProblemDetail";
+    private static final String REFUSAL_PROBLEM_REF = "#/components/schemas/" + REFUSAL_PROBLEM_SCHEMA;
     private static final String LOGOUT_PATH = "/logout";
     private static final String LOGOUT_SCHEMA = "LogoutResponse";
     private static final String SESSION_TAG = "session";
@@ -137,7 +141,8 @@ class OpenApiConfiguration {
             // referencia, e só o documentFieldErrors abaixo passa a referenciar estes.
             openApi.getComponents()
                     .addSchemas(VALIDATION_PROBLEM_SCHEMA, validationProblemDetailSchema())
-                    .addSchemas(FIELD_ERROR_SCHEMA, fieldErrorSchema());
+                    .addSchemas(FIELD_ERROR_SCHEMA, fieldErrorSchema())
+                    .addSchemas(REFUSAL_PROBLEM_SCHEMA, refusalProblemDetailSchema());
             openApi.getPaths().forEach((path, item) -> item.readOperationsMap()
                     .forEach((method, operation) -> documentCrossCuttingResponses(path, method, operation)));
         };
@@ -161,6 +166,8 @@ class OpenApiConfiguration {
         if (isPublic(operation)) {
             return;
         }
+        // Antes dos 403 da segurança, abaixo: só o 403 declarado pelo controller é de regra de negócio.
+        documentRefusals(operation);
         operation.getResponses().addApiResponse("401", problem(HttpStatus.UNAUTHORIZED, "Sem credencial válida"));
         if (ADMIN_ROUTES.matches(PathContainer.parsePath(path))) {
             operation.getResponses().addApiResponse("403", problem(HttpStatus.FORBIDDEN, "Sem o papel ADMIN"));
@@ -181,6 +188,18 @@ class OpenApiConfiguration {
         operation.getResponses().addApiResponse("400", new ApiResponse()
                 .description(description)
                 .content(problemContent(VALIDATION_PROBLEM_REF)));
+    }
+
+    /**
+     * RefusalProblemHandler: o 409 e o 403 de regra de negócio dizem o motivo em reason (docs/adr/0020). A
+     * descrição do controller fica; só o schema muda. Operação pública não tem 403 de regra, que depende de
+     * quem chama.
+     */
+    private static void documentRefusals(Operation operation) {
+        Stream.of("403", "409")
+                .map(operation.getResponses()::get)
+                .filter(Objects::nonNull)
+                .forEach(response -> response.content(problemContent(REFUSAL_PROBLEM_REF)));
     }
 
     /**
@@ -273,6 +292,29 @@ class OpenApiConfiguration {
                         .items(new Schema<>().$ref("#/components/schemas/" + FIELD_ERROR_SCHEMA))
                         .maxItems(RequestBodyProblemHandler.MAX_ERRORS)
                         .description("Um item por campo recusado, ordenados por campo"));
+    }
+
+    /**
+     * O ProblemDetail das recusas de regra de negócio, com o membro de extensão reason (RFC 9457, seção 3.2).
+     * reason é opcional porque o mesmo status também sai sem ele: o 403 do CSRF e o 409 de duas ações
+     * simultâneas no mesmo evento.
+     */
+    private static Schema<?> refusalProblemDetailSchema() {
+        return problemDetailSchema()
+                .description("""
+                        Ação recusada pela regra de negócio, no formato RFC 9457. Além do detail, em inglês e \
+                        para pessoas, reason diz a máquinas o motivo. Trate um reason desconhecido, ou a \
+                        falta dele, como recusa genérica do status.""")
+                .addProperty(RefusalProblemHandler.REASON_PROPERTY, new StringSchema()
+                        ._enum(Stream.of(RefusalReason.values()).map(Enum::name).toList())
+                        .description("""
+                                EVENT_NOT_PUBLISHED: o evento é rascunho. EVENT_ALREADY_PUBLISHED: já \
+                                publicado. EVENT_CANCELLED: cancelado. EVENT_STARTED: já começou. EVENT_ENDED: \
+                                já acabou. EVENT_FULL: sem vagas. EVENT_NOT_UNDERWAY: fora do horário ou não \
+                                publicado, para iniciar rodada. ROUND_OUT_OF_SEQUENCE: a rodada anterior não \
+                                existe. PROFILE_INCOMPLETE (403): falta nome, data de nascimento ou região. \
+                                UNDERAGE (403): menor de 18 anos. BIRTH_DATE_ALREADY_SET: a data de \
+                                nascimento não muda."""));
     }
 
     private static Schema<?> fieldErrorSchema() {

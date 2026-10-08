@@ -227,6 +227,30 @@ rodadas cumpre.
   mínimo para o front e para um bloqueio (`POST /api/accounts/{accountId}:block`, que já recebe esse id);
   nome, foto ou nada até o jogo começar continua pendência do usuário.
 
+### Rodada atual no evento (`currentRound`) **(autônoma, 2026-10-08)**
+
+O front não sabia qual era a rodada atual de um evento e pedia à pessoa para digitar o número antes de ler
+o próprio par. O número é do `matching`, e o `matching` já depende do `events` (`EventRoster`).
+
+| Opção | Prós | Contras |
+|---|---|---|
+| Rota nova no `matching`, `GET /api/events/{eventId}/rounds/current` | Sem ciclo; a rodada continua só no `matching` | Mais uma ida do front a cada tela de evento; a rota precisa repetir a regra de visibilidade do evento (rascunho = `404`) pela API do `events` |
+| `events` chama uma API publicada do `matching` | O mais direto | Ciclo `events` ↔ `matching`: os dois módulos deixam de poder ser separados ou testados um sem o outro |
+| **`events` declara a interface `events.RoundProgress`, e o `matching` a implementa** | `currentRound` sai no próprio `GET /api/events/{id}`, uma ida só; o código continua dependendo só de `matching` para `events` (inversão de dependência) | O `events` passa a conhecer a palavra "rodada" e precisa de um bean do `matching` para subir |
+
+**Decisão:** `events.RoundProgress.latestStartedRoundOf(eventId)`, implementada por
+`matching.adapter.EventRoundProgress`, que chama `RoundService.latestStartedOf`. A consulta é
+`order by number desc limit 1` pela chave primária `(event_id, number)`; como a sequência das rodadas não tem
+buracos (FK da rodada anterior), o maior número é a última iniciada.
+
+- `EventResponse.currentRound`: inteiro de 1 a 100 ou `null`, sempre presente. Só o número: sem pares, sem
+  inscritos, sem contagens. Vale para qualquer pessoa logada que lê o evento, inscrita ou não, como o resto do
+  evento; revela só que o evento já teve rodadas.
+- Na lista `GET /api/events` o campo é sempre `null` sem consultar o `matching`: a lista só traz eventos que
+  ainda não começaram, e rodada só começa com o evento em andamento.
+- Evento acabado ou cancelado continua mostrando a última rodada iniciada.
+- `ArchitectureTest.modulesAreFreeOfCycles` passa a recusar ciclo entre módulos no build.
+
 ## Pendente com o usuário (decisões críticas)
 
 1. **Critérios de compatibilidade:** gênero e orientação (quem pode formar par com quem), faixa de idade,
@@ -293,4 +317,10 @@ Repudiation (quem iniciou a rodada) não é tratada: não há trilha de auditori
 
 Regras sem Spring: `RoundPairingTest`, `RoundPairingRandomCasesTest`, `PairingHistoryTest`, `RoundNumberTest`,
 `PairTest`, `CandidateTest`. Fronteira entre módulos: `ArchitectureTest.coreDomainIsFrameworkFree`,
-`coreApplicationTalksToInfrastructureThroughPorts` e `modulesUseOnlyPublishedApisOfOtherModules`.
+`coreApplicationTalksToInfrastructureThroughPorts`, `modulesUseOnlyPublishedApisOfOtherModules` e
+`modulesAreFreeOfCycles`.
+
+Rodada atual: `RoundIT.theEventTellsItsLatestStartedRound` (corpo inteiro, estrito, para inscrita e não
+inscrita: só o número a mais), `anUnderwayEventWithoutRoundsHasNoCurrentRound`,
+`theCurrentRoundBelongsToItsOwnEvent`; `EventCatalogIT` (o evento e a lista com `currentRound` null);
+`OpenApiContractIT.theEventDocumentsItsCurrentRound`.

@@ -151,10 +151,9 @@ class RegistrationIT {
         register(ana(), eventId)
                 .andExpect(status().isForbidden())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(content().json("""
-                        {"title": "Forbidden", "status": 403,
-                         "detail": "complete your profile (name, birth date and region) before registering"}
-                        """));
+                .andExpect(content().json(refusal(403, "Forbidden",
+                        "complete your profile (name, birth date and region) before registering", eventId,
+                        "PROFILE_INCOMPLETE"), JsonCompareMode.STRICT));
 
         assertThat(registrationsOf(eventId)).isZero();
     }
@@ -170,14 +169,17 @@ class RegistrationIT {
                                 """))
                 .andExpect(status().isOk());
 
-        register(ana(), eventId).andExpect(status().isForbidden());
+        register(ana(), eventId)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.reason").value("PROFILE_INCOMPLETE"));
 
         assertThat(registrationsOf(eventId)).isZero();
     }
 
     /**
      * O perfil não aceita data de menor, mas o evento confere a idade de novo no momento da inscrição:
-     * a regra não depende de como o dado chegou ao banco.
+     * a regra não depende de como o dado chegou ao banco. A própria pessoa já sabe a data que tem no
+     * perfil, então o motivo não lhe revela nada (docs/adr/0020).
      */
     @Test
     void minorCannotRegisterEvenWithAFilledProfile() throws Exception {
@@ -189,7 +191,10 @@ class RegistrationIT {
                         """)
                 .update();
 
-        register(ana(), eventId).andExpect(status().isForbidden());
+        register(ana(), eventId)
+                .andExpect(status().isForbidden())
+                .andExpect(content().json(refusal(403, "Forbidden", "only adults (18 or older) can register",
+                        eventId, "UNDERAGE"), JsonCompareMode.STRICT));
 
         assertThat(registrationsOf(eventId)).isZero();
     }
@@ -235,9 +240,8 @@ class RegistrationIT {
         register(ana(), eventId)
                 .andExpect(status().isConflict())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(content().json("""
-                        {"detail": "the event was cancelled"}
-                        """));
+                .andExpect(content().json(conflict("the event was cancelled", eventId, "EVENT_CANCELLED"),
+                        JsonCompareMode.STRICT));
 
         assertThat(registrationsOf(eventId)).isZero();
     }
@@ -250,9 +254,22 @@ class RegistrationIT {
 
         register(ana(), eventId)
                 .andExpect(status().isConflict())
-                .andExpect(content().json("""
-                        {"detail": "the event has already started"}
-                        """));
+                .andExpect(content().json(conflict("the event has already started", eventId, "EVENT_STARTED"),
+                        JsonCompareMode.STRICT));
+
+        assertThat(registrationsOf(eventId)).isZero();
+    }
+
+    @Test
+    void endedEventRefusesRegistration() throws Exception {
+        String eventId = createPublishedEvent(mockMvc);
+        completeProfile(mockMvc, ana());
+        clock.setTo(Instant.parse(EventFixtures.ENDS_AT));
+
+        register(ana(), eventId)
+                .andExpect(status().isConflict())
+                .andExpect(content().json(conflict("the event has already ended", eventId, "EVENT_ENDED"),
+                        JsonCompareMode.STRICT));
 
         assertThat(registrationsOf(eventId)).isZero();
     }
@@ -268,9 +285,8 @@ class RegistrationIT {
         register(user("bruno"), eventId).andExpect(status().isCreated());
         register(user("carla"), eventId)
                 .andExpect(status().isConflict())
-                .andExpect(content().json("""
-                        {"detail": "the event is full"}
-                        """));
+                .andExpect(content().json(conflict("the event is full", eventId, "EVENT_FULL"),
+                        JsonCompareMode.STRICT));
 
         assertThat(registrationsOf(eventId)).isEqualTo(2);
     }
@@ -440,9 +456,23 @@ class RegistrationIT {
 
         unregister(ana(), eventId)
                 .andExpect(status().isConflict())
-                .andExpect(content().json("""
-                        {"detail": "the event has already started"}
-                        """));
+                .andExpect(content().json(conflict("the event has already started", eventId, "EVENT_STARTED"),
+                        JsonCompareMode.STRICT));
+
+        assertThat(registrationsOf(eventId)).isEqualTo(1);
+    }
+
+    @Test
+    void registrationCannotBeCancelledOnceTheEventEnded() throws Exception {
+        String eventId = createPublishedEvent(mockMvc);
+        completeProfile(mockMvc, ana());
+        register(ana(), eventId).andExpect(status().isCreated());
+        clock.setTo(Instant.parse(EventFixtures.ENDS_AT));
+
+        unregister(ana(), eventId)
+                .andExpect(status().isConflict())
+                .andExpect(content().json(conflict("the event has already ended", eventId, "EVENT_ENDED"),
+                        JsonCompareMode.STRICT));
 
         assertThat(registrationsOf(eventId)).isEqualTo(1);
     }
@@ -655,6 +685,17 @@ class RegistrationIT {
     private static RequestPostProcessor anaWebSession() {
         return oidcLogin().idToken(token -> token.issuer("https://tenant-id.ciamlogin.example/tenant-id/v2.0")
                 .claim("oid", "oid-ana"));
+    }
+
+    /** O 409 inteiro da inscrição, com o motivo em reason (docs/adr/0020). */
+    private static String conflict(String detail, String eventId, String reason) {
+        return refusal(409, "Conflict", detail, eventId, reason);
+    }
+
+    private static String refusal(int status, String title, String detail, String eventId, String reason) {
+        return """
+                {"title": "%s", "status": %d, "detail": "%s", "instance": "%s", "reason": "%s"}
+                """.formatted(title, status, detail, registrationPath(eventId), reason);
     }
 
 }

@@ -308,7 +308,11 @@ class ProfileIT {
                 {"birthDate": "1991-05-10"}
                 """)
                 .andExpect(status().isConflict())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(content().json("""
+                        {"title": "Conflict", "status": 409, "detail": "birthDate is already set and cannot be changed",
+                         "instance": "/api/me/profile", "reason": "BIRTH_DATE_ALREADY_SET"}
+                        """, JsonCompareMode.STRICT));
 
         mockMvc.perform(get(PROFILE_PATH).with(ana())).andExpect(content().json(ANA_PROFILE, JsonCompareMode.STRICT));
     }

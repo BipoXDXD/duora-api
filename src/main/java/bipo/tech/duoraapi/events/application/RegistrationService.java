@@ -44,8 +44,8 @@ public class RegistrationService {
      * vaga (docs/adr/0016).
      *
      * @throws EventNotFoundException se o evento não existe ou é rascunho
-     * @throws IncompleteProfileException se o perfil não está completo
-     * @throws bipo.tech.duoraapi.events.domain.EventStateConflictException se cancelado, começado ou lotado
+     * @throws IneligibleToRegisterException se o perfil não está completo ou a pessoa é menor de idade
+     * @throws bipo.tech.duoraapi.events.domain.EventStateConflictException se cancelado, começado, encerrado ou lotado
      */
     @Transactional
     public RegistrationOutcome register(UUID eventId, AccountId account) {
@@ -58,13 +58,21 @@ public class RegistrationService {
         if (existing.isPresent()) {
             return new RegistrationOutcome(RegistrationView.of(existing.get()), false);
         }
-        if (!profiles.isComplete(account, now)) {
-            throw new IncompleteProfileException();
-        }
+        ensureEligible(account, now);
         event.ensureAcceptsRegistration(registrations.countByEvent(eventId), now);
         var registration = new Registration(eventId, account, now.truncatedTo(ChronoUnit.MICROS));
         registrations.insert(registration);
         return new RegistrationOutcome(RegistrationView.of(registration), true);
+    }
+
+    private void ensureEligible(AccountId account, Instant now) {
+        switch (profiles.eligibilityOf(account, now)) {
+            case ELIGIBLE -> {
+                // pode se inscrever
+            }
+            case PROFILE_INCOMPLETE -> throw IneligibleToRegisterException.profileIncomplete();
+            case UNDERAGE -> throw IneligibleToRegisterException.underage();
+        }
     }
 
     @Transactional(readOnly = true)

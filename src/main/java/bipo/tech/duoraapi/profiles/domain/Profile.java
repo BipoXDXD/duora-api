@@ -71,7 +71,12 @@ public class Profile {
     }
 
     public boolean isComplete(Instant now) {
-        return displayName != null && region != null && birthDate != null && AgePolicy.isAdult(birthDate, now);
+        return isFilledIn() && AgePolicy.isAdult(birthDate, now);
+    }
+
+    /** Nome, data de nascimento e região informados, seja qual for a idade. */
+    public boolean isFilledIn() {
+        return displayName != null && region != null && birthDate != null;
     }
 
     public UUID accountId() {

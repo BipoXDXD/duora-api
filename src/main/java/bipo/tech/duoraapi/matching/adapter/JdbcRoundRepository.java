@@ -113,6 +113,21 @@ class JdbcRoundRepository implements RoundRepository {
                 .optional();
     }
 
+    /** Pela chave primária (event_id, number), de trás para frente: lê uma entrada do índice. */
+    @Override
+    public Optional<RoundNumber> findLatestNumber(UUID eventId) {
+        return jdbcClient.sql("""
+                        select number from round
+                         where event_id = :eventId
+                         order by number desc
+                         limit 1
+                        """)
+                .param("eventId", eventId)
+                .query(Integer.class)
+                .optional()
+                .map(RoundNumber::new);
+    }
+
     @Override
     public PairingHistory historyOf(UUID eventId) {
         Set<Pair> pairsFormed = new HashSet<>();

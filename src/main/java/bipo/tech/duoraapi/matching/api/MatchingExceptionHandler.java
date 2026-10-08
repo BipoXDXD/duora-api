@@ -8,14 +8,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import bipo.tech.duoraapi.matching.application.EventNotUnderwayException;
 import bipo.tech.duoraapi.matching.application.RoundNotFoundException;
 import bipo.tech.duoraapi.matching.application.SeatNotFoundException;
 import bipo.tech.duoraapi.matching.application.UnknownEventException;
 import bipo.tech.duoraapi.matching.domain.InvalidRoundNumberException;
-import bipo.tech.duoraapi.matching.domain.RoundOutOfSequenceException;
 
-/** Erros das rotas de pareamento em ProblemDetail (docs/adr/0005). As mensagens nunca trazem o valor recebido. */
+/**
+ * Erros das rotas de pareamento em ProblemDetail (docs/adr/0005). As mensagens nunca trazem o valor recebido.
+ * As recusas de regra de negócio, com reason, saem do RefusalProblemHandler (docs/adr/0020).
+ */
 @RestControllerAdvice(basePackageClasses = MatchingExceptionHandler.class)
 class MatchingExceptionHandler {
 
@@ -40,16 +41,6 @@ class MatchingExceptionHandler {
     @ExceptionHandler(SeatNotFoundException.class)
     ProblemDetail handleSeatNotFound(SeatNotFoundException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
-    }
-
-    @ExceptionHandler(EventNotUnderwayException.class)
-    ProblemDetail handleEventNotUnderway(EventNotUnderwayException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
-    }
-
-    @ExceptionHandler(RoundOutOfSequenceException.class)
-    ProblemDetail handleOutOfSequence(RoundOutOfSequenceException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
     }
 
     /**

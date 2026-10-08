@@ -32,6 +32,22 @@ Mudanças compatíveis ([ADR 0019](adr/0019-decisao-privada-e-conexoes.md)):
   com `maxPageSize` de 1 a 100 (padrão 20) e `pageToken`. Uma conexão aparece quando as duas pessoas dizem
   sim e nenhum bloqueio as separa.
 
+Mudanças compatíveis ([ADR 0020](adr/0020-motivo-das-recusas-no-problem-detail.md) e
+[ADR 0017](adr/0017-pareamento.md)):
+
+- Todo `409` e o `403` de regra da inscrição (`PUT /api/events/{eventId}/registration`) passam a usar o
+  schema `RefusalProblemDetail`: o `ProblemDetail` com o membro opcional `reason`, de uma lista fechada
+  (`EVENT_NOT_PUBLISHED`, `EVENT_ALREADY_PUBLISHED`, `EVENT_CANCELLED`, `EVENT_STARTED`, `EVENT_ENDED`,
+  `EVENT_FULL`, `EVENT_NOT_UNDERWAY`, `ROUND_OUT_OF_SEQUENCE`, `PROFILE_INCOMPLETE`, `UNDERAGE`,
+  `BIRTH_DATE_ALREADY_SET`, `DECISION_ALREADY_MADE`). O status e o `detail` continuam os mesmos, exceto num caso: inscrever-se,
+  sair ou publicar depois do **fim** do evento responde `detail` "the event has already ended" (antes,
+  "already started"), com `reason` `EVENT_ENDED`. O `duora-web` pode escolher a mensagem pelo `reason`,
+  tratando motivo desconhecido ou ausente como recusa genérica do status.
+- `EventResponse` ganha `currentRound` (inteiro de 1 a 100 ou `null`, sempre presente): o número da última
+  rodada iniciada. Em `GET /api/events` é sempre `null`, porque a lista só traz eventos que ainda não
+  começaram. O front pode deixar de pedir o número da rodada à pessoa e ler o par em
+  `GET /api/events/{eventId}/rounds/{currentRound}/pairing`.
+
 Mudança compatível ([ADR 0018](adr/0018-erros-de-campo-no-problem-detail.md)):
 
 - O 400 de validação do corpo (`POST /api/waitlist`, `PATCH /api/me/profile`, `POST /api/reports`,

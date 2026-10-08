@@ -2,6 +2,7 @@ package bipo.tech.duoraapi;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
 import java.util.Arrays;
 import java.util.stream.Stream;
@@ -100,6 +101,16 @@ class ArchitectureTest {
             }
         }).because("módulos conversam por operações explícitas, não pelos internos um do outro (docs/adr/0011)");
     }
+
+    /**
+     * Dependência entre módulos num sentido só: hoje matching usa events, profiles e trustsafety, e events usa
+     * profiles. Quando o de baixo precisa de algo do de cima, declara a interface e o de cima a implementa,
+     * como {@code events.RoundProgress} (docs/adr/0017).
+     */
+    @ArchTest
+    static final ArchRule modulesAreFreeOfCycles = slices().matching(ROOT + ".(*)..")
+            .should().beFreeOfCycles()
+            .because("um ciclo entre módulos impede separá-los e testá-los um sem o outro (docs/adr/0007)");
 
     /** O primeiro segmento depois da raiz, ou null fora dela. */
     private static String moduleOf(String root, String packageName) {
