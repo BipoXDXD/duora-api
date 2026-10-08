@@ -109,6 +109,7 @@ public final class EventFixtures {
     /** Rodadas, inscrições, eventos e as contas com tudo o que é delas (bloqueios, denúncias, perfis). */
     public static void cleanDatabase(JdbcClient jdbcClient) {
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
+        jdbcClient.sql("delete from rate_limit_bucket").update();
     }
 
     public static String randomId() {
