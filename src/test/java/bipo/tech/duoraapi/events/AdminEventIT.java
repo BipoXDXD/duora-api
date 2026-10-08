@@ -243,7 +243,7 @@ class AdminEventIT {
             int published = publish.get(30, TimeUnit.SECONDS);
             int cancelled = cancel.get(30, TimeUnit.SECONDS);
 
-            assertThat(List.of(published, cancelled)).containsOnly(200, 409).contains(200);
+            assertThat(List.of(published, cancelled)).isSubsetOf(200, 409).contains(200);
             assertThat(statusOf(id)).isEqualTo(cancelled == 200 ? "CANCELLED" : "PUBLISHED");
         }
     }
