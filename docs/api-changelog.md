@@ -39,7 +39,7 @@ Mudanças compatíveis ([ADR 0020](adr/0020-motivo-das-recusas-no-problem-detail
   schema `RefusalProblemDetail`: o `ProblemDetail` com o membro opcional `reason`, de uma lista fechada
   (`EVENT_NOT_PUBLISHED`, `EVENT_ALREADY_PUBLISHED`, `EVENT_CANCELLED`, `EVENT_STARTED`, `EVENT_ENDED`,
   `EVENT_FULL`, `EVENT_NOT_UNDERWAY`, `ROUND_OUT_OF_SEQUENCE`, `PROFILE_INCOMPLETE`, `UNDERAGE`,
-  `BIRTH_DATE_ALREADY_SET`). O status e o `detail` continuam os mesmos, exceto num caso: inscrever-se,
+  `BIRTH_DATE_ALREADY_SET`, `DECISION_ALREADY_MADE`). O status e o `detail` continuam os mesmos, exceto num caso: inscrever-se,
   sair ou publicar depois do **fim** do evento responde `detail` "the event has already ended" (antes,
   "already started"), com `reason` `EVENT_ENDED`. O `duora-web` pode escolher a mensagem pelo `reason`,
   tratando motivo desconhecido ou ausente como recusa genérica do status.

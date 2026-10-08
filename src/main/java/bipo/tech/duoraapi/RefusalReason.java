@@ -28,6 +28,8 @@ public enum RefusalReason {
     /** O perfil de quem chama está preenchido, mas a pessoa ainda não tem 18 anos. */
     UNDERAGE,
     /** A data de nascimento já foi informada e não muda. */
-    BIRTH_DATE_ALREADY_SET
+    BIRTH_DATE_ALREADY_SET,
+    /** A pessoa já decidiu sobre o par desta rodada, com a outra escolha; a decisão é final. */
+    DECISION_ALREADY_MADE
 
 }

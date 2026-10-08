@@ -42,6 +42,7 @@ mostrava mensagens genéricas ou teria de ler o `detail`, texto em inglês que n
 | `POST /api/admin/events/{id}:cancel` | 409 | `EVENT_CANCELLED`, `EVENT_ENDED` (e sem `reason` na corrida) |
 | `PUT /api/admin/events/{eventId}/rounds/{number}` | 409 | `EVENT_NOT_UNDERWAY`, `ROUND_OUT_OF_SEQUENCE` |
 | `PATCH /api/me/profile` | 409 | `BIRTH_DATE_ALREADY_SET` |
+| `PUT /api/events/{eventId}/rounds/{number}/decision` | 409 | `DECISION_ALREADY_MADE` |
 
 - `EVENT_STARTED` e `EVENT_ENDED` passam a ser distintos: antes, inscrever-se, sair e publicar depois do
   fim respondiam "already started". O `detail` do evento encerrado é "the event has already ended".

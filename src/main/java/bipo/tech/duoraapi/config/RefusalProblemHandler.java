@@ -36,7 +36,8 @@ class RefusalProblemHandler {
         return switch (reason) {
             case PROFILE_INCOMPLETE, UNDERAGE -> HttpStatus.FORBIDDEN;
             case EVENT_NOT_PUBLISHED, EVENT_ALREADY_PUBLISHED, EVENT_CANCELLED, EVENT_STARTED, EVENT_ENDED,
-                    EVENT_FULL, EVENT_NOT_UNDERWAY, ROUND_OUT_OF_SEQUENCE, BIRTH_DATE_ALREADY_SET -> HttpStatus.CONFLICT;
+                    EVENT_FULL, EVENT_NOT_UNDERWAY, ROUND_OUT_OF_SEQUENCE, BIRTH_DATE_ALREADY_SET,
+                    DECISION_ALREADY_MADE -> HttpStatus.CONFLICT;
         };
     }
 

@@ -130,7 +130,8 @@ class ConnectionIT {
 
         decide(eventId, "ana", YES)
                 .andExpect(status().isConflict())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.reason").value("DECISION_ALREADY_MADE"));
 
         assertThat(jdbcClient.sql("""
                         select interested from round_decision
