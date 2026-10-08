@@ -4,8 +4,12 @@ import java.time.Clock;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
+import bipo.tech.duoraapi.config.AccountRateLimit;
+import bipo.tech.duoraapi.config.RateLimitExceededException;
+import bipo.tech.duoraapi.config.RateLimitUnavailableException;
 import bipo.tech.duoraapi.identity.AccountId;
 import bipo.tech.duoraapi.trustsafety.domain.NewReport;
 import bipo.tech.duoraapi.trustsafety.domain.Report;
@@ -16,16 +20,21 @@ import bipo.tech.duoraapi.trustsafety.domain.ReportRepository;
 /**
  * Denunciar outra conta e ler as próprias denúncias. Quem chama passa a conta autenticada. A denúncia é
  * gravada num comando só, então não há transação própria; a cota usa outra conexão, e não precisa
- * esperar dentro de uma transação aberta.
+ * esperar dentro de uma transação aberta. A cota é o {@link AccountRateLimit} compartilhado, sem porta
+ * própria: ele já é a abstração (docs/adr/0015, "Cota de denúncias").
  */
 @Service
 public class ReportService {
 
+    /** Nome do bean do limite de denúncias: o adapter o declara e este serviço o recebe. */
+    public static final String RATE_LIMIT_BEAN = "reportRateLimit";
+
     private final ReportRepository repository;
-    private final ReportQuota quota;
+    private final AccountRateLimit quota;
     private final Clock clock;
 
-    public ReportService(ReportRepository repository, ReportQuota quota, Clock clock) {
+    public ReportService(ReportRepository repository, @Qualifier(RATE_LIMIT_BEAN) AccountRateLimit quota,
+            Clock clock) {
         this.repository = repository;
         this.quota = quota;
         this.clock = clock;
@@ -38,7 +47,8 @@ public class ReportService {
      * @param descriptionText o relato livre, opcional salvo com {@link ReportReason#OTHER}
      * @throws bipo.tech.duoraapi.trustsafety.domain.InvalidReportException se a denúncia está fora das regras
      * @throws bipo.tech.duoraapi.trustsafety.domain.UnknownAccountException se a conta denunciada não existe
-     * @throws ReportQuotaExceededException se a cota da conta acabou
+     * @throws RateLimitExceededException se a cota da conta acabou
+     * @throws RateLimitUnavailableException se não deu para contar a cota; a denúncia não passa (falha fechada)
      */
     public Report file(AccountId reporter, AccountId reported, ReportReason reason, String descriptionText) {
         var description = ReportDescription.fromText(descriptionText).orElse(null);

@@ -162,9 +162,9 @@ bipo.tech.duoraapi
 │   ├── application/
 │   └── domain/          # regras 18+, value objects, repositório
 ├── trustsafety/         # bloqueio e denúncia; Blocking é a API publicada
-│   ├── adapter/         # repositórios JDBC, cota de denúncias
+│   ├── adapter/         # repositórios JDBC, bean do limite de denúncias
 │   ├── api/
-│   ├── application/     # BlockService, ReportService, port da cota
+│   ├── application/     # BlockService, ReportService (cota via config.AccountRateLimit)
 │   └── domain/          # bloqueio, denúncia, motivos, ports dos repositórios
 └── waitlist/
     ├── api/             # controller, DTOs, rate limit

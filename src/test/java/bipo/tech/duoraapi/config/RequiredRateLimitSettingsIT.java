@@ -13,7 +13,7 @@ import bipo.tech.duoraapi.DuoraApiApplication;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
 /**
- * Os limites por conta de inscrições, de rodadas e de decisões não sobem com valor inválido: capacidade zero bloquearia
+ * Os limites por conta de denúncias, de inscrições, de rodadas e de decisões não sobem com valor inválido: capacidade zero bloquearia
  * todo mundo, e período zero ou acima de um dia quebra o teto do Retry-After documentado na spec.
  */
 class RequiredRateLimitSettingsIT {
@@ -32,6 +32,10 @@ class RequiredRateLimitSettingsIT {
 
     @ParameterizedTest
     @CsvSource({
+            "duora.trustsafety.report-rate-limit.capacity, 0, capacity",
+            "duora.trustsafety.report-rate-limit.capacity, -1, capacity",
+            "duora.trustsafety.report-rate-limit.period, PT0S, period",
+            "duora.trustsafety.report-rate-limit.period, P2D, period",
             "duora.events.registration-rate-limit.capacity, 0, capacity",
             "duora.events.registration-rate-limit.capacity, -1, capacity",
             "duora.events.registration-rate-limit.period, PT0S, period",

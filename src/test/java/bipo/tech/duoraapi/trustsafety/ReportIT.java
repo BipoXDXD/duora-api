@@ -261,7 +261,7 @@ class ReportIT {
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string(HttpHeaders.RETRY_AFTER, SECONDS_TO_NEXT_REPORT))
                 .andExpect(content().json("""
-                        {"title": "Too Many Requests", "status": 429, "detail": "report quota exceeded; try again later",
+                        {"title": "Too Many Requests", "status": 429, "detail": "rate limit exceeded; try again later",
                          "instance": "/api/reports"}
                         """, JsonCompareMode.STRICT));
 
@@ -299,6 +299,7 @@ class ReportIT {
         try {
             file(ana(), harassmentOf(bruno))
                     .andExpect(status().isServiceUnavailable())
+                    .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
                     .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                     .andExpect(content().json("""
                             {"title": "Service Unavailable", "status": 503, "instance": "/api/reports"}
@@ -308,6 +309,18 @@ class ReportIT {
         }
 
         assertThat(reportRows()).isEmpty();
+    }
+
+    /** A tabela é compartilhada com os outros limites: a chave é "report:<conta>" (docs/adr/0006). */
+    @Test
+    void quotaIsKeptUnderTheReportKeyOfTheReporter() throws Exception {
+        var ana = accountIdOf("oid-ana");
+        var bruno = accountIdOf("oid-bruno");
+        file(ana(), harassmentOf(bruno)).andExpect(status().isCreated());
+
+        var keys = jdbcClient.sql("select id from rate_limit_bucket").query(String.class).list();
+
+        assertThat(keys).containsExactly("report:" + ana);
     }
 
     @Test
