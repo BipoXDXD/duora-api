@@ -73,9 +73,11 @@ docker create --name "$jwks" --network "$network" "$jwks_image" httpd -f -p 8000
 docker cp "$workdir/www" "$jwks:/www"
 docker start "$jwks" >/dev/null
 
-# Limites de inscrições e de denúncias altos: o fuzzing precisa chegar ao controller, e os 429 já têm
-# testes próprios (JoinWaitlistIT, ReportIT). Com a cota real, a 11ª denúncia do token de teste já
-# seria 429 e o resto do fuzzing do POST /api/reports não chegaria às regras.
+# Limites altos (fila de espera, denúncias, inscrições e rodadas): o fuzzing precisa chegar ao controller,
+# e os 429 já têm testes próprios (JoinWaitlistIT, ReportIT, RegistrationRateLimitIT, RoundRateLimitIT). Os
+# limites por conta valem para o token de teste, uma conta só: com a cota real, a 11ª denúncia, a 61ª
+# inscrição ou cancelamento e a 31ª rodada já seriam 429, e o resto do fuzzing dessas rotas não chegaria às
+# regras.
 docker run -d --name "$api" --network "$network" -p 127.0.0.1::8080 \
   -e SPRING_DATASOURCE_URL="jdbc:postgresql://$database:5432/duora" \
   -e SPRING_DATASOURCE_USERNAME=duora \
@@ -89,6 +91,8 @@ docker run -d --name "$api" --network "$network" -p 127.0.0.1::8080 \
   -e DUORA_TRUSTED_PROXIES=192.0.2.0/24 \
   -e DUORA_WAITLIST_JOINRATELIMIT_CAPACITY=1000000 \
   -e DUORA_TRUSTSAFETY_REPORTRATELIMIT_CAPACITY=1000000 \
+  -e DUORA_EVENTS_REGISTRATIONRATELIMIT_CAPACITY=1000000 \
+  -e DUORA_MATCHING_ROUNDRATELIMIT_CAPACITY=1000000 \
   "$image" >/dev/null
 
 port="$(docker port "$api" 8080/tcp | head -1 | cut -d: -f2)"
