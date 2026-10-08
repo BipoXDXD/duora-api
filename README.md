@@ -190,7 +190,7 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 | `GET` | `/api/admin/waitlist/stats` | `ADMIN` | `200` com `{"total": n}` |
 | `GET` | `/api/me` | Autenticado | `200` com `{"displayName": "...", "profileComplete": false}` (`displayName` é o nome do Entra, `null` se não houver); `401` sem sessão. Abre a conta interna no primeiro acesso |
 | `GET` | `/api/me/profile` | Autenticado | `200` com `{displayName, birthDate, bio, region, complete}` e `ETag` com a versão (`"0"` antes da primeira edição) |
-| `PATCH` | `/api/me/profile` | Autenticado | Edição parcial: campo ausente não muda, `null` apaga. Exige `If-Match` com o `ETag` lido: sem ele `428`, desatualizado `412`. `200` com o perfil e o `ETag` novo; `400` para valor inválido ou campo desconhecido; `409` ao trocar a data de nascimento |
+| `PATCH` | `/api/me/profile` | Autenticado | Edição parcial: campo ausente não muda, `null` apaga. Exige `If-Match` com o `ETag` lido: sem ele `428`, desatualizado `412`. `200` com o perfil e o `ETag` novo; `400` para valor inválido ou campo desconhecido; `409` ao trocar a data de nascimento (`reason` `BIRTH_DATE_ALREADY_SET`) |
 | `POST` | `/api/accounts/{accountId}:block` | Autenticado | Bloqueia outra conta: `204`, também se já bloqueada (mantém a data do primeiro bloqueio); `400` para si mesmo ou id que não é UUID; `404` sem conta com esse id |
 | `POST` | `/api/accounts/{accountId}:unblock` | Autenticado | Desfaz o próprio bloqueio: `204`, também sem bloqueio; o bloqueio feito pela outra pessoa continua valendo |
 | `GET` | `/api/me/blocked-accounts` | Autenticado | Quem o usuário bloqueou, do mais recente ao mais antigo: `{items: [{accountId, blockedAt}], nextPageToken}`, `maxPageSize` de 1 a 100 (padrão 20), `pageToken` da página anterior; `400` fora disso |
@@ -198,15 +198,15 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 | `GET` | `/api/reports/{id}` | Autenticado | A própria denúncia; de outra pessoa ou inexistente, `404` |
 | `POST` | `/api/admin/events` | `ADMIN` | Cria um rascunho com `{title, description, startsAt, endsAt, capacity}` (horários ISO 8601 com fuso). `201` com `Location` e o evento; `400` para valor inválido ou campo desconhecido |
 | `GET` | `/api/admin/events/{id}` | `ADMIN` | `200` com o evento, o `status` (`DRAFT`, `PUBLISHED`, `CANCELLED`) e `registrationCount`; nunca a lista de inscritos |
-| `POST` | `/api/admin/events/{id}:publish` | `ADMIN` | `200` com o evento publicado; `409` se não for rascunho ou já tiver começado |
-| `POST` | `/api/admin/events/{id}:cancel` | `ADMIN` | `200` com o evento cancelado; `409` se já cancelado ou encerrado |
+| `POST` | `/api/admin/events/{id}:publish` | `ADMIN` | `200` com o evento publicado; `409` se não for rascunho ou já tiver começado (`reason` `EVENT_ALREADY_PUBLISHED`, `EVENT_CANCELLED`, `EVENT_STARTED` ou `EVENT_ENDED`) |
+| `POST` | `/api/admin/events/{id}:cancel` | `ADMIN` | `200` com o evento cancelado; `409` se já cancelado ou encerrado (`reason` `EVENT_CANCELLED` ou `EVENT_ENDED`) |
 | `GET` | `/api/events` | Autenticado | Publicados que ainda não começaram, por início: `{items, nextPageToken}`, `maxPageSize` de 1 a 50 (padrão 10; vazio ou não inteiro `400`), `pageToken` da página anterior |
-| `GET` | `/api/events/{id}` | Autenticado | `200` com `{id, title, description, startsAt, endsAt, status}`; rascunho ou inexistente `404` |
-| `PUT` | `/api/events/{id}/registration` | Autenticado | Inscreve quem chama: `201` com `Location` na primeira vez, `200` com a mesma inscrição nas repetições; `403` com perfil incompleto; `409` com evento cancelado, começado ou lotado |
+| `GET` | `/api/events/{id}` | Autenticado | `200` com `{id, title, description, startsAt, endsAt, status, currentRound}` (`currentRound`: a última rodada iniciada, ou `null`); rascunho ou inexistente `404` |
+| `PUT` | `/api/events/{id}/registration` | Autenticado | Inscreve quem chama: `201` com `Location` na primeira vez, `200` com a mesma inscrição nas repetições; `403` com perfil incompleto ou menor de idade (`reason` `PROFILE_INCOMPLETE` ou `UNDERAGE`); `409` com evento cancelado, começado, encerrado ou lotado (`EVENT_CANCELLED`, `EVENT_STARTED`, `EVENT_ENDED`, `EVENT_FULL`) |
 | `GET` | `/api/events/{id}/registration` | Autenticado | A própria inscrição, ou `404` |
-| `DELETE` | `/api/events/{id}/registration` | Autenticado | Cancela a própria inscrição: `204`, também sem inscrição; `409` depois do início |
+| `DELETE` | `/api/events/{id}/registration` | Autenticado | Cancela a própria inscrição: `204`, também sem inscrição; `409` depois do início (`EVENT_STARTED` ou `EVENT_ENDED`) |
 | `GET` | `/api/me/registrations` | Autenticado | As próprias inscrições em eventos que ainda não acabaram, com o resumo do evento, no mesmo envelope paginado |
-| `PUT` | `/api/admin/events/{eventId}/rounds/{number}` | `ADMIN` | Inicia a rodada com o evento em andamento e sorteia os pares entre os inscritos. `201` com `Location` na primeira vez, `200` com a mesma rodada nas repetições, inclusive simultâneas; `409` fora do horário, com evento cancelado ou rascunho, ou sem a rodada anterior; só contagens (`pairCount`, `sittingOutCount`), nunca quem |
+| `PUT` | `/api/admin/events/{eventId}/rounds/{number}` | `ADMIN` | Inicia a rodada com o evento em andamento e sorteia os pares entre os inscritos. `201` com `Location` na primeira vez, `200` com a mesma rodada nas repetições, inclusive simultâneas; `409` fora do horário, com evento cancelado ou rascunho (`EVENT_NOT_UNDERWAY`), ou sem a rodada anterior (`ROUND_OUT_OF_SEQUENCE`); só contagens (`pairCount`, `sittingOutCount`), nunca quem |
 | `GET` | `/api/admin/events/{eventId}/rounds/{number}` | `ADMIN` | A mesma resposta da rodada, ou `404` |
 | `GET` | `/api/events/{eventId}/rounds/{number}/pairing` | Autenticado | O próprio par: `{eventId, roundNumber, partnerAccountId}`, com `null` para quem ficou de fora; `404` para quem não estava no sorteio, igual a rodada inexistente |
 | `PUT` | `/api/events/{eventId}/rounds/{number}/decision` | Autenticado | Decide em privado se continua em contato com o par da rodada: `{"interested": true\|false}`. `201` com `Location` na primeira vez, `200` repetindo a mesma escolha, `409` com a outra (decisão final); `404` para quem não formou par. A resposta nunca diz nada da decisão do par; com dois "sim" e sem bloqueio, a conexão aparece em `/api/me/connections` |
@@ -288,8 +288,9 @@ Para o front (repositório `duora-web`):
 | Sair | `POST /logout` com o header `X-XSRF-TOKEN`; a resposta é `200` com `{"logoutUrl": "..."}`, e o front navega até essa URL para sair também do Entra |
 | Saber se está logado | `GET /api/me`: `200` com o nome de exibição e `profileComplete`, ou `401` sem sessão |
 | Completar ou editar o perfil | `GET /api/me/profile` e `PATCH /api/me/profile` com `If-Match` (o `ETag` do `GET`) e `X-XSRF-TOKEN`; em `412`, ler de novo e reaplicar |
-| Ver e se inscrever em eventos | `GET /api/events`; `PUT /api/events/{id}/registration` com `X-XSRF-TOKEN` (repetir é seguro); em `403`, levar ao cadastro do perfil |
-| Saber o próprio par na rodada | `GET /api/events/{eventId}/rounds/{number}/pairing`; `partnerAccountId` `null` é "de fora nesta rodada", e `404` é "rodada ainda não começou ou você não estava nela" |
+| Ver e se inscrever em eventos | `GET /api/events`; `PUT /api/events/{id}/registration` com `X-XSRF-TOKEN` (repetir é seguro); em `403` com `PROFILE_INCOMPLETE`, levar ao cadastro do perfil |
+| Explicar uma recusa | Ler `reason` no `ProblemDetail` do `409` e do `403` de regra; motivo desconhecido ou ausente é recusa genérica do status ([ADR 0020](docs/adr/0020-motivo-das-recusas-no-problem-detail.md)) |
+| Saber o próprio par na rodada | `GET /api/events/{id}` traz `currentRound`; com ele, `GET /api/events/{eventId}/rounds/{currentRound}/pairing`; `partnerAccountId` `null` é "de fora nesta rodada", e `404` é "você não estava nela" |
 
 Em desenvolvimento, o Vite faz proxy da API, para front e API ficarem na mesma origem
 (`http://localhost:5173`).
@@ -343,6 +344,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0017](docs/adr/0017-pareamento.md) | Pareamento: rodada numerada por `PUT` idempotente, emparelhamento máximo com prioridade para quem ficou de fora |
 | [0018](docs/adr/0018-erros-de-campo-no-problem-detail.md) | Erros de campo (`errors: [{field, code}]`) no ProblemDetail dos 400 de validação |
 | [0019](docs/adr/0019-decisao-privada-e-conexoes.md) | Decisão privada e final por rodada; conexão por interesse mútuo, serializada por advisory lock e única pelo par normalizado |
+| [0020](docs/adr/0020-motivo-das-recusas-no-problem-detail.md) | Motivo (`reason`) no ProblemDetail dos 409 e 403 de regra de negócio |
 
 ## Segurança
 
