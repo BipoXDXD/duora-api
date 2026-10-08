@@ -20,6 +20,18 @@ Mudança compatível ([ADR 0016](adr/0016-eventos-e-inscricoes.md), [ADR 0017](a
   além do evento ocupado ou da rodada em disputa. Repetições idempotentes (200 da mesma inscrição ou rodada)
   também gastam o limite. O `duora-web` deve respeitar o `Retry-After` e não repetir chamadas em laço.
 
+Mudanças compatíveis ([ADR 0019](adr/0019-decisao-privada-e-conexoes.md)):
+
+- Decisão privada depois da rodada: `PUT /api/events/{eventId}/rounds/{number}/decision` com
+  `{"interested": true|false}` (só booleano JSON; `1` ou `"true"` são `400` `INVALID_FORMAT`). `201` com
+  `Location` na primeira vez, `200` repetindo a mesma escolha, `409` com a outra escolha (a decisão é
+  final), `404` para quem não formou par na rodada, `503` com `Retry-After` se a decisão do par na mesma
+  rodada demorar além do teto. A resposta (`DecisionResponse`) só fala de quem chama, nunca do par.
+- `GET /api/events/{eventId}/rounds/{number}/decision`: a própria decisão, ou `404`.
+- `GET /api/me/connections`: as próprias conexões, `{items: [{accountId, connectedAt}], nextPageToken}`,
+  com `maxPageSize` de 1 a 100 (padrão 20) e `pageToken`. Uma conexão aparece quando as duas pessoas dizem
+  sim e nenhum bloqueio as separa.
+
 Mudança compatível ([ADR 0018](adr/0018-erros-de-campo-no-problem-detail.md)):
 
 - O 400 de validação do corpo (`POST /api/waitlist`, `PATCH /api/me/profile`, `POST /api/reports`,
