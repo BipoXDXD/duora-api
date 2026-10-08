@@ -3,7 +3,8 @@
 - **Status:** Aceita, provisória. Decidido na sessão autônoma de 2026-10-05; revisar com o usuário.
 - **Data:** 2026-10-06
 - **Relacionadas:** [ADR 0004](0004-identificadores-e-unicidade.md), [ADR 0005](0005-contrato-da-api.md),
-  [ADR 0007](0007-estilo-por-modulo.md), [ADR 0011](0011-conta-e-perfil.md)
+  [ADR 0006](0006-rate-limit-no-postgresql.md), [ADR 0007](0007-estilo-por-modulo.md),
+  [ADR 0011](0011-conta-e-perfil.md)
 
 ## Contexto
 
@@ -150,6 +151,48 @@ chaves é conferido nos testes). Rascunho responde exatamente como evento inexis
   `timestamptz`. `spring.jackson.deserialization.accept-float-as-int=false` passa a valer para a API toda:
   `10.5` num inteiro é `400`, e não `10`.
 
+### Rate limit
+
+A versão inicial não limitava a inscrição, sob o argumento de que a operação é idempotente, autenticada e
+barata. O argumento falha no custo: cada `PUT` abre uma transação, trava a linha do evento até o commit e
+faz uma contagem, mesmo quando só devolve a inscrição que já existe. Uma conta que repete a chamada sem
+parar disputa o lock com todas as outras inscrições do evento (o teto de 2 s só transforma a espera em
+`503`), e a idempotência faz cada repetição responder `200`, então nada sinaliza o abuso. A [ADR
+0006](0006-rate-limit-no-postgresql.md), que já limita denúncias, resolve isso com o mesmo mecanismo.
+
+| Opção | Prós | Contras |
+|---|---|---|
+| Sem limite, só o `lock_timeout` | Nada a mudar | Uma conta aumenta a latência de todo o evento; o `503` cai em quem não abusou |
+| Limite por IP, como a fila de espera | Barra antes de autenticar | A inscrição exige login e o IP é compartilhado (rede de casa, operadora): pune quem está na mesma rede; trocar de rede renova o limite |
+| **Limite por conta, um bucket para `PUT` e `DELETE`** | A conta é o que o abuso repete; trocar de rede não renova; vale entre réplicas | Uma ida ao banco por chamada (transação curta, em outra conexão e antes da transação da inscrição) |
+| Dois buckets, um por operação | Valores independentes | Inscrever e cancelar em alternância gastaria um saldo cada, dobrando o abuso possível sem motivo |
+
+**Decisão:** um bucket por conta, chave `registration:<conta>` na tabela `rate_limit_bucket`, compartilhado
+por `PUT` e `DELETE /api/events/{eventId}/registration`. O `DELETE` não trava o evento, mas apaga uma linha e
+é a outra metade do ciclo inscrever e cancelar: limitar só o `PUT` deixaria o laço alternado correr livre
+pelo `DELETE`. Acima do limite, `429` com `Retry-After` em segundos (teto documentado de 86400, o de um
+dia, garantido porque o período configurado é validado no boot); com o bucket impossível de contar, `503`
+com `Retry-After: 1` e nada é feito (falha fechada, [ADR 0006](0006-rate-limit-no-postgresql.md)).
+
+**Valores:** 60 chamadas por hora, repostas aos poucos (uma por minuto), em
+`duora.events.registration-rate-limit.capacity` e `.period`. Uso humano normal é de um punhado de chamadas
+por sessão: ver a lista, inscrever-se em uns poucos eventos, desistir de um e voltar atrás. Mesmo uma pessoa
+indecisa, que alterne dez vezes entre três eventos, fica em 30 chamadas. O teto de 60 deixa folga para isso e
+para retentativas do front; e uma conta que o esgote espera, no pior caso, um minuto por chamada. A
+capacidade é positiva e o período vai até um dia: qualquer outro valor derruba a subida
+(`RequiredRateLimitSettingsIT`).
+
+**A repetição idempotente também gasta.** O `200` da mesma inscrição, o `204` de cancelar o que não existe e
+o `404` de evento inexistente consomem uma chamada. O custo que o limite protege é o lock e a transação, e a
+repetição os paga por inteiro; isentá-la deixaria justamente o abuso mais barato (repetir a mesma chamada)
+sem freio. O `404` gasta também, o que limita quem tenta adivinhar ids de evento. Em compensação, o front
+nunca precisa repetir a chamada que já deu certo: um clique duplo gasta duas, de 60. Não gastam: id que não
+é UUID (`400` antes do controller), falta de credencial (`401`) e sessão sem CSRF (`403`), que são
+recusados antes de tocar o banco.
+
+O limite é consumido no controller, antes de chamar o serviço: ele protege a borda HTTP, e a ida ao bucket
+acontece fora da transação da inscrição, para a espera pelo bucket não segurar o lock do evento.
+
 ### Relógio
 
 Todos os serviços recebem o `Clock` injetado. Os testes de integração de eventos usam
@@ -181,7 +224,10 @@ próprio com o próprio PostgreSQL.
   (`count(*)` pela PK). Medir no k6 com o B2s antes de otimizar.
 - Não há lista de eventos para o ADMIN (nem de rascunhos): ele guarda o id da criação. Entra quando houver
   a área administrativa do front.
-- Não há rate limit na inscrição: a operação é idempotente, autenticada e barata. Reavaliar se surgir abuso.
+- A inscrição e o cancelamento têm limite por conta (seção "Rate limit"): 60 por hora, somados. A tabela
+  `rate_limit_bucket` ganha uma linha por conta que se inscreve, apagada pela limpeza da [ADR
+  0006](0006-rate-limit-no-postgresql.md) depois da reposição. O limite adiciona uma ida ao banco por
+  chamada; medir no k6 com o B2s junto com o lock.
 - Não há trilha de auditoria de quem criou, publicou ou cancelou um evento (Repudiation, abaixo).
 - O plano (§4) chama a tabela de `registrations`; aqui as tabelas são no singular, como `account` e `profile`.
 - A migration é a `V7`. Se outro ramo em paralelo também criar uma `V7`, o Flyway falha na subida com
@@ -209,6 +255,9 @@ STRIDE do fluxo (permissão de ADMIN e dado pessoal: quem vai a qual encontro):
 | Information disclosure: rascunho descoberto por id | Rascunho responde igual a inexistente | `EventCatalogIT.draftLooksExactlyLikeAnEventThatDoesNotExist` |
 | Denial of service: entrada inválida ou enorme vira `500` | Limites em todo campo, horário com fuso, inteiro estrito, `maxPageSize` e token limitados | `AdminEventIT.invalidInputIsRejectedWithoutWriting`, `acceptsValuesOnTheBorder`, `sqlInTheTitleIsStoredAsPlainText`, `EventCatalogIT.invalidPageSizeIsABadRequest`, `invalidPageTokenIsABadRequest` (inclusive ano fora do `timestamptz`), `RegistrationIT.invalidPageOfOwnRegistrationsIsABadRequest`; `PageTokenTest`, `PageSizeTest` |
 | Denial of service: inscrição presa no lock segura conexões | `lock_timeout` de 2 s → `503` com `Retry-After` | `RegistrationIT.registrationThatWaitsTooLongForTheEventLockIsRefused` |
+| Denial of service: uma conta repete `PUT`/`DELETE` e disputa o lock do evento | 60 chamadas por hora por conta, entre réplicas; `429` + `Retry-After`; repetição idempotente também gasta; um bucket para as duas operações | `RegistrationRateLimitIT.callsAboveTheLimitAreRejectedWithRetryAfterAndChangeNothing`, `idempotentRepeatsSpendTheLimit`, `registeringAndCancellingShareOneLimit`, `callsForUnknownEventsSpendTheLimit`, `theLimitIsCountedForEachAccountSeparately`; `AccountRateLimitIT` |
+| Denial of service: limite que cai com o banco deixa passar | Falha fechada: `503` com `Retry-After: 1`, sem gravar nem cancelar | `RegistrationRateLimitIT.registrationIsRefusedWithoutWritingWhenTheLimitCannotBeCounted`, `cancellationIsRefusedWithoutChangingAnythingWhenTheLimitCannotBeCounted`; `AccountRateLimitIT.rejectsWhenTheStoreIsDown` |
+| Denial of service: configuração com valor que desliga ou quebra o limite | Capacidade positiva e período de até um dia validados no boot | `RequiredRateLimitSettingsIT.applicationRefusesToStartWithAnInvalidLimit`; `AccountRateLimitIT.refusesACapacityThatIsNotPositive`, `refusesAPeriodOutsideZeroToOneDay` |
 
 Repudiation (quem criou, publicou ou cancelou) não é tratada: não há trilha de auditoria. Entra junto com a
 administração, se ela precisar do histórico.

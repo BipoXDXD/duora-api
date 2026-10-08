@@ -356,9 +356,12 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
   (`duora.trustsafety.report-rate-limit.*`), contadas no PostgreSQL, e o relato nunca vai para o log
   ([ADR 0015](docs/adr/0015-bloqueio-e-denuncia.md)).
 - **Eventos:** ninguém vê quem se inscreveu: cada pessoa só alcança a própria inscrição (sem id na rota), e
-  o ADMIN só vê a contagem. Rascunho responde como evento inexistente. A capacidade vale sob concorrência
+  o ADMIN só vê a contagem. Rascunho responde como evento inexistente. A capacidade vale sob concorrência.
+  Inscrever e cancelar dividem um limite de 60 chamadas por hora por conta
+  (`duora.events.registration-rate-limit.*`), repetições idempotentes incluídas, com `429` e `Retry-After`
   ([ADR 0016](docs/adr/0016-eventos-e-inscricoes.md)).
 - **Pareamento:** pares bloqueados nunca se formam, nem o mesmo par duas vezes no evento (constraint no
   banco); cada pessoa só lê o próprio par, e o ADMIN só vê contagens. Duas chamadas simultâneas criam uma
-  rodada só ([ADR 0017](docs/adr/0017-pareamento.md)).
+  rodada só, e cada conta ADMIN pode pedir 30 sorteios por hora (`duora.matching.round-rate-limit.*`), com
+  `429` e `Retry-After` ([ADR 0017](docs/adr/0017-pareamento.md)).
 - **CI:** o gitleaks varre o histórico em busca de segredos a cada push e pull request.
