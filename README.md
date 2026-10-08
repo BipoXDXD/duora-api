@@ -138,6 +138,11 @@ Pacotes por módulo, cada um dividido em camadas:
 ```
 bipo.tech.duoraapi
 ├── config/              # segurança, sessão, relógio, rate limit compartilhado
+├── connections/         # decisão privada depois da rodada e conexões por interesse mútuo
+│   ├── adapter/         # repositórios JDBC; advisory lock por par e rodada
+│   ├── api/             # decisão como sub-recurso singular da rodada, lista das próprias conexões
+│   ├── application/     # DecisionService (par e bloqueio pelas APIs publicadas), ConnectionService
+│   └── domain/          # decisão final, regra do interesse mútuo, par normalizado, ports
 ├── events/              # eventos e inscrições; EventRoster é a API publicada
 │   ├── api/             # rotas do ADMIN, lista e inscrição; paginação por keyset
 │   ├── application/     # casos de uso (administração, catálogo, inscrição)
@@ -146,7 +151,7 @@ bipo.tech.duoraapi
 │   ├── api/             # abre a conta e a entrega ao parâmetro AccountId
 │   ├── application/     # AccountService
 │   └── domain/          # conta, identidade externa, repositório
-├── matching/            # rodadas de pareamento de um evento
+├── matching/            # rodadas de pareamento de um evento; Pairings é a API publicada
 │   ├── adapter/         # repositório JDBC das rodadas e assentos
 │   ├── api/             # rota do ADMIN e o próprio par
 │   ├── application/     # RoundService (inscritos e bloqueios pelas APIs publicadas)
@@ -204,6 +209,9 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 | `PUT` | `/api/admin/events/{eventId}/rounds/{number}` | `ADMIN` | Inicia a rodada com o evento em andamento e sorteia os pares entre os inscritos. `201` com `Location` na primeira vez, `200` com a mesma rodada nas repetições, inclusive simultâneas; `409` fora do horário, com evento cancelado ou rascunho, ou sem a rodada anterior; só contagens (`pairCount`, `sittingOutCount`), nunca quem |
 | `GET` | `/api/admin/events/{eventId}/rounds/{number}` | `ADMIN` | A mesma resposta da rodada, ou `404` |
 | `GET` | `/api/events/{eventId}/rounds/{number}/pairing` | Autenticado | O próprio par: `{eventId, roundNumber, partnerAccountId}`, com `null` para quem ficou de fora; `404` para quem não estava no sorteio, igual a rodada inexistente |
+| `PUT` | `/api/events/{eventId}/rounds/{number}/decision` | Autenticado | Decide em privado se continua em contato com o par da rodada: `{"interested": true\|false}`. `201` com `Location` na primeira vez, `200` repetindo a mesma escolha, `409` com a outra (decisão final); `404` para quem não formou par. A resposta nunca diz nada da decisão do par; com dois "sim" e sem bloqueio, a conexão aparece em `/api/me/connections` |
+| `GET` | `/api/events/{eventId}/rounds/{number}/decision` | Autenticado | A própria decisão, ou `404` |
+| `GET` | `/api/me/connections` | Autenticado | As próprias conexões, da mais recente à mais antiga: `{items: [{accountId, connectedAt}], nextPageToken}`, `maxPageSize` de 1 a 100 (padrão 20) |
 | `GET` | `/actuator/health` | Público | Estado da aplicação |
 
 ### Contrato (OpenAPI)
@@ -334,6 +342,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0016](docs/adr/0016-eventos-e-inscricoes.md) | Eventos e inscrições: lock do evento para a capacidade, inscrição como sub-recurso idempotente |
 | [0017](docs/adr/0017-pareamento.md) | Pareamento: rodada numerada por `PUT` idempotente, emparelhamento máximo com prioridade para quem ficou de fora |
 | [0018](docs/adr/0018-erros-de-campo-no-problem-detail.md) | Erros de campo (`errors: [{field, code}]`) no ProblemDetail dos 400 de validação |
+| [0019](docs/adr/0019-decisao-privada-e-conexoes.md) | Decisão privada e final por rodada; conexão por interesse mútuo, serializada por advisory lock e única pelo par normalizado |
 
 ## Segurança
 
@@ -364,4 +373,8 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
   banco); cada pessoa só lê o próprio par, e o ADMIN só vê contagens. Duas chamadas simultâneas criam uma
   rodada só, e cada conta ADMIN pode pedir 30 sorteios por hora (`duora.matching.round-rate-limit.*`), com
   `429` e `Retry-After` ([ADR 0017](docs/adr/0017-pareamento.md)).
+- **Decisão privada e conexões:** só decide quem formou o par na rodada; cada pessoa lê só a própria decisão,
+  e nenhuma resposta muda conforme a decisão do par (disse não ou ainda não decidiu). Dois "sim" simultâneos
+  formam exatamente uma conexão, e um bloqueio em qualquer direção impede que ela se forme
+  ([ADR 0019](docs/adr/0019-decisao-privada-e-conexoes.md)).
 - **CI:** o gitleaks varre o histórico em busca de segredos a cada push e pull request.

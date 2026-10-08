@@ -1,0 +1,576 @@
+package bipo.tech.duoraapi.connections;
+
+import static bipo.tech.duoraapi.events.EventFixtures.admin;
+import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
+import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
+import static bipo.tech.duoraapi.events.EventFixtures.user;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.RepeatedTest;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.test.json.JsonCompareMode;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import com.jayway.jsonpath.JsonPath;
+
+import bipo.tech.duoraapi.TestClockConfiguration;
+import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
+import bipo.tech.duoraapi.TestcontainersConfiguration;
+import bipo.tech.duoraapi.events.EventFixtures;
+
+/**
+ * Decisão privada depois da rodada e conexão por interesse mútuo (docs/adr/0019): só decide quem formou o
+ * par, a decisão é final, a resposta nunca revela a decisão do outro, dois "sim" simultâneos criam uma
+ * conexão só e o bloqueio impede a conexão.
+ */
+@SpringBootTest
+@AutoConfigureMockMvc
+@Import({TestcontainersConfiguration.class, TestClockConfiguration.class})
+class ConnectionIT {
+
+    private static final Instant STARTS_AT = Instant.parse(EventFixtures.STARTS_AT);
+    private static final String DECIDED_AT = "2026-11-01T22:00:00Z";
+    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
+    private static final String CONNECTIONS_PATH = "/api/me/connections";
+    private static final String YES = "{\"interested\": true}";
+    private static final String NO = "{\"interested\": false}";
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private JdbcClient jdbcClient;
+
+    @Autowired
+    private TestClock clock;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
+
+    @BeforeEach
+    void resetState() {
+        clock.setTo(TestClockConfiguration.NOW);
+        EventFixtures.cleanDatabase(jdbcClient);
+    }
+
+    @Test
+    void aDecisionIsRecordedAndOnlyTellsAboutTheCaller() throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno");
+
+        decide(eventId, "ana", YES)
+                .andExpect(status().isCreated())
+                .andExpect(header().string(HttpHeaders.LOCATION, decisionPath(eventId, 1)))
+                .andExpect(content().json("""
+                        {"eventId": "%s", "roundNumber": 1, "interested": true, "decidedAt": "%s"}
+                        """.formatted(eventId, DECIDED_AT), JsonCompareMode.STRICT));
+
+        mockMvc.perform(get(decisionPath(eventId, 1)).with(user("ana")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {"eventId": "%s", "roundNumber": 1, "interested": true, "decidedAt": "%s"}
+                        """.formatted(eventId, DECIDED_AT), JsonCompareMode.STRICT));
+        assertThat(decisionRows(eventId)).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {YES, NO})
+    void repeatingTheSameChoiceAnswersTheSameDecision(String choice) throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno");
+        decide(eventId, "ana", choice).andExpect(status().isCreated());
+        clock.advance(Duration.ofMinutes(5));
+
+        decide(eventId, "ana", choice)
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist(HttpHeaders.LOCATION))
+                .andExpect(jsonPath("$.decidedAt").value(DECIDED_AT));
+
+        assertThat(decisionRows(eventId)).isEqualTo(1);
+    }
+
+    @Test
+    void aDecisionCannotChange() throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno");
+        decide(eventId, "ana", NO).andExpect(status().isCreated());
+        decide(eventId, "bruno", YES).andExpect(status().isCreated());
+
+        decide(eventId, "ana", YES)
+                .andExpect(status().isConflict())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+
+        assertThat(jdbcClient.sql("""
+                        select interested from round_decision
+                         where event_id = cast(:id as uuid) and account_id = cast(:account as uuid)
+                        """)
+                .param("id", eventId).param("account", accountOf("ana"))
+                .query(Boolean.class).single()).isFalse();
+        assertThat(connectionRows()).isZero();
+    }
+
+    @Test
+    void twoYesesFormOneConnectionThatBothSee() throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno");
+        decide(eventId, "ana", YES).andExpect(status().isCreated());
+        clock.advance(Duration.ofMinutes(2));
+
+        decide(eventId, "bruno", YES).andExpect(status().isCreated());
+
+        assertThat(connectionRows()).isEqualTo(1);
+        mockMvc.perform(get(CONNECTIONS_PATH).with(user("ana")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {"items": [{"accountId": "%s", "connectedAt": "2026-11-01T22:02:00Z"}], "nextPageToken": null}
+                        """.formatted(accountOf("bruno")), JsonCompareMode.STRICT));
+        mockMvc.perform(get(CONNECTIONS_PATH).with(user("bruno")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {"items": [{"accountId": "%s", "connectedAt": "2026-11-01T22:02:00Z"}], "nextPageToken": null}
+                        """.formatted(accountOf("ana")), JsonCompareMode.STRICT));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {YES, NO})
+    void aNoOnEitherSideFormsNothing(String firstChoice) throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno");
+        decide(eventId, "ana", firstChoice).andExpect(status().isCreated());
+
+        decide(eventId, "bruno", firstChoice.equals(YES) ? NO : YES).andExpect(status().isCreated());
+
+        assertThat(connectionRows()).isZero();
+        assertThat(connectionsBodyOf("ana")).isEqualTo(connectionsBodyOf("bruno")).contains("\"items\":[]");
+    }
+
+    /**
+     * O caso central da privacidade: o "sim" de quem decide depois recebe exatamente a mesma resposta (status,
+     * headers relevantes e corpo) com o par tendo dito não e com o par ainda sem decidir.
+     */
+    @Test
+    void theAnswerIsTheSameWhetherThePartnerSaidNoOrHasNotDecided() throws Exception {
+        String saidNo = pairedInRoundOne("ana", "bruno");
+        decide(saidNo, "bruno", NO).andExpect(status().isCreated());
+        MvcResult afterNo = decide(saidNo, "ana", YES).andReturn();
+        String getAfterNo = mockMvc.perform(get(decisionPath(saidNo, 1)).with(user("ana")))
+                .andReturn().getResponse().getContentAsString();
+
+        String undecided = pairedInRoundOne("carla", "davi");
+        MvcResult beforeAnything = decide(undecided, "carla", YES).andReturn();
+        String getUndecided = mockMvc.perform(get(decisionPath(undecided, 1)).with(user("carla")))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(afterNo.getResponse().getStatus()).isEqualTo(beforeAnything.getResponse().getStatus())
+                .isEqualTo(201);
+        assertThat(withoutEventId(afterNo.getResponse().getContentAsString(), saidNo))
+                .isEqualTo(withoutEventId(beforeAnything.getResponse().getContentAsString(), undecided));
+        assertThat(withoutEventId(afterNo.getResponse().getHeader(HttpHeaders.LOCATION), saidNo))
+                .isEqualTo(withoutEventId(beforeAnything.getResponse().getHeader(HttpHeaders.LOCATION), undecided));
+        assertThat(withoutEventId(getAfterNo, saidNo)).isEqualTo(withoutEventId(getUndecided, undecided));
+        assertThat(connectionsBodyOf("ana")).isEqualTo(connectionsBodyOf("carla"));
+    }
+
+    /** Ninguém lê a decisão do par: a rota só alcança a de quem chama. */
+    @Test
+    void thePartnerCannotReadTheDecision() throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno");
+        decide(eventId, "ana", YES).andExpect(status().isCreated());
+
+        String body = mockMvc.perform(get(decisionPath(eventId, 1)).with(user("bruno")))
+                .andExpect(status().isNotFound())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(body).doesNotContain("interested", accountOf("ana"));
+    }
+
+    /** Dois cliques em "sim" ao mesmo tempo, um de cada lado: sempre uma conexão, nunca zero nem duas. */
+    @RepeatedTest(5)
+    void simultaneousYesesCreateExactlyOneConnection() throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno");
+        var start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Future<Integer> ana = executor.submit(decideAfter(start, eventId, "ana"));
+            Future<Integer> bruno = executor.submit(decideAfter(start, eventId, "bruno"));
+            start.countDown();
+            assertThat(ana.get(30, TimeUnit.SECONDS)).isEqualTo(201);
+            assertThat(bruno.get(30, TimeUnit.SECONDS)).isEqualTo(201);
+        }
+
+        assertThat(connectionRows()).isEqualTo(1);
+    }
+
+    /** A mesma pessoa em duas abas: uma decisão só, e as duas respostas são de sucesso. */
+    @RepeatedTest(3)
+    void simultaneousRepeatsOfTheSameDecisionRecordItOnce() throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno");
+        var start = new CountDownLatch(1);
+        var statuses = new ArrayList<Future<Integer>>();
+
+        try (var executor = Executors.newFixedThreadPool(3)) {
+            for (int i = 0; i < 3; i++) {
+                statuses.add(executor.submit(decideAfter(start, eventId, "ana")));
+            }
+            start.countDown();
+            var results = new ArrayList<Integer>();
+            for (var result : statuses) {
+                results.add(result.get(30, TimeUnit.SECONDS));
+            }
+            assertThat(results).containsOnly(201, 200).containsOnlyOnce(201);
+        }
+        assertThat(decisionRows(eventId)).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ana", "bruno"})
+    void aBlockEitherWayPreventsTheConnection(String blocker) throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno");
+        String blocked = blocker.equals("ana") ? "bruno" : "ana";
+        mockMvc.perform(post("/api/accounts/{id}:block", accountOf(blocked)).with(user(blocker)))
+                .andExpect(status().isNoContent());
+
+        decide(eventId, "ana", YES).andExpect(status().isCreated());
+        decide(eventId, "bruno", YES).andExpect(status().isCreated());
+
+        assertThat(connectionRows()).isZero();
+    }
+
+    @Test
+    void anAlreadyConnectedPairKeepsTheFirstConnection() throws Exception {
+        String first = pairedInRoundOne("ana", "bruno");
+        decide(first, "ana", YES).andExpect(status().isCreated());
+        decide(first, "bruno", YES).andExpect(status().isCreated());
+
+        String second = pairedInRoundOne("ana", "bruno");
+        clock.advance(Duration.ofDays(1));
+        decide(second, "ana", YES).andExpect(status().isCreated());
+        decide(second, "bruno", YES).andExpect(status().isCreated());
+
+        assertThat(connectionRows()).isEqualTo(1);
+        mockMvc.perform(get(CONNECTIONS_PATH).with(user("ana")))
+                .andExpect(jsonPath("$.items[0].connectedAt").value(DECIDED_AT));
+    }
+
+    /** Ficar de fora, estar fora do sorteio ou pedir uma rodada que não existe: o mesmo 404, nada gravado. */
+    @Test
+    void onlyWhoFormedThePairDecides() throws Exception {
+        String otherEvent = createPublishedEvent(mockMvc);
+        registerWithCompleteProfile(mockMvc, user("davi"), otherEvent);
+        String eventId = pairedInRoundOne("ana", "bruno", "carla");
+        String satOut = sittingOutIn(eventId);
+
+        String sittingOut = decide(eventId, satOut, YES).andExpect(status().isNotFound())
+                .andReturn().getResponse().getContentAsString();
+        String outsider = decide(eventId, "davi", YES).andExpect(status().isNotFound())
+                .andReturn().getResponse().getContentAsString();
+        String missingRound = mockMvc.perform(put(decisionPath(eventId, 2)).with(user("ana"))
+                        .contentType(MediaType.APPLICATION_JSON).content(YES))
+                .andExpect(status().isNotFound())
+                .andReturn().getResponse().getContentAsString();
+        String unknownEvent = decide(UUID.randomUUID().toString(), "ana", YES).andExpect(status().isNotFound())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(List.of(sittingOut, outsider, missingRound, unknownEvent))
+                .extracting(body -> JsonPath.<String>read(body, "$.detail"))
+                .containsOnly("the caller has no partner in this round");
+        assertThat(outsider).doesNotContain(accountOf("ana"), accountOf("bruno"), accountOf("carla"));
+        assertThat(decisionRows(eventId)).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "101", "-1", "abc", "1.5", "99999999999"})
+    void anInvalidRoundNumberIsABadRequestAndWritesNothing(String number) throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno");
+        String path = "/api/events/" + eventId + "/rounds/" + number + "/decision";
+
+        mockMvc.perform(put(path).with(user("ana")).contentType(MediaType.APPLICATION_JSON).content(YES))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+        mockMvc.perform(get(path).with(user("ana"))).andExpect(status().isBadRequest());
+
+        assertThat(decisionRows(eventId)).isZero();
+    }
+
+    @Test
+    void anEventIdThatIsNotAUuidIsABadRequest() throws Exception {
+        mockMvc.perform(put("/api/events/not-a-uuid/rounds/1/decision").with(user("ana"))
+                        .contentType(MediaType.APPLICATION_JSON).content(YES))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void aWebSessionWithoutCsrfTokenCannotDecide() throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno");
+
+        mockMvc.perform(put(decisionPath(eventId, 1)).with(webSession("ana"))
+                        .contentType(MediaType.APPLICATION_JSON).content(YES))
+                .andExpect(status().isForbidden());
+
+        assertThat(decisionRows(eventId)).isZero();
+    }
+
+    @Test
+    void aWebSessionWithCsrfTokenDecides() throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno");
+
+        mockMvc.perform(put(decisionPath(eventId, 1)).with(webSession("ana")).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content(YES))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void aDecisionIsRefusedWhenThePartnersTakesTooLong() throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno");
+        var holding = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            Future<?> holder = executor.submit(() -> transactionTemplate.executeWithoutResult(transaction -> {
+                jdbcClient.sql("select 1 from (select pg_advisory_xact_lock(hashtextextended(:key, 0))) as locked")
+                        .param("key", lockKeyOf(eventId, "ana", "bruno"))
+                        .query(Integer.class).single();
+                holding.countDown();
+                awaitQuietly(release);
+            }));
+            assertThat(holding.await(30, TimeUnit.SECONDS)).isTrue();
+
+            decide(eventId, "ana", YES)
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
+                    .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+
+            release.countDown();
+            holder.get(30, TimeUnit.SECONDS);
+        }
+        assertThat(decisionRows(eventId)).isZero();
+    }
+
+    @Test
+    void connectionsArePagedFromTheMostRecent() throws Exception {
+        connectDirectly("ana", "bruno", "2026-11-01T22:00:00Z");
+        connectDirectly("ana", "carla", "2026-11-02T22:00:00Z");
+        connectDirectly("ana", "davi", "2026-11-03T22:00:00Z");
+        connectDirectly("bruno", "carla", "2026-11-04T22:00:00Z");
+
+        String firstPage = mockMvc.perform(get(CONNECTIONS_PATH).param("maxPageSize", "2").with(user("ana")))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String token = JsonPath.read(firstPage, "$.nextPageToken");
+
+        assertThat(JsonPath.<List<String>>read(firstPage, "$.items[*].accountId"))
+                .containsExactly(accountOf("davi"), accountOf("carla"));
+
+        mockMvc.perform(get(CONNECTIONS_PATH).param("maxPageSize", "2").param("pageToken", token).with(user("ana")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {"items": [{"accountId": "%s", "connectedAt": "2026-11-01T22:00:00Z"}], "nextPageToken": null}
+                        """.formatted(accountOf("bruno")), JsonCompareMode.STRICT));
+    }
+
+    @Test
+    void connectionsAtTheSameInstantAreAllListedAcrossPages() throws Exception {
+        connectDirectly("ana", "bruno", DECIDED_AT);
+        connectDirectly("ana", "carla", DECIDED_AT);
+        connectDirectly("ana", "davi", DECIDED_AT);
+        var seen = new ArrayList<String>();
+        String token = null;
+
+        do {
+            var request = get(CONNECTIONS_PATH).param("maxPageSize", "1").with(user("ana"));
+            if (token != null) {
+                request.param("pageToken", token);
+            }
+            String body = mockMvc.perform(request).andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            seen.addAll(JsonPath.read(body, "$.items[*].accountId"));
+            token = JsonPath.read(body, "$.nextPageToken");
+        } while (token != null);
+
+        assertThat(seen).containsExactlyInAnyOrder(accountOf("bruno"), accountOf("carla"), accountOf("davi"));
+    }
+
+    @Test
+    void nobodySeesTheConnectionsOfOthers() throws Exception {
+        connectDirectly("ana", "bruno", DECIDED_AT);
+        createAccount("carla");
+
+        String body = connectionsBodyOf("carla");
+
+        assertThat(body).contains("\"items\":[]").doesNotContain(accountOf("ana"), accountOf("bruno"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "101", "-1", "abc", ""})
+    void anInvalidPageSizeIsABadRequest(String size) throws Exception {
+        createAccount("ana");
+
+        mockMvc.perform(get(CONNECTIONS_PATH).param("maxPageSize", size).with(user("ana")))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"bm90LWEtdG9rZW4", "!!!", "", "MTk2OS0xMi0zMVQyMzo1OTo1OVogMDE5NjZjNGUtN2QxYS03YzNlLTliNWYtM2YyYTFjMGQ5ZThi",
+            "KzEwMDAwMDAtMDEtMDFUMDA6MDA6MDBaIDAxOTY2YzRlLTdkMWEtN2MzZS05YjVmLTNmMmExYzBkOWU4Yg"})
+    void aPageTokenTheApiDidNotIssueIsABadRequest(String token) throws Exception {
+        createAccount("ana");
+
+        mockMvc.perform(get(CONNECTIONS_PATH).param("pageToken", token).with(user("ana")))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+    }
+
+    /** Publica um evento, inscreve as pessoas, leva o relógio ao início e sorteia a rodada 1. */
+    private String pairedInRoundOne(String... names) throws Exception {
+        clock.setTo(TestClockConfiguration.NOW);
+        String eventId = createPublishedEvent(mockMvc);
+        for (String name : names) {
+            registerWithCompleteProfileOnce(name, eventId);
+        }
+        clock.setTo(STARTS_AT);
+        mockMvc.perform(put("/api/admin/events/" + eventId + "/rounds/1").with(admin()))
+                .andExpect(status().isCreated());
+        return eventId;
+    }
+
+    /** O perfil completo só se cria uma vez por pessoa; depois basta se inscrever. */
+    private void registerWithCompleteProfileOnce(String name, String eventId) throws Exception {
+        boolean hasProfile = jdbcClient.sql("""
+                        select exists (select 1 from profile p join account a on a.id = p.account_id
+                                        where a.subject = :subject)
+                        """)
+                .param("subject", "oid-" + name).query(Boolean.class).single();
+        if (hasProfile) {
+            mockMvc.perform(put(EventFixtures.registrationPath(eventId)).with(user(name)))
+                    .andExpect(status().isCreated());
+        } else {
+            registerWithCompleteProfile(mockMvc, user(name), eventId);
+        }
+    }
+
+    private ResultActions decide(String eventId, String name, String body) throws Exception {
+        return mockMvc.perform(put(decisionPath(eventId, 1)).with(user(name))
+                .contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    private Callable<Integer> decideAfter(CountDownLatch start, String eventId, String name) {
+        return () -> {
+            start.await();
+            return decide(eventId, name, YES).andReturn().getResponse().getStatus();
+        };
+    }
+
+    private String connectionsBodyOf(String name) throws Exception {
+        return mockMvc.perform(get(CONNECTIONS_PATH).with(user(name)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+    }
+
+    private static String decisionPath(String eventId, int number) {
+        return "/api/events/" + eventId + "/rounds/" + number + "/decision";
+    }
+
+    private static String withoutEventId(String text, String eventId) {
+        return text.replace(eventId, "<event>");
+    }
+
+    /** A mesma chave do JdbcDecisionRepository.lockPair: evento, rodada e o par normalizado. */
+    private String lockKeyOf(String eventId, String one, String other) {
+        String first = accountOf(one);
+        String second = accountOf(other);
+        if (second.compareTo(first) < 0) {
+            String swap = first;
+            first = second;
+            second = swap;
+        }
+        return String.join(":", "connections.decision", eventId, "1", first, second);
+    }
+
+    private long decisionRows(String eventId) {
+        return jdbcClient.sql("select count(*) from round_decision where event_id = cast(:id as uuid)")
+                .param("id", eventId).query(Long.class).single();
+    }
+
+    private long connectionRows() {
+        return jdbcClient.sql("select count(*) from connection").query(Long.class).single();
+    }
+
+    private String sittingOutIn(String eventId) {
+        String account = jdbcClient.sql("""
+                        select account_id from round_seat
+                         where event_id = cast(:id as uuid) and round_number = 1 and partner_account_id is null
+                        """)
+                .param("id", eventId).query(String.class).single();
+        return jdbcClient.sql("select subject from account where id = cast(:id as uuid)")
+                .param("id", account).query(String.class).single().substring("oid-".length());
+    }
+
+    private void connectDirectly(String one, String other, String connectedAt) throws Exception {
+        createAccount(one);
+        createAccount(other);
+        String first = accountOf(one);
+        String second = accountOf(other);
+        jdbcClient.sql("""
+                        insert into connection (first_account_id, second_account_id, connected_at)
+                        values (least(cast(:a as uuid), cast(:b as uuid)), greatest(cast(:a as uuid), cast(:b as uuid)),
+                                cast(:at as timestamptz))
+                        """)
+                .params(Map.of("a", first, "b", second, "at", connectedAt))
+                .update();
+    }
+
+    /** O primeiro acesso cria a conta. */
+    private void createAccount(String name) throws Exception {
+        mockMvc.perform(get("/api/me").with(user(name))).andExpect(status().isOk());
+    }
+
+    private String accountOf(String name) {
+        return jdbcClient.sql("select id from account where subject = :subject")
+                .param("subject", "oid-" + name)
+                .query(UUID.class).single().toString();
+    }
+
+    private static RequestPostProcessor webSession(String name) {
+        return oidcLogin().idToken(token -> token.issuer(ISSUER).claim("oid", "oid-" + name));
+    }
+
+    private static void awaitQuietly(CountDownLatch latch) {
+        try {
+            latch.await(30, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+}

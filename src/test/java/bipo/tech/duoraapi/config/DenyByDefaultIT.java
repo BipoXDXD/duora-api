@@ -56,7 +56,9 @@ class DenyByDefaultIT {
                 .contains("GET /api/me", "GET /api/admin/waitlist/stats", "GET /actuator/health/**",
                         "POST /api/accounts/{accountId}:block", "GET /api/me/blocked-accounts", "POST /api/reports",
                         "GET /api/reports/{id}", "PUT /api/admin/events/{eventId}/rounds/{number}",
-                        "GET /api/events/{eventId}/rounds/{number}/pairing")
+                        "GET /api/events/{eventId}/rounds/{number}/pairing",
+                        "PUT /api/events/{eventId}/rounds/{number}/decision",
+                        "GET /api/events/{eventId}/rounds/{number}/decision", "GET /api/me/connections")
                 .containsAll(PUBLIC_ROUTES);
     }
 
