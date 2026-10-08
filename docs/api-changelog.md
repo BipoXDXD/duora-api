@@ -9,6 +9,31 @@ Toda **breaking change** entra aqui no mesmo PR que a introduz: sem a entrada, o
 
 ## Não publicado
 
+Chat temporário da rodada ([ADR 0021](adr/0021-chat-temporario-e-reconexao.md), fatias 1 e 2):
+
+- **Quebra apontada pelo oasdiff, compatível pela [ADR 0020](adr/0020-motivo-das-recusas-no-problem-detail.md):**
+  o `reason` do `RefusalProblemDetail` ganha `CHAT_CLOSED` e `IDEMPOTENCY_KEY_REUSED`. Como o schema é o mesmo
+  em todo `409`, o oasdiff acusa `response-property-enum-value-added` em todas as operações com `409`, mas
+  só as rotas novas do chat devolvem esses valores. O `duora-web` já deve tratar `reason` desconhecido como
+  recusa genérica do status; para usar o chat, precisa regenerar os tipos.
+- `GET /api/events/{eventId}/rounds/{number}/chat` (`getMyRoundChat`): `{chatId, open, lastSeq}`. O chat do par
+  da rodada existe desde o sorteio; `open` diz se ele aceita mensagens agora (fecha quando a rodada seguinte
+  começa, quando o evento acaba, com 300 mensagens ou com um bloqueio entre os dois, sem dizer qual) e
+  `lastSeq` é a posição da última mensagem. `404` igual para quem não formou par, rodada ou evento inexistente.
+- `GET .../chat/messages?afterSeq=&maxPageSize=` (`listMyRoundChatMessages`): `{items: [{seq, fromMe, text,
+  sentAt}], nextAfterSeq}`, em ordem crescente de `seq`, `afterSeq` de 0 a 300 (padrão 0), `maxPageSize` de 1 a
+  100 (padrão 50). O cursor é a posição, transparente, e não um `pageToken` opaco: a sequência não tem lacunas,
+  então lacuna no cliente quer dizer mensagem perdida. O cliente faz polling com `afterSeq` igual à maior
+  posição vista (a cada 2 s com a aba visível) até `nextAfterSeq` vir `null`.
+- `GET .../chat/messages/{seq}` (`getMyRoundChatMessage`): uma mensagem, ou `404`.
+- `POST .../chat/messages` (`sendRoundChatMessage`) com o header `Idempotency-Key` (UUID, obrigatório) e
+  `{"text": "..."}` (1 a 500 caracteres depois de NFC e sem espaço nas pontas; controle e invisíveis são `400`
+  com `errors`). `201` com `Location` na primeira vez; `200` com a mesma mensagem ao repetir a chave com o mesmo
+  texto, mesmo depois de o chat fechar; `409` com `reason` `IDEMPOTENCY_KEY_REUSED` para a chave com outro texto
+  e `CHAT_CLOSED` com o chat fechado. Limite de 20 envios por minuto por conta, repetições incluídas (`429`
+  com `Retry-After`); `503` com `Retry-After: 1` se outro envio segurar o chat além do teto ou se o limite não
+  puder ser contado. O `duora-web` gera a chave ao criar o rascunho e a reutiliza em todo reenvio.
+
 Mudança compatível ([ADR 0015](adr/0015-bloqueio-e-denuncia.md)):
 
 - `POST /api/reports` (`fileReport`): a cota de denúncias passa a usar o mesmo limite por conta das outras

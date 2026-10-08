@@ -314,7 +314,9 @@ class OpenApiConfiguration {
                                 publicado, para iniciar rodada. ROUND_OUT_OF_SEQUENCE: a rodada anterior não \
                                 existe. PROFILE_INCOMPLETE (403): falta nome, data de nascimento ou região. \
                                 UNDERAGE (403): menor de 18 anos. BIRTH_DATE_ALREADY_SET: a data de \
-                                nascimento não muda."""));
+                                nascimento não muda. DECISION_ALREADY_MADE: a decisão da rodada é final. \
+                                CHAT_CLOSED: o chat da rodada não aceita mais mensagens, sem dizer por quê. \
+                                IDEMPOTENCY_KEY_REUSED: a Idempotency-Key já foi usada com outro conteúdo."""));
     }
 
     private static Schema<?> fieldErrorSchema() {

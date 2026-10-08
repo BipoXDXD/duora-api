@@ -35,7 +35,11 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 
 import bipo.tech.duoraapi.AccountTables;
+import bipo.tech.duoraapi.TestClockConfiguration;
+import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
+import bipo.tech.duoraapi.chat.ChatFixtures;
+import bipo.tech.duoraapi.events.EventFixtures;
 
 /**
  * Canário de vazamento (plano §7: nada de tokens, credenciais nem dados pessoais em log). Um valor
@@ -49,7 +53,7 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
         "logging.level.org.springframework.web=DEBUG",
         "logging.level.bipo.tech=DEBUG"})
 @AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, TestClockConfiguration.class})
 @ExtendWith(OutputCaptureExtension.class)
 class SensitiveDataLoggingIT {
 
@@ -79,6 +83,10 @@ class SensitiveDataLoggingIT {
 
     @Autowired
     private MockMvc mockMvc;
+
+    /** Parado no início dos testes do chat, que precisam de um evento em andamento. */
+    @Autowired
+    private TestClock clock;
 
     private final HttpClient http = HttpClient.newHttpClient();
 
@@ -211,6 +219,40 @@ class SensitiveDataLoggingIT {
         var response = fileReport("""
                 {"reportedAccountId": "%s", "reason": "OTHER", "description": "%s"}
                 """.formatted(reportedAccountId(), description));
+
+        assertThat(response.getStatus()).isEqualTo(BAD_REQUEST);
+        assertThat(response.getContentAsString()).doesNotContainIgnoringCase(canary);
+        assertThat(response.getHeaderNames()).allSatisfy(name ->
+                assertThat(String.join(",", response.getHeaders(name))).doesNotContainIgnoringCase(canary));
+        assertThat(output.getAll()).doesNotContainIgnoringCase(canary);
+    }
+
+    /**
+     * A conversa só volta para as duas pessoas do par; o log não leva o texto, nem no envio nem na leitura
+     * (docs/adr/0021).
+     */
+    @Test
+    void chatMessageNeverReachesTheLog(CapturedOutput output) throws Exception {
+        String eventId = ChatFixtures.pairedInRoundOne(mockMvc, jdbcClient, clock, "ana", "bruno");
+
+        var sent = ChatFixtures.send(mockMvc, eventId, EventFixtures.user("ana"), ChatFixtures.newKey(), canary)
+                .andReturn().getResponse();
+        var read = mockMvc.perform(get(ChatFixtures.messagesPath(eventId, 1)).with(EventFixtures.user("bruno")))
+                .andReturn().getResponse();
+
+        assertThat(sent.getStatus()).isEqualTo(CREATED);
+        assertThat(read.getContentAsString()).containsIgnoringCase(canary);
+        assertThat(output.getAll()).doesNotContainIgnoringCase(canary);
+    }
+
+    /** Texto longo demais ou com caractere invisível: 400 sem ecoar o texto. */
+    @ParameterizedTest
+    @ValueSource(strings = {"%s%s", "%s​"})
+    void rejectedChatMessageNeverReachesTheLog(String textTemplate, CapturedOutput output) throws Exception {
+        String eventId = ChatFixtures.pairedInRoundOne(mockMvc, jdbcClient, clock, "ana", "bruno");
+
+        var response = ChatFixtures.send(mockMvc, eventId, EventFixtures.user("ana"), ChatFixtures.newKey(),
+                textTemplate.formatted(canary, "x".repeat(500))).andReturn().getResponse();
 
         assertThat(response.getStatus()).isEqualTo(BAD_REQUEST);
         assertThat(response.getContentAsString()).doesNotContainIgnoringCase(canary);
