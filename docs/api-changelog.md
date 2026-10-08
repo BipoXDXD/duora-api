@@ -9,6 +9,13 @@ Toda **breaking change** entra aqui no mesmo PR que a introduz: sem a entrada, o
 
 ## Não publicado
 
+Mudança compatível ([ADR 0015](adr/0015-bloqueio-e-denuncia.md)):
+
+- `POST /api/reports` (`fileReport`): a cota de denúncias passa a usar o mesmo limite por conta das outras
+  operações. Status, `Retry-After` do `429` e corpo continuam os mesmos, mas o `detail` do `429` passa de
+  "report quota exceeded; try again later" para "rate limit exceeded; try again later", e o `503` de cota
+  não contável ganha `Retry-After: 1`. O `duora-web` não deve depender do texto do `detail`.
+
 Mudança compatível ([ADR 0016](adr/0016-eventos-e-inscricoes.md), [ADR 0017](adr/0017-pareamento.md)):
 
 - Limite por conta nas operações que travam o evento ou disputam a rodada: `PUT` e `DELETE

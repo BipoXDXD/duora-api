@@ -96,6 +96,28 @@ lock preso, `503` (falha fechada). Só a denúncia válida gasta a cota; a que a
 também gasta, o que limita quem tenta adivinhar ids. O bloqueio **não** tem cota: protege quem bloqueia e
 não cria trabalho para ninguém. Valores em `duora.trustsafety.report-rate-limit`.
 
+**Implementação:** o `config.AccountRateLimit` compartilhado com as inscrições, as rodadas e as decisões
+([ADR 0016](0016-eventos-e-inscricoes.md), [ADR 0017](0017-pareamento.md), [ADR 0019](0019-decisao-privada-e-conexoes.md)),
+com o prefixo `report:`; os `429` e `503` saem do `RateLimitProblemHandler` global. A versão inicial tinha
+implementação própria (`BucketReportQuota`, uma porta `ReportQuota` e exceções `ReportQuota*`), idêntica à
+compartilhada exceto pelo nome.
+
+| Opção | Prós | Contras |
+|---|---|---|
+| Manter a porta `ReportQuota`, com um adapter fino sobre `AccountRateLimit` | `ReportService` não importa `config` | O adapter só repassa `consume`; a exceção continuaria vindo de `config` (o adapter não as traduziria sem recriar o handler duplicado), então a porta não isolaria nada |
+| **`ReportService` recebe o `AccountRateLimit` direto** | Sem camada rasa; um só handler de `429`/`503`; o `AccountRateLimitIT` cobre o mecanismo para todos | A aplicação do `trustsafety` passa a importar uma classe de `config` (infraestrutura compartilhada, não adapter do módulo); o `ArchitectureTest` só proíbe `api` e `adapter` |
+| Gastar a cota no controller, como `matching` e `connections` | Igual aos outros três módulos | A validação da denúncia (`NewReport`, `ReportDescription`) é do domínio e roda dentro do serviço; gastar antes dela quebraria "só denúncia válida gasta" |
+
+**Decisão:** sem porta. `AccountRateLimit` já é a abstração (um método, `consume`, que esconde Bucket4j e
+PostgreSQL) e, como `Blocking` nas [ADR 0017](0017-pareamento.md) e [ADR 0019](0019-decisao-privada-e-conexoes.md),
+é chamado direto. O serviço o recebe pelo bean `reportRateLimit` (`ReportService.RATE_LIMIT_BEAN`, para a
+aplicação não importar o adapter). O custo é que um teste do serviço sem banco precisaria de um
+`AccountRateLimit` real; não existe esse teste hoje, porque a ordem "valida, gasta, grava" é verificada em
+`ReportIT`, com o PostgreSQL.
+
+Efeitos visíveis, ambos compatíveis: o `detail` do `429` passa de "report quota exceeded; try again later"
+para "rate limit exceeded; try again later" (o mesmo das outras operações), e o `503` ganha `Retry-After: 1`.
+
 ### Sem `Idempotency-Key` na denúncia
 
 A ADR 0005 pede `Idempotency-Key` nas operações repetíveis com efeito. A denúncia ainda não tem: um
@@ -161,7 +183,7 @@ STRIDE do fluxo (dado sensível: quem bloqueou quem e o relato da denúncia):
 | Information disclosure: quem foi bloqueado descobre o bloqueio | Bloquear e denunciar respondem igual com ou sem bloqueio do outro lado; nenhuma rota diz quem bloqueou você | `BlockIT.blockingSomeoneWhoBlockedYouLooksLikeAnyOtherBlock`, `ReportIT.reportingSomeoneWhoBlockedYouLooksLikeAnyOtherReport` |
 | Information disclosure: enumeração de contas pelo 404 | Ids UUIDv7 não adivinháveis; 404 sem eco; tentativas de denúncia gastam a cota | `BlockIT.blockingAnUnknownAccountIsNotFoundWithoutWriting`, `ReportIT.reportingAnUnknownAccountIsNotFoundWithoutWriting` |
 | Information disclosure: relato da denúncia no log (inclusive no DEBUG do Spring MVC, que imprime o corpo lido e escrito) ou ecoado no erro | `toString` redigido no VO e nos DTOs de entrada e saída; mensagens de erro sem o valor | `ReportIT.reportTextNeverReachesTheLog`, `rejectedDescriptionIsNotEchoedInTheResponse`, `SensitiveDataLoggingIT.acceptedReportDescriptionNeverReachesTheLog`, `rejectedReportDescriptionNeverReachesTheLog`, `ReportDescriptionTest`, `FileReportRequestTest`, `ReportResponseTest` (`doesNotExpose...InToString`) |
-| Denial of service: denúncias em massa contra uma pessoa ou para afogar a moderação | Cota de 10/dia por conta, entre réplicas; 429 + `Retry-After`; falha fechada | `ReportIT.reportingAboveTheDailyQuotaIsRejectedWithRetryAfterAndWithoutWriting`, `quotaIsCountedForEachAccountSeparately`, `BucketReportQuotaIT.rejectsWhenTheStoreIsDown` |
+| Denial of service: denúncias em massa contra uma pessoa ou para afogar a moderação | Cota de 10/dia por conta, entre réplicas; 429 + `Retry-After`; falha fechada | `ReportIT.reportingAboveTheDailyQuotaIsRejectedWithRetryAfterAndWithoutWriting`, `quotaIsCountedForEachAccountSeparately`, `ReportIT.reportIsRefusedWithoutWritingWhenTheQuotaCannotBeCounted`, `quotaIsKeptUnderTheReportKeyOfTheReporter`, `AccountRateLimitIT` |
 | Denial of service: entrada grande ou inválida vira 500 | Limites na descrição e no `maxPageSize`; 400 sem gravar | `ReportIT.invalidInputIsRejectedWithoutWriting`, `descriptionOfAThousandCharactersIsAccepted`, `BlockIT.pageSizeOutsideTheLimitsIsRejected`, `malformedPageTokenIsRejected`, `ReportDescriptionTest` |
 | Elevation of privilege: rota nova pública por engano | Negar por padrão | `DenyByDefaultIT` (inclui as cinco rotas), `BlockIT.anonymousCannotBlock`, `ReportIT.anonymousCannotReportNorRead` |
 
