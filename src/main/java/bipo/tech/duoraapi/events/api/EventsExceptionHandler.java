@@ -10,11 +10,12 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import bipo.tech.duoraapi.events.application.EventNotFoundException;
-import bipo.tech.duoraapi.events.application.IncompleteProfileException;
 import bipo.tech.duoraapi.events.application.RegistrationNotFoundException;
-import bipo.tech.duoraapi.events.domain.EventStateConflictException;
 
-/** Erros das rotas de eventos em ProblemDetail (docs/adr/0005). As mensagens nunca trazem o valor recebido. */
+/**
+ * Erros das rotas de eventos em ProblemDetail (docs/adr/0005). As mensagens nunca trazem o valor recebido. As
+ * recusas de regra de negócio, com reason, saem do RefusalProblemHandler (docs/adr/0020).
+ */
 @RestControllerAdvice(basePackageClasses = EventsExceptionHandler.class)
 class EventsExceptionHandler {
 
@@ -31,20 +32,9 @@ class EventsExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
     }
 
-    @ExceptionHandler(EventStateConflictException.class)
-    ProblemDetail handleStateConflict(EventStateConflictException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
-    }
-
     @ExceptionHandler(RegistrationNotFoundException.class)
     ProblemDetail handleRegistrationNotFound(RegistrationNotFoundException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
-    }
-
-    /** Autenticado, mas ainda sem o que a regra exige para participar: 403, com o que falta. */
-    @ExceptionHandler(IncompleteProfileException.class)
-    ProblemDetail handleIncompleteProfile(IncompleteProfileException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, exception.getMessage());
     }
 
     /**

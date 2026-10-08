@@ -21,7 +21,6 @@ import bipo.tech.duoraapi.identity.AccountId;
 import bipo.tech.duoraapi.profiles.application.OutdatedProfileVersionException;
 import bipo.tech.duoraapi.profiles.application.ProfileService;
 import bipo.tech.duoraapi.profiles.application.ProfileView;
-import bipo.tech.duoraapi.profiles.domain.BirthDateAlreadySetException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
@@ -100,11 +99,6 @@ class ProfileController {
             @RequestBody EditProfileRequest request) {
         long readVersion = readVersionIn(ifMatch);
         return withETag(profiles.edit(account.value(), readVersion, request.toChanges()));
-    }
-
-    @ExceptionHandler(BirthDateAlreadySetException.class)
-    ProblemDetail handleBirthDateAlreadySet(BirthDateAlreadySetException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
     }
 
     /** A conferência da versão no serviço, ou a versão otimista do JPA numa edição simultânea. */

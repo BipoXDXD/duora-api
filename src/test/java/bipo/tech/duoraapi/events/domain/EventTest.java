@@ -5,8 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
+import java.util.function.Consumer;
 
 import org.junit.jupiter.api.Test;
+
+import bipo.tech.duoraapi.RefusalReason;
 
 class EventTest {
 
@@ -77,8 +80,8 @@ class EventTest {
         var event = published();
 
         assertThatThrownBy(() -> event.publish(NOW))
-                .isInstanceOf(EventStateConflictException.class)
-                .hasMessage("only a draft can be published");
+                .isInstanceOfSatisfying(EventStateConflictException.class,
+                        refused(RefusalReason.EVENT_ALREADY_PUBLISHED, "only a draft can be published"));
         assertThat(event.status()).isEqualTo(EventStatus.PUBLISHED);
     }
 
@@ -88,8 +91,8 @@ class EventTest {
         event.cancel(NOW);
 
         assertThatThrownBy(() -> event.publish(NOW))
-                .isInstanceOf(EventStateConflictException.class)
-                .hasMessage("only a draft can be published");
+                .isInstanceOfSatisfying(EventStateConflictException.class,
+                        refused(RefusalReason.EVENT_CANCELLED, "only a draft can be published"));
         assertThat(event.status()).isEqualTo(EventStatus.CANCELLED);
     }
 
@@ -107,8 +110,18 @@ class EventTest {
         var event = draftStartingAt(STARTS_AT);
 
         assertThatThrownBy(() -> event.publish(STARTS_AT))
-                .isInstanceOf(EventStateConflictException.class)
-                .hasMessage("the event has already started");
+                .isInstanceOfSatisfying(EventStateConflictException.class,
+                        refused(RefusalReason.EVENT_STARTED, "the event has already started"));
+        assertThat(event.status()).isEqualTo(EventStatus.DRAFT);
+    }
+
+    @Test
+    void draftCannotBePublishedOnceItEnded() {
+        var event = draftStartingAt(STARTS_AT);
+
+        assertThatThrownBy(() -> event.publish(ENDS_AT))
+                .isInstanceOfSatisfying(EventStateConflictException.class,
+                        refused(RefusalReason.EVENT_ENDED, "the event has already ended"));
         assertThat(event.status()).isEqualTo(EventStatus.DRAFT);
     }
 
@@ -136,8 +149,8 @@ class EventTest {
         var event = published();
 
         assertThatThrownBy(() -> event.cancel(ENDS_AT))
-                .isInstanceOf(EventStateConflictException.class)
-                .hasMessage("the event has already ended");
+                .isInstanceOfSatisfying(EventStateConflictException.class,
+                        refused(RefusalReason.EVENT_ENDED, "the event has already ended"));
         assertThat(event.status()).isEqualTo(EventStatus.PUBLISHED);
     }
 
@@ -147,8 +160,8 @@ class EventTest {
         event.cancel(NOW);
 
         assertThatThrownBy(() -> event.cancel(NOW))
-                .isInstanceOf(EventStateConflictException.class)
-                .hasMessage("the event is already cancelled");
+                .isInstanceOfSatisfying(EventStateConflictException.class,
+                        refused(RefusalReason.EVENT_CANCELLED, "the event is already cancelled"));
     }
 
     @Test
@@ -160,15 +173,29 @@ class EventTest {
     @Test
     void fullEventRefusesRegistration() {
         assertThatThrownBy(() -> published().ensureAcceptsRegistration(CAPACITY, NOW))
-                .isInstanceOf(EventStateConflictException.class)
-                .hasMessage("the event is full");
+                .isInstanceOfSatisfying(EventStateConflictException.class,
+                        refused(RefusalReason.EVENT_FULL, "the event is full"));
     }
 
     @Test
     void startedEventRefusesRegistration() {
         assertThatThrownBy(() -> published().ensureAcceptsRegistration(0, STARTS_AT))
-                .isInstanceOf(EventStateConflictException.class)
-                .hasMessage("the event has already started");
+                .isInstanceOfSatisfying(EventStateConflictException.class,
+                        refused(RefusalReason.EVENT_STARTED, "the event has already started"));
+    }
+
+    @Test
+    void endedEventRefusesRegistration() {
+        assertThatThrownBy(() -> published().ensureAcceptsRegistration(0, ENDS_AT))
+                .isInstanceOfSatisfying(EventStateConflictException.class,
+                        refused(RefusalReason.EVENT_ENDED, "the event has already ended"));
+    }
+
+    @Test
+    void startedEventRefusesRegistrationJustBeforeItEnds() {
+        assertThatThrownBy(() -> published().ensureAcceptsRegistration(0, JUST_BEFORE_END))
+                .isInstanceOfSatisfying(EventStateConflictException.class,
+                        refused(RefusalReason.EVENT_STARTED, "the event has already started"));
     }
 
     @Test
@@ -177,15 +204,15 @@ class EventTest {
         event.cancel(NOW);
 
         assertThatThrownBy(() -> event.ensureAcceptsRegistration(0, NOW))
-                .isInstanceOf(EventStateConflictException.class)
-                .hasMessage("the event was cancelled");
+                .isInstanceOfSatisfying(EventStateConflictException.class,
+                        refused(RefusalReason.EVENT_CANCELLED, "the event was cancelled"));
     }
 
     @Test
     void draftRefusesRegistration() {
         assertThatThrownBy(() -> draftStartingAt(STARTS_AT).ensureAcceptsRegistration(0, NOW))
-                .isInstanceOf(EventStateConflictException.class)
-                .hasMessage("the event is not published");
+                .isInstanceOfSatisfying(EventStateConflictException.class,
+                        refused(RefusalReason.EVENT_NOT_PUBLISHED, "the event is not published"));
     }
 
     @Test
@@ -196,8 +223,15 @@ class EventTest {
     @Test
     void registrationCannotBeCancelledOnceTheEventStarted() {
         assertThatThrownBy(() -> published().ensureAllowsLeaving(STARTS_AT))
-                .isInstanceOf(EventStateConflictException.class)
-                .hasMessage("the event has already started");
+                .isInstanceOfSatisfying(EventStateConflictException.class,
+                        refused(RefusalReason.EVENT_STARTED, "the event has already started"));
+    }
+
+    @Test
+    void registrationCannotBeCancelledOnceTheEventEnded() {
+        assertThatThrownBy(() -> published().ensureAllowsLeaving(ENDS_AT))
+                .isInstanceOfSatisfying(EventStateConflictException.class,
+                        refused(RefusalReason.EVENT_ENDED, "the event has already ended"));
     }
 
     /** Sair de um evento cancelado não muda nada para ninguém, então é permitido até o início. */
@@ -251,6 +285,13 @@ class EventTest {
     private static Event draftStartingAt(Instant startsAt) {
         return Event.draft(new EventTitle("Noite de jogos"), new EventDescription("Jogos de tabuleiro em dupla."),
                 new EventSchedule(startsAt, startsAt.plusSeconds(3 * 3600)), new Capacity(CAPACITY), NOW);
+    }
+
+    private static Consumer<EventStateConflictException> refused(RefusalReason reason, String message) {
+        return exception -> {
+            assertThat(exception.reason()).isEqualTo(reason);
+            assertThat(exception).hasMessage(message);
+        };
     }
 
 }

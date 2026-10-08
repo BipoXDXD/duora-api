@@ -93,6 +93,22 @@ class ProfileTest {
         assertThat(profile.isComplete(NOW.minus(Duration.ofDays(1)))).isFalse();
     }
 
+    /** Preenchido não depende da idade: um dia antes dos 18, falta só a idade, e não um campo. */
+    @Test
+    void filledInDoesNotDependOnTheAge() {
+        var profile = Profile.emptyFor(ACCOUNT_ID);
+        profile.apply(new ProfileChanges(FieldChange.setTo(new DisplayName("Ana")),
+                FieldChange.setTo(LocalDate.parse("2008-10-05")), FieldChange.keep(), FieldChange.setTo(Region.SP)), NOW);
+
+        assertThat(profile.isFilledIn()).isTrue();
+        assertThat(profile.isComplete(NOW.minus(Duration.ofDays(1)))).isFalse();
+    }
+
+    @Test
+    void emptyProfileIsNotFilledIn() {
+        assertThat(Profile.emptyFor(ACCOUNT_ID).isFilledIn()).isFalse();
+    }
+
     @Test
     void profileWithoutRegionIsIncomplete() {
         var profile = Profile.emptyFor(ACCOUNT_ID);
@@ -101,6 +117,7 @@ class ProfileTest {
                 FieldChange.keep(), FieldChange.keep()), NOW);
 
         assertThat(profile.isComplete(NOW)).isFalse();
+        assertThat(profile.isFilledIn()).isFalse();
     }
 
     @Test

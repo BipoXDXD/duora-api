@@ -178,7 +178,11 @@ class RoundIT {
 
         startRound(eventId, 2)
                 .andExpect(status().isConflict())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(content().json("""
+                        {"title": "Conflict", "status": 409, "detail": "the previous round has not started yet",
+                         "instance": "%s", "reason": "ROUND_OUT_OF_SEQUENCE"}
+                        """.formatted(roundPath(eventId, 2)), JsonCompareMode.STRICT));
 
         assertThat(roundRows(eventId)).isZero();
         assertThat(seatRows(eventId)).isZero();
@@ -246,7 +250,9 @@ class RoundIT {
         String eventId = underwayEventWith("ana", "bruno");
         clock.setTo(STARTS_AT.minusNanos(1000));
 
-        startRound(eventId, 1).andExpect(status().isConflict());
+        startRound(eventId, 1)
+                .andExpect(status().isConflict())
+                .andExpect(content().json(notUnderway(eventId), JsonCompareMode.STRICT));
 
         assertThat(roundRows(eventId)).isZero();
     }
@@ -256,7 +262,9 @@ class RoundIT {
         String eventId = underwayEventWith("ana", "bruno");
         clock.setTo(ENDS_AT);
 
-        startRound(eventId, 1).andExpect(status().isConflict());
+        startRound(eventId, 1)
+                .andExpect(status().isConflict())
+                .andExpect(content().json(notUnderway(eventId), JsonCompareMode.STRICT));
 
         assertThat(roundRows(eventId)).isZero();
     }
@@ -275,7 +283,9 @@ class RoundIT {
         String eventId = underwayEventWith("ana", "bruno");
         mockMvc.perform(post(adminEventPath(eventId) + ":cancel").with(admin())).andExpect(status().isOk());
 
-        startRound(eventId, 1).andExpect(status().isConflict());
+        startRound(eventId, 1)
+                .andExpect(status().isConflict())
+                .andExpect(content().json(notUnderway(eventId), JsonCompareMode.STRICT));
 
         assertThat(roundRows(eventId)).isZero();
     }
@@ -285,7 +295,9 @@ class RoundIT {
         String eventId = createDraft(mockMvc, eventJson());
         clock.setTo(STARTS_AT);
 
-        startRound(eventId, 1).andExpect(status().isConflict());
+        startRound(eventId, 1)
+                .andExpect(status().isConflict())
+                .andExpect(content().json(notUnderway(eventId), JsonCompareMode.STRICT));
 
         assertThat(roundRows(eventId)).isZero();
     }
@@ -554,6 +566,14 @@ class RoundIT {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    private static String notUnderway(String eventId) {
+        return """
+                {"title": "Conflict", "status": 409,
+                 "detail": "rounds start only while the event is published and underway",
+                 "instance": "%s", "reason": "EVENT_NOT_UNDERWAY"}
+                """.formatted(roundPath(eventId, 1));
     }
 
 }

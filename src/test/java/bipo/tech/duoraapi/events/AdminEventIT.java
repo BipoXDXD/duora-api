@@ -124,10 +124,8 @@ class AdminEventIT {
         mockMvc.perform(post(adminEventPath(id) + ":publish").with(admin()))
                 .andExpect(status().isConflict())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(content().json("""
-                        {"title": "Conflict", "status": 409, "detail": "only a draft can be published",
-                         "instance": "%s:publish"}
-                        """.formatted(adminEventPath(id)), JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict("only a draft can be published", id, ":publish",
+                        "EVENT_ALREADY_PUBLISHED"), JsonCompareMode.STRICT));
     }
 
     @Test
@@ -137,9 +135,21 @@ class AdminEventIT {
 
         mockMvc.perform(post(adminEventPath(id) + ":publish").with(admin()))
                 .andExpect(status().isConflict())
-                .andExpect(content().json("""
-                        {"detail": "the event has already started"}
-                        """));
+                .andExpect(content().json(conflict("the event has already started", id, ":publish", "EVENT_STARTED"),
+                        JsonCompareMode.STRICT));
+
+        assertThat(statusOf(id)).isEqualTo("DRAFT");
+    }
+
+    @Test
+    void draftWhoseEndHasPassedCannotBePublished() throws Exception {
+        String id = createDraft(mockMvc, eventJson());
+        clock.setTo(Instant.parse(EventFixtures.ENDS_AT));
+
+        mockMvc.perform(post(adminEventPath(id) + ":publish").with(admin()))
+                .andExpect(status().isConflict())
+                .andExpect(content().json(conflict("the event has already ended", id, ":publish", "EVENT_ENDED"),
+                        JsonCompareMode.STRICT));
 
         assertThat(statusOf(id)).isEqualTo("DRAFT");
     }
@@ -162,9 +172,8 @@ class AdminEventIT {
 
         mockMvc.perform(post(adminEventPath(id) + ":cancel").with(admin()))
                 .andExpect(status().isConflict())
-                .andExpect(content().json("""
-                        {"detail": "the event is already cancelled"}
-                        """));
+                .andExpect(content().json(conflict("the event is already cancelled", id, ":cancel",
+                        "EVENT_CANCELLED"), JsonCompareMode.STRICT));
     }
 
     @Test
@@ -174,9 +183,8 @@ class AdminEventIT {
 
         mockMvc.perform(post(adminEventPath(id) + ":cancel").with(admin()))
                 .andExpect(status().isConflict())
-                .andExpect(content().json("""
-                        {"detail": "the event has already ended"}
-                        """));
+                .andExpect(content().json(conflict("the event has already ended", id, ":cancel", "EVENT_ENDED"),
+                        JsonCompareMode.STRICT));
 
         assertThat(statusOf(id)).isEqualTo("PUBLISHED");
     }
@@ -187,7 +195,9 @@ class AdminEventIT {
         mockMvc.perform(post(adminEventPath(id) + ":cancel").with(admin())).andExpect(status().isOk());
 
         mockMvc.perform(post(adminEventPath(id) + ":publish").with(admin()))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict())
+                .andExpect(content().json(conflict("only a draft can be published", id, ":publish",
+                        "EVENT_CANCELLED"), JsonCompareMode.STRICT));
 
         assertThat(statusOf(id)).isEqualTo("CANCELLED");
     }
@@ -493,6 +503,13 @@ class AdminEventIT {
         return oidcLogin().idToken(token -> token.issuer("https://tenant-id.ciamlogin.example/tenant-id/v2.0")
                         .claim("oid", "oid-admin"))
                 .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
+    }
+
+    /** O 409 inteiro de uma ação do ADMIN, com o motivo em reason (docs/adr/0020). */
+    private static String conflict(String detail, String id, String action, String reason) {
+        return """
+                {"title": "Conflict", "status": 409, "detail": "%s", "instance": "%s%s", "reason": "%s"}
+                """.formatted(detail, adminEventPath(id), action, reason);
     }
 
 }
