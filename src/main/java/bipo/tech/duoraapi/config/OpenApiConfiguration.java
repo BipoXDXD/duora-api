@@ -210,10 +210,11 @@ class OpenApiConfiguration {
     }
 
     private static Schema<?> logoutResponseSchema() {
-        return new ObjectSchema()
-                .addProperty("logoutUrl", new StringSchema().format("uri").maxLength(LOGOUT_URL_MAX_LENGTH)
-                        .description("URL de logout do Entra; o front navega até ela depois do 200"))
-                .required(List.of("logoutUrl"));
+        var schema = new ObjectSchema();
+        schema.addProperty("logoutUrl", new StringSchema().format("uri").maxLength(LOGOUT_URL_MAX_LENGTH)
+                .description("URL de logout do Entra; o front navega até ela depois do 200"));
+        schema.setRequired(List.of("logoutUrl"));
+        return schema;
     }
 
     private static boolean isPublic(Operation operation) {
@@ -275,27 +276,29 @@ class OpenApiConfiguration {
     }
 
     private static Schema<?> fieldErrorSchema() {
-        return new ObjectSchema()
-                .description("Um campo recusado e o motivo. Trate um code desconhecido como erro genérico do campo.")
-                .addProperty("field", new StringSchema()
-                        .pattern(RequestBodyProblemHandler.FIELD_NAME_PATTERN)
-                        .maxLength(RequestBodyProblemHandler.FIELD_NAME_MAX_LENGTH)
-                        .description("""
-                                Nome da propriedade no corpo JSON, como o cliente a enviou. Ausente quando o \
-                                erro é do corpo inteiro (MALFORMED_BODY) ou numa chave desconhecida fora do \
-                                formato de nome."""))
-                .addProperty("code", new StringSchema()
-                        ._enum(Stream.of(FieldErrorCode.values()).map(Enum::name).toList())
-                        .description("""
-                                REQUIRED: ausente, null, vazio ou apagado onde é obrigatório. TOO_SHORT e \
-                                TOO_LONG: abaixo de minLength ou acima de maxLength. BELOW_MINIMUM e \
-                                ABOVE_MAXIMUM: número ou instante fora da faixa (em birthDate, ABOVE_MAXIMUM é \
-                                menor de idade e BELOW_MINIMUM idade implausível). INVALID_FORMAT: tipo ou \
-                                formato errado. UNSUPPORTED_VALUE: fora da lista fechada. FORBIDDEN_CHARACTER: \
-                                controle, invisível ou espaço especial. SELF_REFERENCE: a própria conta. \
-                                UNKNOWN_FIELD: chave que o corpo não aceita. MALFORMED_BODY: o corpo não é um \
-                                objeto JSON legível."""))
-                .required(List.of("code"));
+        var schema = new ObjectSchema();
+        schema.setDescription(
+                "Um campo recusado e o motivo. Trate um code desconhecido como erro genérico do campo.");
+        schema.addProperty("field", new StringSchema()
+                .pattern(RequestBodyProblemHandler.FIELD_NAME_PATTERN)
+                .maxLength(RequestBodyProblemHandler.FIELD_NAME_MAX_LENGTH)
+                .description("""
+                        Nome da propriedade no corpo JSON, como o cliente a enviou. Ausente quando o \
+                        erro é do corpo inteiro (MALFORMED_BODY) ou numa chave desconhecida fora do \
+                        formato de nome."""));
+        schema.addProperty("code", new StringSchema()
+                ._enum(Stream.of(FieldErrorCode.values()).map(Enum::name).toList())
+                .description("""
+                        REQUIRED: ausente, null, vazio ou apagado onde é obrigatório. TOO_SHORT e \
+                        TOO_LONG: abaixo de minLength ou acima de maxLength. BELOW_MINIMUM e \
+                        ABOVE_MAXIMUM: número ou instante fora da faixa (em birthDate, ABOVE_MAXIMUM é \
+                        menor de idade e BELOW_MINIMUM idade implausível). INVALID_FORMAT: tipo ou \
+                        formato errado. UNSUPPORTED_VALUE: fora da lista fechada. FORBIDDEN_CHARACTER: \
+                        controle, invisível ou espaço especial. SELF_REFERENCE: a própria conta. \
+                        UNKNOWN_FIELD: chave que o corpo não aceita. MALFORMED_BODY: o corpo não é um \
+                        objeto JSON legível."""));
+        schema.setRequired(List.of("code"));
+        return schema;
     }
 
     private static Schema<String> traceIdSchema() {
