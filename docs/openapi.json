@@ -2985,6 +2985,17 @@
             },
             "description" : "Cota indisponível; a denúncia é recusada",
             "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até tentar de novo",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int32",
+                  "maximum" : 1,
+                  "minimum" : 1
+                },
+                "style" : "simple"
+              },
               "X-Request-Id" : {
                 "$ref" : "#/components/headers/RequestId"
               }

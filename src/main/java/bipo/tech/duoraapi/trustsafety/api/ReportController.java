@@ -69,6 +69,10 @@ class ReportController {
                             maximum = AccountRateLimit.MAX_RETRY_AFTER_SECONDS)),
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     @ApiResponse(responseCode = "503", description = "Cota indisponível; a denúncia é recusada",
+            headers = @Header(name = "Retry-After", required = true, description = "Segundos até tentar de novo",
+                    schema = @Schema(type = "integer", format = "int32",
+                            minimum = AccountRateLimit.UNAVAILABLE_RETRY_AFTER_SECONDS,
+                            maximum = AccountRateLimit.UNAVAILABLE_RETRY_AFTER_SECONDS)),
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     ResponseEntity<ReportResponse> file(AccountId caller, @Valid @RequestBody FileReportRequest request) {
         var report = reports.file(caller, new AccountId(request.reportedAccountId()), request.reason(),
