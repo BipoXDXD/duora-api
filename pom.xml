@@ -189,6 +189,22 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
 
+            <!-- Qualidade de código 27: zero aviso do javac, em main e test. Todo aviso derruba o build.
+                 -Xlint:-serial: as exceções de domínio (InvalidFieldException e filhas) nunca são
+                 serializadas (sem RMI, sem replicação de sessão); um serialVersionUID em cada uma seria
+                 ruído que o próximo módulo teria de repetir para o build passar. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <failOnWarning>true</failOnWarning>
+                    <showWarnings>true</showWarnings>
+                    <compilerArgs>
+                        <arg>-Xlint:all,-serial</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+
             <!-- Expõe ${org.mockito:mockito-core:jar} para carregar o Mockito como agent:
                  a auto-anexação dinâmica gera aviso no JDK 21+ e será bloqueada. -->
             <plugin>

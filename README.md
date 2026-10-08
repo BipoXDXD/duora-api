@@ -14,6 +14,8 @@ usuário autenticado (etapa 1 do plano). Matching, chat, eventos e pagamentos v�
 
 O Maven vem pelo wrapper (`./mvnw`); não é preciso instalá-lo.
 
+O compilador roda com `-Xlint:all` e `-Werror`: qualquer aviso do `javac`, em `main` ou `test`, quebra o build.
+
 ## Rodando localmente
 
 A API exige a configuração de autenticação (veja [Autenticação](#autenticação)). O script do
