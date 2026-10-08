@@ -4,7 +4,6 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -17,9 +16,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import bipo.tech.duoraapi.config.AccountRateLimit;
 import bipo.tech.duoraapi.identity.AccountId;
-import bipo.tech.duoraapi.trustsafety.application.ReportQuotaExceededException;
-import bipo.tech.duoraapi.trustsafety.application.ReportQuotaUnavailableException;
 import bipo.tech.duoraapi.trustsafety.application.ReportService;
 import bipo.tech.duoraapi.trustsafety.domain.UnknownAccountException;
 import io.swagger.v3.oas.annotations.Operation;
@@ -43,10 +41,6 @@ class ReportController {
 
     private static final String PROBLEM_JSON = "application/problem+json";
     private static final String PROBLEM_SCHEMA = "#/components/schemas/ProblemDetail";
-    /** Teto do Retry-After: o lint OWASP exige mínimo e máximo; a cota se repõe em menos de um dia. */
-    private static final String MAX_RETRY_AFTER_SECONDS = "86400";
-
-    private static final long NANOS_PER_SECOND = 1_000_000_000L;
 
     private final ReportService reports;
 
@@ -72,7 +66,7 @@ class ReportController {
             headers = @Header(name = "Retry-After", required = true,
                     description = "Segundos até a próxima denúncia ficar disponível",
                     schema = @Schema(type = "integer", format = "int64", minimum = "0",
-                            maximum = MAX_RETRY_AFTER_SECONDS)),
+                            maximum = AccountRateLimit.MAX_RETRY_AFTER_SECONDS)),
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     @ApiResponse(responseCode = "503", description = "Cota indisponível; a denúncia é recusada",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
@@ -105,20 +99,6 @@ class ReportController {
     @ExceptionHandler(UnknownAccountException.class)
     ProblemDetail handleUnknownAccount(UnknownAccountException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
-    }
-
-    @ExceptionHandler(ReportQuotaExceededException.class)
-    ResponseEntity<ProblemDetail> handleQuotaExceeded(ReportQuotaExceededException exception) {
-        long retryAfterSeconds = Math.ceilDiv(exception.retryAfter().toNanos(), NANOS_PER_SECOND);
-        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-                .header(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds))
-                .body(ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, exception.getMessage()));
-    }
-
-    /** Falha fechada (docs/adr/0006): sem contar a cota, a denúncia não passa. */
-    @ExceptionHandler(ReportQuotaUnavailableException.class)
-    ProblemDetail handleQuotaUnavailable() {
-        return ProblemDetail.forStatus(HttpStatus.SERVICE_UNAVAILABLE);
     }
 
 }
