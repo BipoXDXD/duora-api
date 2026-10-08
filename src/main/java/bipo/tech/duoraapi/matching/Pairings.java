@@ -1,6 +1,7 @@
 package bipo.tech.duoraapi.matching;
 
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -12,9 +13,9 @@ import bipo.tech.duoraapi.matching.domain.RoundRepository;
 import bipo.tech.duoraapi.matching.domain.Seat;
 
 /**
- * API publicada do matching para os outros módulos (docs/adr/0019): com quem uma pessoa formou par numa
- * rodada, sem que outro módulo leia as tabelas daqui. Os assentos de uma rodada não mudam depois do sorteio,
- * então a resposta vale para o resto da transação de quem pergunta.
+ * API publicada do matching para os outros módulos (docs/adr/0019, 0021): com quem uma pessoa formou par numa
+ * rodada e qual é a última rodada do evento, sem que outro módulo leia as tabelas daqui. Os assentos de uma
+ * rodada não mudam depois do sorteio, então o par vale para o resto da transação de quem pergunta.
  */
 @Service
 public class Pairings {
@@ -45,6 +46,17 @@ public class Pairings {
                     case Seat.Paired paired -> Optional.of(paired.partner());
                     case Seat.SittingOut _ -> Optional.<AccountId>empty();
                 });
+    }
+
+    /**
+     * O número da última rodada iniciada no evento; vazio se nenhuma começou ou o evento não existe. O chat de
+     * uma rodada fecha para envio quando a seguinte começa (docs/adr/0021).
+     */
+    @Transactional(readOnly = true)
+    public OptionalInt latestRoundOf(UUID eventId) {
+        return rounds.findLatestNumber(eventId)
+                .map(number -> OptionalInt.of(number.value()))
+                .orElseGet(OptionalInt::empty);
     }
 
 }
