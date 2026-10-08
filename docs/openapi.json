@@ -41,6 +41,9 @@
   }, {
     "description" : "Lista de espera do pré-lançamento",
     "name" : "waitlist"
+  }, {
+    "description" : "Decisão privada depois de cada rodada e conexões por interesse mútuo",
+    "name" : "connections"
   } ],
   "paths" : {
     "/api/accounts/{accountId}:block" : {
@@ -1692,6 +1695,326 @@
         "tags" : [ "events" ]
       }
     },
+    "/api/events/{eventId}/rounds/{number}/decision" : {
+      "get" : {
+        "description" : "Só a de quem chama. Sem decisão gravada, 404, tenha a pessoa formado par ou não.",
+        "operationId" : "getMyDecision",
+        "parameters" : [ {
+          "description" : "Id do evento",
+          "in" : "path",
+          "name" : "eventId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        }, {
+          "description" : "Número da rodada no evento, a partir de 1",
+          "in" : "path",
+          "name" : "number",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DecisionResponse"
+                }
+              }
+            },
+            "description" : "A decisão de quem chama",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID, ou número fora de 1 a 100",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Quem chama não decidiu nessa rodada",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lê a própria decisão sobre o par da rodada",
+        "tags" : [ "connections" ]
+      },
+      "put" : {
+        "description" : "Uma decisão por pessoa e rodada, e final: repetir a mesma escolha devolve a mesma decisão (200); a outra escolha é recusada (409). A resposta é a mesma qualquer que seja a decisão do par; se os dois disserem sim, a conexão aparece em listMyConnections.",
+        "operationId" : "decideAboutMyPartner",
+        "parameters" : [ {
+          "description" : "Id do evento",
+          "in" : "path",
+          "name" : "eventId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        }, {
+          "description" : "Número da rodada no evento, a partir de 1",
+          "in" : "path",
+          "name" : "number",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DecideRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DecisionResponse"
+                }
+              }
+            },
+            "description" : "A decisão que já existia, com a mesma escolha",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DecisionResponse"
+                }
+              }
+            },
+            "description" : "A decisão gravada",
+            "headers" : {
+              "Location" : {
+                "description" : "Endereço da decisão",
+                "required" : true,
+                "schema" : {
+                  "type" : "string",
+                  "format" : "uri",
+                  "maxLength" : 2048
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID, número fora de 1 a 100, interested ausente ou que não é booleano, JSON malformado ou campo desconhecido",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sessão web sem o token CSRF no header X-XSRF-TOKEN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Quem chama não formou par nessa rodada: ficou de fora, não estava no sorteio ou a rodada não existe",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Quem chama já decidiu nessa rodada, com a outra escolha",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "415" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Corpo em outro formato que não application/json",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "503" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "A decisão do par na mesma rodada demorou além do teto; nada foi gravado",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até tentar de novo",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int32",
+                  "maximum" : 1,
+                  "minimum" : 1
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Decide se continua em contato com o par da rodada",
+        "tags" : [ "connections" ]
+      }
+    },
     "/api/events/{eventId}/rounds/{number}/pairing" : {
       "get" : {
         "description" : "O id da conta do par, ou null se quem chama ficou de fora nesta rodada. Sem lugar na rodada, 404, exista o evento ou a rodada ou não.",
@@ -2043,6 +2366,99 @@
         },
         "summary" : "Lista quem o usuário bloqueou",
         "tags" : [ "blocks" ]
+      }
+    },
+    "/api/me/connections" : {
+      "get" : {
+        "description" : "Pessoas com quem houve interesse mútuo depois de uma rodada, da conexão mais recente para a mais antiga, paginadas por cursor. A última página vem com nextPageToken null.",
+        "operationId" : "listMyConnections",
+        "parameters" : [ {
+          "description" : "Quantas conexões no máximo nesta página",
+          "in" : "query",
+          "name" : "maxPageSize",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20,
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        }, {
+          "description" : "O nextPageToken da página anterior; ausente na primeira",
+          "in" : "query",
+          "name" : "pageToken",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 120,
+            "pattern" : "^[A-Za-z0-9_-]+$"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ConnectionsResponse"
+                }
+              }
+            },
+            "description" : "Uma página das conexões",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "maxPageSize fora de 1 a 100, ou pageToken que a API não gerou",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lista as próprias conexões",
+        "tags" : [ "connections" ]
       }
     },
     "/api/me/profile" : {
@@ -2969,6 +3385,45 @@
         },
         "required" : [ "items", "nextPageToken" ]
       },
+      "Connection" : {
+        "type" : "object",
+        "properties" : {
+          "accountId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Id da outra conta",
+            "maxLength" : 36,
+            "minLength" : 36
+          },
+          "connectedAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Quando a conexão se formou",
+            "maxLength" : 35
+          }
+        },
+        "required" : [ "accountId", "connectedAt" ]
+      },
+      "ConnectionsResponse" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "description" : "Conexões da mais recente para a mais antiga",
+            "items" : {
+              "$ref" : "#/components/schemas/Connection"
+            },
+            "maxItems" : 100
+          },
+          "nextPageToken" : {
+            "type" : [ "string", "null" ],
+            "description" : "Token da próxima página, ou null na última",
+            "maxLength" : 120,
+            "pattern" : "^[A-Za-z0-9_-]+$"
+          }
+        },
+        "required" : [ "items", "nextPageToken" ]
+      },
       "CreateEventRequest" : {
         "type" : "object",
         "additionalProperties" : false,
@@ -3021,6 +3476,47 @@
           }
         },
         "required" : [ "displayName", "profileComplete" ]
+      },
+      "DecideRequest" : {
+        "type" : "object",
+        "additionalProperties" : false,
+        "properties" : {
+          "interested" : {
+            "type" : "boolean",
+            "description" : "true para continuar em contato com o par da rodada, false para não"
+          }
+        },
+        "required" : [ "interested" ]
+      },
+      "DecisionResponse" : {
+        "type" : "object",
+        "properties" : {
+          "decidedAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Quando a decisão foi gravada",
+            "maxLength" : 35
+          },
+          "eventId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Id do evento",
+            "maxLength" : 36,
+            "minLength" : 36
+          },
+          "interested" : {
+            "type" : "boolean",
+            "description" : "A escolha de quem chama: true para continuar em contato"
+          },
+          "roundNumber" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Número da rodada no evento",
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        },
+        "required" : [ "decidedAt", "eventId", "interested", "roundNumber" ]
       },
       "EditProfileRequest" : {
         "type" : "object",
