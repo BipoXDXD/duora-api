@@ -9,6 +9,17 @@ Toda **breaking change** entra aqui no mesmo PR que a introduz: sem a entrada, o
 
 ## Não publicado
 
+Mudança compatível ([ADR 0016](adr/0016-eventos-e-inscricoes.md), [ADR 0017](adr/0017-pareamento.md)):
+
+- Limite por conta nas operações que travam o evento ou disputam a rodada: `PUT` e `DELETE
+  /api/events/{eventId}/registration` dividem 60 chamadas por hora (`registerForEvent` e
+  `cancelMyRegistration`), e `PUT /api/admin/events/{eventId}/rounds/{number}` dá 30 por hora a cada conta
+  ADMIN (`startRound`). Acima do limite, as três respondem 429 com `Retry-After` (segundos, no máximo
+  86400) e ProblemDetail. `cancelMyRegistration` ganha também o 503 com `Retry-After: 1` para quando o
+  limite não pôde ser contado (nada é feito); o 503 de `registerForEvent` e de `startRound` ganha essa causa
+  além do evento ocupado ou da rodada em disputa. Repetições idempotentes (200 da mesma inscrição ou rodada)
+  também gastam o limite. O `duora-web` deve respeitar o `Retry-After` e não repetir chamadas em laço.
+
 Mudança compatível ([ADR 0018](adr/0018-erros-de-campo-no-problem-detail.md)):
 
 - O 400 de validação do corpo (`POST /api/waitlist`, `PATCH /api/me/profile`, `POST /api/reports`,
