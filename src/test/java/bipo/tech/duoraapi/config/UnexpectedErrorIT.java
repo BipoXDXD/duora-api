@@ -37,6 +37,10 @@ class UnexpectedErrorIT {
 
     private static final String REQUEST_ID = "X-Request-Id";
 
+    /**
+     * Nome temporário da tabela da lista de espera enquanto o teste provoca o erro inesperado. É DDL numa tabela
+     * compartilhada: só é seguro porque as classes rodam uma de cada vez (junit-platform.properties).
+     */
     private static final String HIDDEN_TABLE = "waitlist_entry_unavailable";
 
     @LocalServerPort

@@ -46,8 +46,8 @@ public final class RateLimitTestSupport {
 
     /**
      * Roda a ação com a tabela das fichas fora do ar, para provar a falha fechada. É DDL numa tabela que todos
-     * os testes compartilham: só é seguro porque a suíte roda uma classe de cada vez (nada de paralelismo no
-     * JUnit nem no Failsafe), e o {@code finally} devolve o nome mesmo se a ação falhar.
+     * os testes compartilham: só é seguro porque as classes rodam uma de cada vez (junit-platform.properties),
+     * e o {@code finally} devolve o nome mesmo se a ação falhar.
      */
     public static void whileTheLimitCannotBeCounted(JdbcClient jdbcClient, Action action) throws Exception {
         jdbcClient.sql("alter table " + BUCKET_TABLE + " rename to " + UNAVAILABLE_TABLE).update();
