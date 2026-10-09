@@ -2,6 +2,7 @@ package bipo.tech.duoraapi.trustsafety.api;
 
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -13,12 +14,14 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import bipo.tech.duoraapi.config.AccountRateLimit;
 import bipo.tech.duoraapi.identity.AccountId;
 import bipo.tech.duoraapi.trustsafety.application.BlockService;
 import bipo.tech.duoraapi.trustsafety.domain.SelfBlockException;
 import bipo.tech.duoraapi.trustsafety.domain.UnknownAccountException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.headers.Header;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -27,7 +30,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 /**
  * Bloqueio entre contas (docs/adr/0015). A outra pessoa é referenciada pelo id da conta, um UUIDv7
  * opaco. Bloquear e desbloquear são ações ({@code :block}, {@code :unblock}, docs/adr/0005), as duas
- * idempotentes e sem corpo na resposta.
+ * idempotentes e sem corpo na resposta. As duas gastam o mesmo limite da conta antes de qualquer consulta:
+ * o 404 do {@code :block} revela se a conta existe, e o limite reduz a enumeração (docs/adr/0015, "Rate limit").
  */
 @RestController
 @Tag(name = "blocks", description = "Bloqueio entre contas")
@@ -38,29 +42,48 @@ class BlockController {
 
     private static final String PROBLEM_JSON = "application/problem+json";
     private static final String PROBLEM_SCHEMA = "#/components/schemas/ProblemDetail";
+    private static final String RATE_LIMIT_DESCRIPTION = "Cada chamada, repetida ou não, gasta o limite da conta, "
+            + "somado com o do outro: 60 por hora, repostas aos poucos.";
     private static final String ACCOUNT_ID_DESCRIPTION = "Id da outra conta, como o app o recebe ao mostrar a pessoa";
 
     private final BlockService blocks;
+    private final AccountRateLimit rateLimit;
 
-    BlockController(BlockService blocks) {
+    BlockController(BlockService blocks, @Qualifier(BlockRateLimitConfiguration.BEAN_NAME) AccountRateLimit rateLimit) {
         this.blocks = blocks;
+        this.rateLimit = rateLimit;
     }
 
     @PostMapping("/api/accounts/{accountId}:block")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(operationId = "blockAccount", summary = "Bloqueia outra conta",
             description = "Idempotente: bloquear quem já está bloqueado também responde 204 e mantém a data do "
-                    + "primeiro bloqueio. A resposta é a mesma se a outra pessoa tiver bloqueado você.")
+                    + "primeiro bloqueio. A resposta é a mesma se a outra pessoa tiver bloqueado você. "
+                    + RATE_LIMIT_DESCRIPTION)
     @ApiResponse(responseCode = "204", description = "A conta está bloqueada")
     @ApiResponse(responseCode = "400", description = "Bloqueio de si mesmo, ou id que não é UUID",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     @ApiResponse(responseCode = "404", description = "Não há conta com esse id",
+            content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
+    @ApiResponse(responseCode = "429", description = "Limite de bloqueios e desbloqueios desta conta esgotado; "
+            + "nada foi gravado",
+            headers = @Header(name = "Retry-After", required = true,
+                    description = "Segundos até a próxima chamada ficar disponível",
+                    schema = @Schema(type = "integer", format = "int64", minimum = "0",
+                            maximum = AccountRateLimit.MAX_RETRY_AFTER_SECONDS)),
+            content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
+    @ApiResponse(responseCode = "503", description = "O limite desta conta não pôde ser contado; nada foi gravado",
+            headers = @Header(name = "Retry-After", required = true, description = "Segundos até tentar de novo",
+                    schema = @Schema(type = "integer", format = "int32",
+                            minimum = AccountRateLimit.UNAVAILABLE_RETRY_AFTER_SECONDS,
+                            maximum = AccountRateLimit.UNAVAILABLE_RETRY_AFTER_SECONDS)),
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     void block(AccountId caller,
             @Parameter(description = ACCOUNT_ID_DESCRIPTION,
                     schema = @Schema(type = "string", format = "uuid", minLength = ApiSchemas.UUID_LENGTH,
                             maxLength = ApiSchemas.UUID_LENGTH))
             @PathVariable UUID accountId) {
+        rateLimit.consume(caller);
         blocks.block(caller, new AccountId(accountId));
     }
 
@@ -68,15 +91,30 @@ class BlockController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(operationId = "unblockAccount", summary = "Desfaz o próprio bloqueio de outra conta",
             description = "Idempotente: sem bloqueio, ou com id que não é de conta, também responde 204. Um "
-                    + "bloqueio que a outra pessoa fez continua valendo.")
+                    + "bloqueio que a outra pessoa fez continua valendo. "
+                    + RATE_LIMIT_DESCRIPTION)
     @ApiResponse(responseCode = "204", description = "A conta não está bloqueada por quem chama")
     @ApiResponse(responseCode = "400", description = "Id que não é UUID",
+            content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
+    @ApiResponse(responseCode = "429", description = "Limite de bloqueios e desbloqueios desta conta esgotado; "
+            + "nada foi gravado",
+            headers = @Header(name = "Retry-After", required = true,
+                    description = "Segundos até a próxima chamada ficar disponível",
+                    schema = @Schema(type = "integer", format = "int64", minimum = "0",
+                            maximum = AccountRateLimit.MAX_RETRY_AFTER_SECONDS)),
+            content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
+    @ApiResponse(responseCode = "503", description = "O limite desta conta não pôde ser contado; nada foi gravado",
+            headers = @Header(name = "Retry-After", required = true, description = "Segundos até tentar de novo",
+                    schema = @Schema(type = "integer", format = "int32",
+                            minimum = AccountRateLimit.UNAVAILABLE_RETRY_AFTER_SECONDS,
+                            maximum = AccountRateLimit.UNAVAILABLE_RETRY_AFTER_SECONDS)),
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     void unblock(AccountId caller,
             @Parameter(description = ACCOUNT_ID_DESCRIPTION,
                     schema = @Schema(type = "string", format = "uuid", minLength = ApiSchemas.UUID_LENGTH,
                             maxLength = ApiSchemas.UUID_LENGTH))
             @PathVariable UUID accountId) {
+        rateLimit.consume(caller);
         blocks.unblock(caller, new AccountId(accountId));
     }
 

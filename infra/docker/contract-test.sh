@@ -73,10 +73,11 @@ docker create --name "$jwks" --network "$network" "$jwks_image" httpd -f -p 8000
 docker cp "$workdir/www" "$jwks:/www"
 docker start "$jwks" >/dev/null
 
-# Limites altos (fila de espera, denúncias, inscrições, rodadas, decisões e mensagens do chat): o fuzzing
-# precisa chegar ao controller, e os 429 já têm testes próprios (JoinWaitlistIT, ReportIT,
-# RegistrationRateLimitIT, RoundRateLimitIT, DecisionRateLimitIT, ChatRateLimitIT). Os limites por conta valem
-# para o token de teste, uma conta só: com a cota real, a 11ª denúncia, a 61ª inscrição ou cancelamento, a 31ª
+# Limites altos (fila de espera, denúncias, bloqueios, edições do perfil, inscrições, rodadas, decisões e
+# mensagens do chat): o fuzzing precisa chegar ao controller, e os 429 já têm testes próprios (JoinWaitlistIT,
+# ReportIT, BlockRateLimitIT, ProfileRateLimitIT, RegistrationRateLimitIT, RoundRateLimitIT, DecisionRateLimitIT,
+# ChatRateLimitIT). Os limites por conta valem para o token de teste, uma conta só: com a cota real, a 11ª
+# denúncia, o 61º bloqueio ou desbloqueio, a 121ª edição do perfil, a 61ª inscrição ou cancelamento, a 31ª
 # rodada, a 121ª decisão e a 21ª mensagem do minuto já seriam 429, e o resto do fuzzing dessas rotas não
 # chegaria às regras.
 docker run -d --name "$api" --network "$network" -p 127.0.0.1::8080 \
@@ -92,6 +93,8 @@ docker run -d --name "$api" --network "$network" -p 127.0.0.1::8080 \
   -e DUORA_TRUSTED_PROXIES=192.0.2.0/24 \
   -e DUORA_WAITLIST_JOINRATELIMIT_CAPACITY=1000000 \
   -e DUORA_TRUSTSAFETY_REPORTRATELIMIT_CAPACITY=1000000 \
+  -e DUORA_TRUSTSAFETY_BLOCKRATELIMIT_CAPACITY=1000000 \
+  -e DUORA_PROFILES_EDITRATELIMIT_CAPACITY=1000000 \
   -e DUORA_EVENTS_REGISTRATIONRATELIMIT_CAPACITY=1000000 \
   -e DUORA_MATCHING_ROUNDRATELIMIT_CAPACITY=1000000 \
   -e DUORA_CONNECTIONS_DECISIONRATELIMIT_CAPACITY=1000000 \

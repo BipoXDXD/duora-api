@@ -51,7 +51,7 @@
   "paths" : {
     "/api/accounts/{accountId}:block" : {
       "post" : {
-        "description" : "Idempotente: bloquear quem já está bloqueado também responde 204 e mantém a data do primeiro bloqueio. A resposta é a mesma se a outra pessoa tiver bloqueado você.",
+        "description" : "Idempotente: bloquear quem já está bloqueado também responde 204 e mantém a data do primeiro bloqueio. A resposta é a mesma se a outra pessoa tiver bloqueado você. Cada chamada, repetida ou não, gasta o limite da conta, somado com o do outro: 60 por hora, repostas aos poucos.",
         "operationId" : "blockAccount",
         "parameters" : [ {
           "description" : "Id da outra conta, como o app o recebe ao mostrar a pessoa",
@@ -134,6 +134,32 @@
               }
             }
           },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Limite de bloqueios e desbloqueios desta conta esgotado; nada foi gravado",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até a próxima chamada ficar disponível",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int64",
+                  "maximum" : 86400,
+                  "minimum" : 0
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
           "500" : {
             "content" : {
               "application/problem+json" : {
@@ -148,6 +174,32 @@
                 "$ref" : "#/components/headers/RequestId"
               }
             }
+          },
+          "503" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "O limite desta conta não pôde ser contado; nada foi gravado",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até tentar de novo",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int32",
+                  "maximum" : 1,
+                  "minimum" : 1
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
           }
         },
         "summary" : "Bloqueia outra conta",
@@ -156,7 +208,7 @@
     },
     "/api/accounts/{accountId}:unblock" : {
       "post" : {
-        "description" : "Idempotente: sem bloqueio, ou com id que não é de conta, também responde 204. Um bloqueio que a outra pessoa fez continua valendo.",
+        "description" : "Idempotente: sem bloqueio, ou com id que não é de conta, também responde 204. Um bloqueio que a outra pessoa fez continua valendo. Cada chamada, repetida ou não, gasta o limite da conta, somado com o do outro: 60 por hora, repostas aos poucos.",
         "operationId" : "unblockAccount",
         "parameters" : [ {
           "description" : "Id da outra conta, como o app o recebe ao mostrar a pessoa",
@@ -224,6 +276,32 @@
               }
             }
           },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Limite de bloqueios e desbloqueios desta conta esgotado; nada foi gravado",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até a próxima chamada ficar disponível",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int64",
+                  "maximum" : 86400,
+                  "minimum" : 0
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
           "500" : {
             "content" : {
               "application/problem+json" : {
@@ -234,6 +312,32 @@
             },
             "description" : "Erro inesperado",
             "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "503" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "O limite desta conta não pôde ser contado; nada foi gravado",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até tentar de novo",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int32",
+                  "maximum" : 1,
+                  "minimum" : 1
+                },
+                "style" : "simple"
+              },
               "X-Request-Id" : {
                 "$ref" : "#/components/headers/RequestId"
               }
@@ -3278,7 +3382,7 @@
         "tags" : [ "profile" ]
       },
       "patch" : {
-        "description" : "Merge patch de um nível: campo ausente não muda, null apaga e valor troca. Nome, data de nascimento e região não podem ser apagados; a data de nascimento só pode ser informada uma vez e precisa ser de maior de idade. A edição é inteira ou nada.",
+        "description" : "Merge patch de um nível: campo ausente não muda, null apaga e valor troca. Nome, data de nascimento e região não podem ser apagados; a data de nascimento só pode ser informada uma vez e precisa ser de maior de idade. A edição é inteira ou nada. Cada edição enviada, aceita ou não, gasta o limite da conta: 120 por hora, repostas aos poucos.",
         "operationId" : "editMyProfile",
         "parameters" : [ {
           "description" : "O ETag da última leitura do perfil",
@@ -3432,6 +3536,32 @@
               }
             }
           },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Limite de edições desta conta esgotado; nada foi gravado",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até a próxima edição ficar disponível",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int64",
+                  "maximum" : 86400,
+                  "minimum" : 0
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
           "500" : {
             "content" : {
               "application/problem+json" : {
@@ -3442,6 +3572,32 @@
             },
             "description" : "Erro inesperado",
             "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "503" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "O limite desta conta não pôde ser contado; nada foi gravado",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até tentar de novo",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int32",
+                  "maximum" : 1,
+                  "minimum" : 1
+                },
+                "style" : "simple"
+              },
               "X-Request-Id" : {
                 "$ref" : "#/components/headers/RequestId"
               }

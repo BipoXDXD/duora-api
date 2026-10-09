@@ -13,9 +13,9 @@ import bipo.tech.duoraapi.DuoraApiApplication;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
 /**
- * Os limites por conta de denúncias, de inscrições, de rodadas, de decisões e de mensagens do chat não sobem com
- * valor inválido: capacidade zero bloquearia todo mundo, e período zero ou acima de um dia quebra o teto do
- * Retry-After documentado na spec.
+ * Os limites por conta de denúncias, de bloqueios, de edições do perfil, de inscrições, de rodadas, de decisões e
+ * de mensagens do chat não sobem com valor inválido: capacidade zero bloquearia todo mundo, e período zero ou
+ * acima de um dia quebra o teto do Retry-After documentado na spec.
  */
 class RequiredRateLimitSettingsIT {
 
@@ -37,6 +37,14 @@ class RequiredRateLimitSettingsIT {
             "duora.trustsafety.report-rate-limit.capacity, -1, capacity",
             "duora.trustsafety.report-rate-limit.period, PT0S, period",
             "duora.trustsafety.report-rate-limit.period, P2D, period",
+            "duora.trustsafety.block-rate-limit.capacity, 0, capacity",
+            "duora.trustsafety.block-rate-limit.capacity, -1, capacity",
+            "duora.trustsafety.block-rate-limit.period, PT0S, period",
+            "duora.trustsafety.block-rate-limit.period, P2D, period",
+            "duora.profiles.edit-rate-limit.capacity, 0, capacity",
+            "duora.profiles.edit-rate-limit.capacity, -1, capacity",
+            "duora.profiles.edit-rate-limit.period, PT0S, period",
+            "duora.profiles.edit-rate-limit.period, P2D, period",
             "duora.events.registration-rate-limit.capacity, 0, capacity",
             "duora.events.registration-rate-limit.capacity, -1, capacity",
             "duora.events.registration-rate-limit.period, PT0S, period",
