@@ -24,11 +24,11 @@
     "description" : "Perfil do usuário logado",
     "name" : "profile"
   }, {
+    "description" : "Lista, criação, publicação e cancelamento de eventos pelo ADMIN",
+    "name" : "admin-events"
+  }, {
     "description" : "O par de quem está logado em cada rodada de um evento",
     "name" : "pairings"
-  }, {
-    "description" : "Criação, publicação e cancelamento de eventos pelo ADMIN",
-    "name" : "admin-events"
   }, {
     "description" : "Eventos publicados e as inscrições de quem está logado",
     "name" : "events"
@@ -245,6 +245,121 @@
       }
     },
     "/api/admin/events" : {
+      "get" : {
+        "description" : "Todos os estados, do início mais distante ao mais antigo, paginados por cursor; o filtro status escolhe um só. Cada item traz o estado guardado e quantas pessoas se inscreveram, nunca quem. A última página vem com nextPageToken null.",
+        "operationId" : "listAdminEvents",
+        "parameters" : [ {
+          "description" : "Quantos eventos no máximo nesta página",
+          "in" : "query",
+          "name" : "maxPageSize",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 20,
+            "maximum" : 50,
+            "minimum" : 1
+          }
+        }, {
+          "description" : "O nextPageToken da página anterior; ausente na primeira",
+          "in" : "query",
+          "name" : "pageToken",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "maxLength" : 90,
+            "pattern" : "^[A-Za-z0-9_-]+$"
+          }
+        }, {
+          "description" : "Só os eventos neste estado; ausente traz todos",
+          "in" : "query",
+          "name" : "status",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "enum" : [ "DRAFT", "PUBLISHED", "CANCELLED" ]
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageResponseAdminEventResponse"
+                }
+              }
+            },
+            "description" : "Uma página dos eventos",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "maxPageSize fora de 1 a 50, status que não é DRAFT, PUBLISHED nem CANCELLED, ou pageToken que a API não gerou",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem o papel ADMIN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lista os eventos, rascunhos incluídos",
+        "tags" : [ "admin-events" ]
+      },
       "post" : {
         "description" : "O rascunho só aparece para o ADMIN até ser publicado. Sem Idempotency-Key: repetir a criação gera outro rascunho, que o ADMIN cancela (docs/adr/0016).",
         "operationId" : "createEvent",
@@ -4428,6 +4543,26 @@
           }
         },
         "required" : [ "endsAt", "eventId", "eventStatus", "registeredAt", "startsAt", "title" ]
+      },
+      "PageResponseAdminEventResponse" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "description" : "Itens da página, pelo início do evento",
+            "items" : {
+              "$ref" : "#/components/schemas/AdminEventResponse"
+            },
+            "maxItems" : 50
+          },
+          "nextPageToken" : {
+            "type" : [ "string", "null" ],
+            "description" : "Token da próxima página, ou null na última",
+            "maxLength" : 90,
+            "pattern" : "^[A-Za-z0-9_-]+$"
+          }
+        },
+        "required" : [ "items", "nextPageToken" ]
       },
       "PageResponseEventResponse" : {
         "type" : "object",

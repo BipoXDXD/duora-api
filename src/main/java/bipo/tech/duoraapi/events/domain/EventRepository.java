@@ -1,6 +1,7 @@
 package bipo.tech.duoraapi.events.domain;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -40,6 +41,20 @@ public interface EventRepository extends Repository<Event, UUID> {
              order by event.startsAt, event.id
             """)
     List<Event> findUpcoming(EventStatus status, Instant now, Instant afterStartsAt, UUID afterId, Limit limit);
+
+    /**
+     * Eventos de qualquer um dos estados pedidos, do início mais distante ao mais antigo e, no empate, do maior
+     * id ao menor, a partir do par (beforeStartsAt, beforeId) exclusive: paginação por keyset da lista do ADMIN.
+     * A primeira página parte de um par depois de qualquer evento possível.
+     */
+    @Query("""
+            select event from Event event
+             where event.status in :statuses
+               and (event.startsAt < :beforeStartsAt or (event.startsAt = :beforeStartsAt and event.id < :beforeId))
+             order by event.startsAt desc, event.id desc
+            """)
+    List<Event> findForAdministration(Collection<EventStatus> statuses, Instant beforeStartsAt, UUID beforeId,
+            Limit limit);
 
     /** Grava já, para o conflito de versão (publicar e cancelar ao mesmo tempo) sair aqui, e não no commit. */
     void flush();

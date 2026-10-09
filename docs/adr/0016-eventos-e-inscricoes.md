@@ -132,6 +132,19 @@ chaves é conferido nos testes). Rascunho responde exatamente como evento inexis
   com erro do banco), → `400`.
 - `GET /api/events`: publicados que ainda não começaram. `GET /api/me/registrations`: as próprias
   inscrições em eventos que ainda não acabaram, inclusive cancelados (para a pessoa saber) e em andamento.
+- `GET /api/admin/events` (só ADMIN): todos os estados, rascunho incluído, com o `status` e o
+  `registrationCount` de cada evento, este contado numa consulta só para a página inteira. Filtro opcional
+  `status` (`DRAFT`, `PUBLISHED` ou `CANCELLED`, escrito como na resposta; outro valor, `400`). Padrão de 20
+  itens, e não 10, porque a tabela do ADMIN mostra mais linhas por tela; o teto continua 50.
+
+  | Ordem | Prós | Contras |
+  |---|---|---|
+  | `startsAt` crescente (como `/api/events`) | Mesmo cursor da lista de usuários | Sem o corte de "ainda não começou", os encerrados (anos de histórico) vêm primeiro e enterram o que o ADMIN opera |
+  | `createdAt` decrescente | O rascunho recém-criado fica no topo | A ordem não aparece em nenhum campo da resposta, e exigiria cursor novo |
+  | **`startsAt` decrescente, id decrescente no empate** | A ordem é a de um campo que o ADMIN vê; o futuro, que é o que se opera, vem antes do histórico; o cursor `(startsAt, id)` e o token são os mesmos; `startsAt` não muda (não há edição), então publicar ou cancelar no meio da leitura não faz evento pular nem repetir | O mais próximo de começar fica no meio da primeira página quando há eventos mais distantes; o filtro `status` ajuda, e um filtro por data entra se a tabela pedir |
+
+  Evento encerrado continua na lista: o ADMIN confere o histórico. Sem índice novo, como na lista de usuários:
+  a tabela é pequena no piloto, e ele entra com medição.
 
 ### Modelo de dados e limites
 

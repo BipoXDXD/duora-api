@@ -4,6 +4,7 @@ import static bipo.tech.duoraapi.events.api.ApiSchemas.PROBLEM_JSON;
 import static bipo.tech.duoraapi.events.api.ApiSchemas.PROBLEM_SCHEMA;
 
 import java.net.URI;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.http.MediaType;
@@ -12,10 +13,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import bipo.tech.duoraapi.events.application.AdminEventView;
 import bipo.tech.duoraapi.events.application.EventAdministrationService;
+import bipo.tech.duoraapi.events.application.ResultPage;
+import bipo.tech.duoraapi.events.domain.EventStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.headers.Header;
@@ -25,11 +29,12 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * Eventos para o ADMIN (docs/adr/0016). O papel é conferido pela rota /api/admin/** em
- * SecurityConfiguration. Publicar e cancelar são ações ({@code :verbo}, docs/adr/0005); não há edição.
+ * Eventos para o ADMIN (docs/adr/0016): a lista com rascunhos, a leitura, a criação e as ações. O papel é
+ * conferido pela rota /api/admin/** em SecurityConfiguration. Publicar e cancelar são ações
+ * ({@code :verbo}, docs/adr/0005); não há edição.
  */
 @RestController
-@Tag(name = "admin-events", description = "Criação, publicação e cancelamento de eventos pelo ADMIN")
+@Tag(name = "admin-events", description = "Lista, criação, publicação e cancelamento de eventos pelo ADMIN")
 class AdminEventController {
 
     static final String PATH = "/api/admin/events";
@@ -46,6 +51,35 @@ class AdminEventController {
 
     AdminEventController(EventAdministrationService administration) {
         this.administration = administration;
+    }
+
+    @GetMapping(PATH)
+    @Operation(operationId = "listAdminEvents", summary = "Lista os eventos, rascunhos incluídos",
+            description = "Todos os estados, do início mais distante ao mais antigo, paginados por cursor; o "
+                    + "filtro status escolhe um só. Cada item traz o estado guardado e quantas pessoas se "
+                    + "inscreveram, nunca quem. A última página vem com nextPageToken null.")
+    @ApiResponse(responseCode = "200", description = "Uma página dos eventos")
+    @ApiResponse(responseCode = "400",
+            description = "maxPageSize fora de 1 a 50, status que não é DRAFT, PUBLISHED nem CANCELLED, ou "
+                    + "pageToken que a API não gerou",
+            content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
+    PageResponse<AdminEventResponse> list(
+            @Parameter(description = "Quantos eventos no máximo nesta página",
+                    schema = @Schema(type = "integer", format = "int32", minimum = "1",
+                            maximum = "" + PageSize.MAX, defaultValue = "" + PageSize.ADMIN_DEFAULT))
+            @RequestParam(name = "maxPageSize", required = false) String maxPageSize,
+            @Parameter(description = "O nextPageToken da página anterior; ausente na primeira",
+                    schema = @Schema(type = "string", pattern = PageToken.PATTERN, maxLength = PageToken.MAX_LENGTH))
+            @RequestParam(required = false) String pageToken,
+            @Parameter(description = "Só os eventos neste estado; ausente traz todos",
+                    schema = @Schema(type = "string", allowableValues = {"DRAFT", "PUBLISHED", "CANCELLED"}))
+            @RequestParam(required = false) String status) {
+        int size = PageSize.of(maxPageSize, PageSize.ADMIN_DEFAULT);
+        Set<EventStatus> statuses = StatusFilter.of(status);
+        ResultPage<AdminEventView> page = pageToken == null
+                ? administration.list(statuses, size)
+                : administration.listAfter(statuses, PageToken.decode(pageToken), size);
+        return PageResponse.of(page, AdminEventResponse::of);
     }
 
     @PostMapping(path = PATH, consumes = MediaType.APPLICATION_JSON_VALUE)

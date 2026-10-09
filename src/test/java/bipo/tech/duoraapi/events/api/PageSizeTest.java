@@ -14,6 +14,16 @@ class PageSizeTest {
         assertThat(PageSize.of(null)).isEqualTo(10);
     }
 
+    @Test
+    void usesTheDefaultOfTheListWhenAbsent() {
+        assertThat(PageSize.of(null, PageSize.ADMIN_DEFAULT)).isEqualTo(20);
+    }
+
+    @Test
+    void ignoresTheDefaultOfTheListWhenPresent() {
+        assertThat(PageSize.of("7", PageSize.ADMIN_DEFAULT)).isEqualTo(7);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"1", "50"})
     void acceptsTheLimits(String maxPageSize) {
