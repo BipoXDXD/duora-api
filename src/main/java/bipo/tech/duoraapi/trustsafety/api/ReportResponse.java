@@ -3,10 +3,10 @@ package bipo.tech.duoraapi.trustsafety.api;
 import java.time.Instant;
 import java.util.UUID;
 
+import bipo.tech.duoraapi.trustsafety.ReportReason;
+import bipo.tech.duoraapi.trustsafety.ReportStatus;
 import bipo.tech.duoraapi.trustsafety.domain.Report;
 import bipo.tech.duoraapi.trustsafety.domain.ReportDescription;
-import bipo.tech.duoraapi.trustsafety.domain.ReportReason;
-import bipo.tech.duoraapi.trustsafety.domain.ReportStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /** A denúncia como quem a fez a vê. Sem a conta de quem denunciou: é quem está lendo. */

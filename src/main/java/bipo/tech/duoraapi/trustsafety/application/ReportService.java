@@ -11,10 +11,10 @@ import bipo.tech.duoraapi.config.AccountRateLimit;
 import bipo.tech.duoraapi.config.RateLimitExceededException;
 import bipo.tech.duoraapi.config.RateLimitUnavailableException;
 import bipo.tech.duoraapi.identity.AccountId;
+import bipo.tech.duoraapi.trustsafety.ReportReason;
 import bipo.tech.duoraapi.trustsafety.domain.NewReport;
 import bipo.tech.duoraapi.trustsafety.domain.Report;
 import bipo.tech.duoraapi.trustsafety.domain.ReportDescription;
-import bipo.tech.duoraapi.trustsafety.domain.ReportReason;
 import bipo.tech.duoraapi.trustsafety.domain.ReportRepository;
 
 /**

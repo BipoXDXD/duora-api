@@ -5,6 +5,8 @@ import java.util.Objects;
 import java.util.UUID;
 
 import bipo.tech.duoraapi.identity.AccountId;
+import bipo.tech.duoraapi.trustsafety.ReportReason;
+import bipo.tech.duoraapi.trustsafety.ReportStatus;
 
 /**
  * Uma denúncia registrada, como a moderação vai recebê-la.

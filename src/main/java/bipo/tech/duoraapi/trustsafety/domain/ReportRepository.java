@@ -4,6 +4,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import bipo.tech.duoraapi.identity.AccountId;
+import bipo.tech.duoraapi.trustsafety.ReportStatus;
 
 /** As denúncias gravadas. */
 public interface ReportRepository {

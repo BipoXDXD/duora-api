@@ -1,8 +1,9 @@
-package bipo.tech.duoraapi.trustsafety.domain;
+package bipo.tech.duoraapi.trustsafety;
 
 /**
  * Motivos de denúncia, uma lista fechada para a moderação triar sem ler o texto livre. Mudar a lista
- * exige migration: o CHECK de report.reason repete estes nomes.
+ * exige migration: o CHECK de report.reason repete estes nomes. Publicado: o chat denuncia mensagens com
+ * a mesma lista (docs/adr/0021).
  */
 public enum ReportReason {
 

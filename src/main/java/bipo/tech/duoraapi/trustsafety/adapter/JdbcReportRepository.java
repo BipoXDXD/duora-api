@@ -12,12 +12,12 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
 import bipo.tech.duoraapi.identity.AccountId;
+import bipo.tech.duoraapi.trustsafety.ReportReason;
+import bipo.tech.duoraapi.trustsafety.ReportStatus;
 import bipo.tech.duoraapi.trustsafety.domain.NewReport;
 import bipo.tech.duoraapi.trustsafety.domain.Report;
 import bipo.tech.duoraapi.trustsafety.domain.ReportDescription;
-import bipo.tech.duoraapi.trustsafety.domain.ReportReason;
 import bipo.tech.duoraapi.trustsafety.domain.ReportRepository;
-import bipo.tech.duoraapi.trustsafety.domain.ReportStatus;
 import bipo.tech.duoraapi.trustsafety.domain.UnknownAccountException;
 
 /** Denúncias na tabela report, por SQL; o id vem do default uuidv7() do banco. */

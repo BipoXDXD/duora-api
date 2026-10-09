@@ -6,7 +6,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
-import bipo.tech.duoraapi.trustsafety.domain.ReportReason;
+import bipo.tech.duoraapi.trustsafety.ReportReason;
 
 /**
  * Em DEBUG, o Spring MVC registra o corpo lido pelo toString do DTO, truncado em 100 caracteres. O
