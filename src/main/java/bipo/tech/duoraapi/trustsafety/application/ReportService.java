@@ -11,6 +11,7 @@ import bipo.tech.duoraapi.config.AccountRateLimit;
 import bipo.tech.duoraapi.config.RateLimitExceededException;
 import bipo.tech.duoraapi.config.RateLimitUnavailableException;
 import bipo.tech.duoraapi.identity.AccountId;
+import bipo.tech.duoraapi.trustsafety.ChatMessageEvidence;
 import bipo.tech.duoraapi.trustsafety.ReportReason;
 import bipo.tech.duoraapi.trustsafety.domain.NewReport;
 import bipo.tech.duoraapi.trustsafety.domain.Report;
@@ -51,10 +52,26 @@ public class ReportService {
      * @throws RateLimitUnavailableException se não deu para contar a cota; a denúncia não passa (falha fechada)
      */
     public Report file(AccountId reporter, AccountId reported, ReportReason reason, String descriptionText) {
+        return repository.add(validatedWithinQuota(reporter, reported, reason, descriptionText));
+    }
+
+    /**
+     * Como {@link #file}, guardando junto uma cópia da mensagem denunciada (docs/adr/0021): a denúncia e a cópia
+     * são gravadas num comando só.
+     */
+    public Report fileWithEvidence(AccountId reporter, AccountId reported, ReportReason reason,
+            String descriptionText, ChatMessageEvidence evidence) {
+        return repository.addWithEvidence(validatedWithinQuota(reporter, reported, reason, descriptionText),
+                evidence);
+    }
+
+    /** Valida antes de gastar: só denúncia válida conta na cota. */
+    private NewReport validatedWithinQuota(AccountId reporter, AccountId reported, ReportReason reason,
+            String descriptionText) {
         var description = ReportDescription.fromText(descriptionText).orElse(null);
         var report = new NewReport(reporter, reported, reason, description, clock.instant());
         quota.consume(reporter);
-        return repository.add(report);
+        return report;
     }
 
     public Optional<Report> reportFiledBy(AccountId reporter, UUID reportId) {
