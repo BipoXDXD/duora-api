@@ -183,6 +183,19 @@ class SensitiveDataLoggingIT {
         assertThat(output.getAll()).doesNotContainIgnoringCase(canary).doesNotContain(CANARY_BIRTH_DATE);
     }
 
+    /** O nome do Entra volta ao próprio usuário em /api/me, e não vai para o log. */
+    @Test
+    void currentUserNameNeverReachesTheLog(CapturedOutput output) throws Exception {
+        var response = mockMvc.perform(get("/api/me")
+                        .with(jwt().jwt(token -> token.issuer(ISSUER).claim("oid", "oid-" + UUID.randomUUID())
+                                .claim("name", canary))))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(OK);
+        assertThat(response.getContentAsString()).contains(canary);
+        assertThat(output.getAll()).doesNotContainIgnoringCase(canary);
+    }
+
     /** Nome longo demais, bio com caractere invisível e data fora do formato: 400 sem ecoar o valor. */
     @ParameterizedTest
     @ValueSource(strings = {
