@@ -152,7 +152,7 @@ public class ChatService {
     }
 
     private OpeningConditions conditionsOf(ChatKey key, EventPeriod period, AccountId caller, AccountId partner) {
-        boolean roundIsCurrent = pairings.latestRoundOf(key.eventId()).orElse(0) == key.roundNumber();
+        boolean roundIsCurrent = key.isLatestRound(pairings.latestRoundOf(key.eventId()));
         return new OpeningConditions(period.underway(), roundIsCurrent, blocking.existsBetween(caller, partner));
     }
 

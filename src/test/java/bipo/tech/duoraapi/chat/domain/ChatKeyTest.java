@@ -3,6 +3,7 @@ package bipo.tech.duoraapi.chat.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.OptionalInt;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,7 @@ class ChatKeyTest {
     private static final ChatPair PAIR = ChatPair.of(
             new AccountId(UUID.fromString("00000000-0000-0000-0000-00000000000a")),
             new AccountId(UUID.fromString("00000000-0000-0000-0000-00000000000b")));
+    private static final ChatKey ROUND_TWO = new ChatKey(EVENT, 2, PAIR);
 
     @Test
     void theFirstRoundIsTheLowestNumber() {
@@ -35,6 +37,23 @@ class ChatKeyTest {
     void requiresTheEventAndThePair() {
         assertThatThrownBy(() -> new ChatKey(null, 1, PAIR)).isInstanceOf(NullPointerException.class).hasMessage("eventId");
         assertThatThrownBy(() -> new ChatKey(EVENT, 1, null)).isInstanceOf(NullPointerException.class).hasMessage("pair");
+    }
+
+    @Test
+    void theRoundIsCurrentWhileItIsTheLatestStarted() {
+        assertThat(ROUND_TWO.isLatestRound(OptionalInt.of(2))).isTrue();
+    }
+
+    /** A rodada seguinte fecha o chat; uma anterior nunca vem do matching, mas também não é a desta chave. */
+    @ParameterizedTest
+    @ValueSource(ints = {1, 3})
+    void anotherLatestRoundMeansTheRoundIsNotCurrent(int latest) {
+        assertThat(ROUND_TWO.isLatestRound(OptionalInt.of(latest))).isFalse();
+    }
+
+    @Test
+    void withoutAnyStartedRoundNoRoundIsCurrent() {
+        assertThat(ROUND_TWO.isLatestRound(OptionalInt.empty())).isFalse();
     }
 
 }

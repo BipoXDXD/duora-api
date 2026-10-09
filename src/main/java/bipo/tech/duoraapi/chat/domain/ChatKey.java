@@ -1,6 +1,7 @@
 package bipo.tech.duoraapi.chat.domain;
 
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.UUID;
 
 /**
@@ -16,6 +17,15 @@ public record ChatKey(UUID eventId, int roundNumber, ChatPair pair) {
         if (roundNumber < 1) {
             throw new IllegalArgumentException("the round number starts at 1");
         }
+    }
+
+    /**
+     * A rodada do chat é a última iniciada no evento: quando a seguinte começa, o chat fecha para envio.
+     *
+     * @param latestStartedRound a última rodada iniciada no evento, vazia se nenhuma começou
+     */
+    public boolean isLatestRound(OptionalInt latestStartedRound) {
+        return latestStartedRound.isPresent() && latestStartedRound.getAsInt() == roundNumber;
     }
 
 }
