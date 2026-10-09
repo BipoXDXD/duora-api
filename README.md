@@ -143,7 +143,7 @@ rápido falha; mutante sobrevivente aponta teste que falta ou é fraco. Fica num
 
 Um módulo de domínio novo entra na lista `targetClasses`/`targetTests` do profile `mutation` no `pom.xml`.
 Para uma classe só: `-DtargetClasses=bipo.tech.duoraapi.matching.domain.Pair -DtargetTests=bipo.tech.duoraapi.matching.domain.PairTest`.
-Resultado do spike e decisão pendente de onde rodar: [ADR 0025](docs/adr/0025-mutation-testing-com-pit.md).
+Roda só à mão, antes de mexer em domínio crítico (sorteio, conexões, chat, perfil). Resultado do spike e decisão: [ADR 0025](docs/adr/0025-mutation-testing-com-pit.md).
 
 ### Carga (k6)
 
@@ -401,7 +401,7 @@ Uma ADR não se apaga: quando o código a ultrapassa, ela ganha uma nota datada.
 | [0022](docs/adr/0022-teste-de-carga-com-k6.md) | Teste de carga manual com k6 contra a imagem, com invariantes conferidas no banco |
 | [0023](docs/adr/0023-exclusao-de-conta-e-retencao.md) | Exclusão de conta com tombstone, direitos do titular e retenção por categoria (proposta, aguarda decisão) |
 | [0024](docs/adr/0024-primeiro-jogo-e-modulo-experiences.md) | Primeiro jogo e módulo `experiences`: catálogo versionado, jogada por etapa idempotente, revelação simultânea (proposta) |
-| [0025](docs/adr/0025-mutation-testing-com-pit.md) | Mutation testing com PIT em profile Maven, sobre o domínio puro (proposta, aguarda decisão) |
+| [0025](docs/adr/0025-mutation-testing-com-pit.md) | Mutation testing com PIT em profile Maven, sobre o domínio puro, rodado à mão |
 
 ## Segurança
 

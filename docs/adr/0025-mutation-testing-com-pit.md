@@ -1,7 +1,7 @@
 # 0025. Mutation testing com PIT
 
-- **Status:** Proposta — aguarda decisão do usuário. O profile Maven `mutation` existe e funciona; a
-  decisão pendente é onde ele roda (CI semanal, só manual ou nenhum).
+- **Status:** Aceita em 2026-10-09 com a opção B (só manual). O workflow semanal (A) fica como degrau
+  seguinte, quando o domínio estabilizar.
 - **Data:** 2026-10-08
 - **Relacionadas:** [ADR 0003](0003-estilo-de-testes.md), [ADR 0012](0012-contrato-openapi.md)
   (o fuzzing semanal de contrato é o precedente de job agendado)
@@ -72,7 +72,11 @@ conseguiu provocar isso. Não vale perseguir.
 
 Não considerei PIT no PR: o runner compartilhado e o tempo por commit não compensam num projeto solo.
 
-## Recomendação
+## Decisão
+
+O usuário escolheu a opção B em 2026-10-09. A análise que levou à recomendação segue abaixo.
+
+### Recomendação
 
 **Opção B agora, com a A como degrau seguinte.** Mantém o profile (já commitado, fora do build padrão) e usa
 só quando o domínio crítico muda: sorteio, conexões, chat e perfil. O spike mostrou que o custo é baixo (menos
