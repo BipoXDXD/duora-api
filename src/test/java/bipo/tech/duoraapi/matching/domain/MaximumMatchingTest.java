@@ -7,8 +7,11 @@ import java.util.Set;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 class MaximumMatchingTest {
+
+    private static final int BLOSSOM_TIMEOUT_SECONDS = 5;
 
     @Test
     void emptyGraphMatchesNobody() {
@@ -63,6 +66,21 @@ class MaximumMatchingTest {
         int[] partner = MaximumMatching.partners(7, (one, other) -> true);
 
         assertThat(matchedCount(partner)).isEqualTo(6);
+    }
+
+    /**
+     * Um dos grafos aleatórios de antes das propriedades: sem marcar os dois lados ao contrair o blossom, a busca
+     * entra em laço infinito nele. Perfeito: 0-6, 1-4, 2-8, 3-9 e 5-7.
+     */
+    @Test
+    @Timeout(value = BLOSSOM_TIMEOUT_SECONDS, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aBlossomContractedFromBothSidesStillEndsWithAPerfectMatching() {
+        var graph = edges(0, 1, 0, 6, 0, 8, 1, 4, 1, 8, 2, 3, 2, 8, 3, 4, 3, 6, 3, 7, 3, 8, 3, 9, 4, 7, 4, 8, 5, 7, 5, 8);
+
+        int[] partner = MaximumMatching.partners(10, graph);
+
+        assertThat(matchedCount(partner)).isEqualTo(10);
+        assertConsistent(partner, graph);
     }
 
     private static MaximumMatching.Compatibility edges(int... endpoints) {
