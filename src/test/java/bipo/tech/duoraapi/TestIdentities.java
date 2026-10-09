@@ -28,6 +28,14 @@ public final class TestIdentities {
         return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", objectId));
     }
 
+    /**
+     * Quem chama com bearer token que traz o nome de exibição do Entra (claim name), sem papéis. O nome é o que
+     * o /api/me devolve e o que o log nunca pode mostrar.
+     */
+    public static RequestPostProcessor bearer(String objectId, String displayName) {
+        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", objectId).claim("name", displayName));
+    }
+
     /** Quem chama pela sessão web (BFF), com o oid dado e sem papéis. O oidcLogin() também pula a validação. */
     public static RequestPostProcessor webSession(String objectId) {
         return oidcLogin().idToken(token -> token.issuer(ISSUER).claim("oid", objectId));

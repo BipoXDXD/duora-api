@@ -1,8 +1,6 @@
 package bipo.tech.duoraapi.events;
 
 import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
-import static bipo.tech.duoraapi.TestIdentities.ISSUER;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -52,7 +50,7 @@ public final class EventFixtures {
     }
 
     public static RequestPostProcessor user(String name) {
-        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", "oid-" + name).claim("name", name));
+        return TestIdentities.bearer("oid-" + name, name);
     }
 
     public static String eventPath(String id) {
