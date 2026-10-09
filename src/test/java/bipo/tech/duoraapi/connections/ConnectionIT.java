@@ -6,7 +6,6 @@ import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
 import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
 import static bipo.tech.duoraapi.ConcurrentCalls.together;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
-import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
 import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
 import static bipo.tech.duoraapi.events.EventFixtures.user;
@@ -54,6 +53,7 @@ import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 import bipo.tech.duoraapi.events.EventFixtures;
+import bipo.tech.duoraapi.matching.RoundFixtures;
 
 /**
  * Decisão privada depois da rodada e conexão por interesse mútuo (docs/adr/0019): só decide quem formou o
@@ -489,30 +489,7 @@ class ConnectionIT {
 
     /** Publica um evento, inscreve as pessoas, leva o relógio ao início e sorteia a rodada 1. */
     private String pairedInRoundOne(String... names) throws Exception {
-        clock.setTo(TestClockConfiguration.NOW);
-        String eventId = createPublishedEvent(mockMvc);
-        for (String name : names) {
-            registerWithCompleteProfileOnce(name, eventId);
-        }
-        clock.setTo(STARTS_AT);
-        mockMvc.perform(put("/api/admin/events/" + eventId + "/rounds/1").with(admin()))
-                .andExpect(status().isCreated());
-        return eventId;
-    }
-
-    /** O perfil completo só se cria uma vez por pessoa; depois basta se inscrever. */
-    private void registerWithCompleteProfileOnce(String name, String eventId) throws Exception {
-        boolean hasProfile = jdbcClient.sql("""
-                        select exists (select 1 from profile p join account a on a.id = p.account_id
-                                        where a.subject = :subject)
-                        """)
-                .param("subject", "oid-" + name).query(Boolean.class).single();
-        if (hasProfile) {
-            mockMvc.perform(put(EventFixtures.registrationPath(eventId)).with(user(name)))
-                    .andExpect(status().isCreated());
-        } else {
-            registerWithCompleteProfile(mockMvc, user(name), eventId);
-        }
+        return RoundFixtures.pairedInRoundOne(mockMvc, jdbcClient, clock, names);
     }
 
     private ResultActions decide(String eventId, String name, String body) throws Exception {

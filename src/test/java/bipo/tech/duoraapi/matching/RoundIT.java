@@ -487,12 +487,7 @@ class RoundIT {
 
     /** Publica um evento, inscreve as pessoas com o perfil completo e leva o relógio ao início. */
     private String underwayEventWith(String... names) throws Exception {
-        String eventId = createPublishedEvent(mockMvc);
-        for (String name : names) {
-            registerWithCompleteProfile(mockMvc, user(name), eventId);
-        }
-        clock.setTo(STARTS_AT);
-        return eventId;
+        return RoundFixtures.underwayEventWith(mockMvc, jdbcClient, clock, names);
     }
 
     private ResultActions startRound(String eventId, int number) throws Exception {

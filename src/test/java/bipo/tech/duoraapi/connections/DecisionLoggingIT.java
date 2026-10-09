@@ -1,8 +1,5 @@
 package bipo.tech.duoraapi.connections;
 
-import static bipo.tech.duoraapi.events.EventFixtures.admin;
-import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
-import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
 import static bipo.tech.duoraapi.events.EventFixtures.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -29,6 +26,7 @@ import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 import bipo.tech.duoraapi.events.EventFixtures;
+import bipo.tech.duoraapi.matching.RoundFixtures;
 
 /**
  * A decisão é privada (docs/adr/0019): nem o par a lê, então ela também não vai para o log. Os loggers do
@@ -77,13 +75,7 @@ class DecisionLoggingIT {
 
     /** Ana e Bruno inscritos num evento publicado e pareados na rodada 1. */
     private String pairedInRoundOne() throws Exception {
-        String eventId = createPublishedEvent(mockMvc);
-        registerWithCompleteProfile(mockMvc, user("ana"), eventId);
-        registerWithCompleteProfile(mockMvc, user("bruno"), eventId);
-        clock.setTo(STARTS_AT);
-        mockMvc.perform(put("/api/admin/events/" + eventId + "/rounds/1").with(admin()))
-                .andExpect(status().isCreated());
-        return eventId;
+        return RoundFixtures.pairedInRoundOne(mockMvc, jdbcClient, clock, "ana", "bruno");
     }
 
 }
