@@ -32,6 +32,22 @@ record BlockedAccountsResponse(
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, maxLength = ApiSchemas.INSTANT_MAX_LENGTH,
                     description = "Quando o bloqueio foi feito")
             Instant blockedAt) {
+
+        /** Ver {@link BlockedAccountsResponse#toString()}: o id da conta bloqueada fica de fora. */
+        @Override
+        public String toString() {
+            return "BlockedAccount[accountId=redacted, blockedAt=" + blockedAt + "]";
+        }
+
+    }
+
+    /**
+     * O Spring MVC registra a resposta por este toString em DEBUG: os ids de quem foi bloqueado, e o cursor da
+     * próxima página (que carrega o último id), ligam duas pessoas e ficam de fora.
+     */
+    @Override
+    public String toString() {
+        return "BlockedAccountsResponse[items=" + items.size() + ", nextPageToken=redacted]";
     }
 
     static BlockedAccountsResponse of(BlockedAccountsPage page) {

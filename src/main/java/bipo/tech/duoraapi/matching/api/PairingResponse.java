@@ -22,6 +22,12 @@ record PairingResponse(
                 description = "Id da conta do par nesta rodada, ou null se quem chama ficou de fora")
         UUID partnerAccountId) {
 
+    /** O Spring MVC registra a resposta por este toString em DEBUG: o id do par liga duas pessoas e fica de fora. */
+    @Override
+    public String toString() {
+        return "PairingResponse[eventId=" + eventId + ", roundNumber=" + roundNumber + ", partnerAccountId=redacted]";
+    }
+
     static PairingResponse of(UUID eventId, RoundNumber number, Seat seat) {
         UUID partner = switch (seat) {
             case Seat.Paired paired -> paired.partner().value();
