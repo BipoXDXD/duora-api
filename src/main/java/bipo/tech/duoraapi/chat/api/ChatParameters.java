@@ -1,6 +1,7 @@
 package bipo.tech.duoraapi.chat.api;
 
 import bipo.tech.duoraapi.chat.domain.Chat;
+import bipo.tech.duoraapi.config.MaxPageSize;
 import bipo.tech.duoraapi.matching.Pairings;
 
 /** Os números da rota e da query, validados na fronteira contra os limites do matching e do chat. */
@@ -36,27 +37,23 @@ final class ChatParameters {
      * @throws InvalidRequestException fora de 0 a 300
      */
     static int afterSeq(String text) {
-        return integerWithin(text, 0, 0, Chat.MAX_MESSAGES, "afterSeq");
-    }
-
-    /** @throws InvalidRequestException fora de 1 a 100; ausente vale 50 */
-    static int maxPageSize(String text) {
-        return integerWithin(text, DEFAULT_PAGE_SIZE, 1, MAX_PAGE_SIZE, "maxPageSize");
-    }
-
-    private static int integerWithin(String text, int absent, int min, int max, String name) {
         if (text == null) {
-            return absent;
+            return 0;
         }
         try {
-            int value = Integer.parseInt(text);
-            if (value >= min && value <= max) {
-                return value;
+            int afterSeq = Integer.parseInt(text);
+            if (afterSeq >= 0 && afterSeq <= Chat.MAX_MESSAGES) {
+                return afterSeq;
             }
         } catch (NumberFormatException e) {
             // cai no 400 abaixo, como um número fora da faixa
         }
-        throw new InvalidRequestException(name + " must be between " + min + " and " + max);
+        throw new InvalidRequestException("afterSeq must be between 0 and " + Chat.MAX_MESSAGES);
+    }
+
+    /** @throws bipo.tech.duoraapi.config.InvalidPageParameterException fora de 1 ao teto; ausente vale o padrão */
+    static int maxPageSize(String text) {
+        return MaxPageSize.parse(text, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
     }
 
 }

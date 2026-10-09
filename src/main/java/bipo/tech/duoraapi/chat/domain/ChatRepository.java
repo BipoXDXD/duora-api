@@ -13,22 +13,20 @@ import bipo.tech.duoraapi.identity.AccountId;
  */
 public interface ChatRepository {
 
-    /** Limita quanto a transação atual espera por um lock, até o fim dela. Chame antes de {@link #lock}. */
-    void limitLockWait();
+    /**
+     * O chat do par na rodada, criado agora se ainda não existe. Se outra transação estiver criando o mesmo,
+     * espera por ela; se ela confirmar, devolve o dela.
+     */
+    Chat findOrAdd(ChatKey key, Instant purgeAfter, Instant createdAt);
 
     /**
-     * Cria o chat do par na rodada, se ainda não existe. Se outra transação estiver criando o mesmo, espera
-     * por ela; se ela confirmar, não grava nada.
+     * Como {@link #findOrAdd}, mas com a linha travada até o fim da transação: os envios ao mesmo chat passam um
+     * de cada vez, e cada um enxerga a última sequência já confirmada pelo anterior. A espera por outro envio tem
+     * um teto, que vale até o fim da transação atual.
      */
-    void addIfAbsent(ChatKey key, Instant purgeAfter, Instant createdAt);
+    Chat lockOrAdd(ChatKey key, Instant purgeAfter, Instant createdAt);
 
     Optional<Chat> find(ChatKey key);
-
-    /**
-     * O chat com a linha travada até o fim da transação: os envios ao mesmo chat passam um de cada vez, e cada
-     * um enxerga a última sequência já confirmada pelo anterior.
-     */
-    Optional<Chat> lock(ChatKey key);
 
     Optional<ChatMessage> findBySenderAndIdempotencyKey(UUID chatId, AccountId sender, UUID idempotencyKey);
 

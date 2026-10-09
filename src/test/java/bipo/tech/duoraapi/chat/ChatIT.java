@@ -575,6 +575,19 @@ class ChatIT {
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
     }
 
+    /** O mesmo ProblemDetail das outras listas paginadas, com o teto desta lista e sem o valor recebido. */
+    @Test
+    void pageSizeOutsideTheLimitsNamesTheLimitOfThisList() throws Exception {
+        String eventId = paired("ana", "bruno");
+
+        mockMvc.perform(get(messagesPath(eventId, 1)).param("maxPageSize", "101").with(user("ana")))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().json("""
+                        {"title": "Bad Request", "status": 400,
+                         "detail": "maxPageSize must be between 1 and 100", "instance": "%s"}
+                        """.formatted(messagesPath(eventId, 1)), JsonCompareMode.STRICT));
+    }
+
     @Test
     void aWebSessionWithoutCsrfTokenCannotSend() throws Exception {
         String eventId = paired("ana", "bruno");
