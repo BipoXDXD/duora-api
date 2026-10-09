@@ -57,8 +57,12 @@ está numa sala de jogo do que alguns segundos de reinício.
   abaixo do da plataforma.
 - Reinícios frequentes precisam de alerta (um supervisor que reinicia demais esconde o problema).
   Fica para a configuração do monitoramento no deploy.
+  *Resolvido em 2026-10-06 por #10 ([ADR 0014](0014-infraestrutura-do-piloto-na-azure.md)): alerta de mais de
+  3 reinícios por réplica.*
 - O que entra na readiness (o banco ou não) será decidido e registrado na configuração das probes do
   deploy.
+  *Resolvido em 2026-10-06 por #10 ([ADR 0014](0014-infraestrutura-do-piloto-na-azure.md)): a readiness inclui o
+  banco e a liveness não (`HealthProbesIT`).*
 
 ## Compliance
 

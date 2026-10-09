@@ -112,6 +112,10 @@ raiz do pacote, como manda o `ArchitectureTest`; não lê a tabela `profile`. O 
 Perfil incompleto → **`403`** com o que falta: a pessoa está autenticada, mas ainda não pode participar,
 e o front precisa distinguir isso do `409` de evento lotado.
 
+*Resolvido em 2026-10-08 por #24 ([ADR 0020](0020-motivo-das-recusas-no-problem-detail.md)): o `403` traz
+`reason` `PROFILE_INCOMPLETE` ou `UNDERAGE`, e o `409` traz o motivo (`EVENT_FULL`, `EVENT_CANCELLED`,
+`EVENT_STARTED`, `EVENT_ENDED`).*
+
 ### Privacidade
 
 Saber quem vai a um encontro é dado pessoal sensível num app de encontros. Nenhuma rota lista
@@ -266,11 +270,16 @@ fechada). A spec não muda: o `503` com `Retry-After: 1` já estava documentado.
 7. **Mostrar vagas restantes ou "lotado" ao usuário.** Hoje a pessoa só descobre ao tentar (`409`).
 8. **Retenção (LGPD)** das inscrições de eventos passados e exclusão de conta: a FK `restrict` obriga o
    fluxo de exclusão a passar por aqui.
+   *Nota de 2026-10-08: a [ADR 0023](0023-exclusao-de-conta-e-retencao.md) propõe inscrições e rodadas por 90
+   dias e a exclusão com tombstone; segue proposta, aguardando decisão do usuário.*
 9. **Espera pelo pool e tamanho do pool** (seção "O limite por conta numa rajada"). A espera por conexão só é
    cortada pelo `connectionTimeout` do Hikari, de 30 s: encurtá-lo (Fail Fast) pede mapear a falta de conexão
    para `503` com `Retry-After` na API toda, e não só aqui. E o pool padrão de 10 por réplica, com até 3
    réplicas, já passa das ~4 conexões ativas por núcleo do B1ms; a medição mostrou que conexão a mais só
    aumenta a fila no lock. Diminuir o pool ou trocar o banco é decisão de infraestrutura (ADR 0014).
+   *Nota de 2026-10-08: o teto do limitador subiu de 1 s para 3 s por #35, o que tirou o `503` das rajadas
+   medidas. Seguem abertos o `connectionTimeout` de 30 s e o tamanho do pool ([ADR 0022](0022-teste-de-carga-com-k6.md),
+   pendência 2; [ADR 0014](0014-infraestrutura-do-piloto-na-azure.md), atualização de 2026-10-08, pendência 1).*
 
 ## Consequências
 
@@ -278,6 +287,8 @@ fechada). A spec não muda: o `503` com `Retry-After: 1` já estava documentado.
   (`count(*)` pela PK). Medir no k6 com o B2s antes de otimizar.
 - Não há lista de eventos para o ADMIN (nem de rascunhos): ele guarda o id da criação. Entra quando houver
   a área administrativa do front.
+  *Resolvido em 2026-10-08 por #38 (esta ADR, rota `GET /api/admin/events` descrita acima): o ADMIN lista todos os
+  eventos, rascunho incluído, com o filtro `status`.*
 - A inscrição e o cancelamento têm limite por conta (seção "Rate limit"): 60 por hora, somados. A tabela
   `rate_limit_bucket` ganha uma linha por conta que se inscreve, apagada pela limpeza da [ADR
   0006](0006-rate-limit-no-postgresql.md) depois da reposição. O limite adiciona uma ida ao banco por

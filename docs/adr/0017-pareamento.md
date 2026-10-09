@@ -260,6 +260,8 @@ buracos (FK da rodada anterior), o maior número é a última iniciada.
 3. **Quem sobra:** fica de fora (implementado), trio, ou par com alguém da equipe.
 4. **Duração e encerramento da rodada**, e se o disparo é manual (decidido aqui, provisório) ou agendado.
 5. **Bloqueio ou denúncia durante a rodada:** encerrar o par na hora? Avisar a outra pessoa? Repor o par?
+   *Nota de 2026-10-08: o chat da rodada fecha quando surge um bloqueio ([ADR 0021](0021-chat-temporario-e-reconexao.md),
+   #34); o par continua gravado, e as perguntas de avisar e repor seguem abertas.*
 6. **O que a pessoa vê do parceiro** (nome de exibição, foto, nada até o jogo começar) e se o ADMIN vê quem
    formou par com quem (útil para moderação, sensível para privacidade).
 7. **Elegibilidade no momento do sorteio:** conta suspensa pela moderação, inscrição cancelada durante o
@@ -267,10 +269,14 @@ buracos (FK da rodada anterior), o maior número é a última iniciada.
 8. **Evento cancelado durante a rodada:** a rodada continua gravada e o par continua visível. Encerrar os
    pares? Avisar?
 9. **Aviso de "sua dupla saiu":** depende da outbox ([ADR 0009](0009-outbox-e-eventos.md)) e do Web PubSub.
+   *Nota de 2026-10-08: o transporte passou a ser polling e depois SSE com `NOTIFY`, e o Web PubSub só entra se o
+   k6 exigir ([ADR 0021](0021-chat-temporario-e-reconexao.md)). O aviso segue aberto porque o produto ainda não
+   define "sair" de uma rodada (pergunta 10 da ADR 0021).*
 10. **jqwik:** o spike de 2026-10-07 com o jqwik 1.10.1 rodou no JUnit 6 do Boot 4 (propriedade falhando com
     shrink e 232 testes Jupiter e jqwik juntos no `./mvnw test`), o que contradiz a anotação de que ele era
     incompatível. Adotar é decisão de biblioteca: até lá, as propriedades rodam como casos aleatórios com
     semente fixa num teste parametrizado (`RoundPairingRandomCasesTest`).
+    *Nota de 2026-10-08: sem mudança; o `pom.xml` ainda não tem jqwik. A ADR 0003 recebeu o resultado do spike.*
 
 ## Consequências
 

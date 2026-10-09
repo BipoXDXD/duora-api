@@ -194,12 +194,12 @@ Antes do piloto, revisar finalidades, bases legais, operadores, transferências 
 
 **Deploy:** publicar imagem → executar migrações por [Container Apps Job](https://learn.microsoft.com/en-us/azure/container-apps/jobs) dentro da rede privada → atualizar homologação → testes rápidos → aprovação para produção. Migrações compatíveis com a revisão anterior; rollback da aplicação não presume desfazer automaticamente o banco.
 
-| Etapa | Entrega verificável |
-|---|---|
-| 1. Fundação | Repositório, CI, ambiente Azure, login, perfil e fluxo de bloqueio/denúncia. |
-| 2. Uma experiência completa | Evento, pareamento, um jogo, chat temporário, reconexão e decisão privada. |
-| 3. Piloto operável | Segundo jogo, conversa persistente por interesse mútuo, administração, alertas e recuperação testada. |
-| 4. Validação comercial | Checkout hospedado, reembolso e novas experiências conforme demanda observada. |
+| Etapa | Entrega verificável | Status em 2026-10-08 |
+|---|---|---|
+| 1. Fundação | Repositório, CI, ambiente Azure, login, perfil e fluxo de bloqueio/denúncia. | **Quase completa.** Na `main`: repositório e CI (build, testes, contrato, imagem, gitleaks, Bicep), login por BFF e bearer, perfil, bloqueio e denúncia (#1 a #13). Falta: o `apply` do Bicep (custo da [ADR 0014](adr/0014-infraestrutura-do-piloto-na-azure.md) não aprovado), Static Web Apps com domínio próprio e a fila de moderação ([ADR 0015](adr/0015-bloqueio-e-denuncia.md)). |
+| 2. Uma experiência completa | Evento, pareamento, um jogo, chat temporário, reconexão e decisão privada. | **Em andamento.** Na `main`: evento e inscrição (#15), pareamento (#19), decisão privada e conexões (#23), chat temporário, só a API das fatias 1 e 2 (#34), cursor `afterSeq` para a reconexão do chat e `currentRound` no evento (#24). Falta: um jogo ([ADR 0024](adr/0024-primeiro-jogo-e-modulo-experiences.md), proposta, nada implementado), denúncia de mensagem, expurgo, SSE e o polling no `duora-web` (fatias 3 a 7 da [ADR 0021](adr/0021-chat-temporario-e-reconexao.md)) e a reconexão do jogo. |
+| 3. Piloto operável | Segundo jogo, conversa persistente por interesse mútuo, administração, alertas e recuperação testada. | **Não iniciada.** Adiantado: lista de eventos do ADMIN (#38), alertas de infraestrutura em Bicep sem `apply` (#10) e teste de carga manual com k6 (#30). Falta o resto, mais a exclusão de conta ([ADR 0023](adr/0023-exclusao-de-conta-e-retencao.md), proposta). |
+| 4. Validação comercial | Checkout hospedado, reembolso e novas experiências conforme demanda observada. | **Não iniciada.** Cobrança é decisão aberta ([ADR 0016](adr/0016-eventos-e-inscricoes.md), pendência 1). |
 
 Reavaliar a stack a cada etapa. Primeiro marco: duas pessoas concluírem uma experiência com segurança.
 
