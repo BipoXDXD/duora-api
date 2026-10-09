@@ -32,7 +32,9 @@ docker run -d --name "$database" --network "$network" \
   postgres:18-alpine >/dev/null
 
 deadline=$((SECONDS + startup_timeout_seconds))
-until docker exec "$database" pg_isready -U duora_admin -d duora >/dev/null 2>&1; do
+# Por TCP: na primeira subida a imagem roda um servidor temporário só no socket Unix (initdb) e reinicia;
+# pelo socket o pg_isready diria "pronto" antes de o servidor final aceitar a conexão TCP da migração.
+until docker exec "$database" pg_isready -h 127.0.0.1 -U duora_admin -d duora >/dev/null 2>&1; do
   ((SECONDS < deadline)) || fail "o PostgreSQL não ficou pronto em ${startup_timeout_seconds}s"
   sleep 1
 done
