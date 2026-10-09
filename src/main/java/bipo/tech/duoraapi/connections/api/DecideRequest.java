@@ -15,4 +15,11 @@ record DecideRequest(
         @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
                 description = "true para continuar em contato com o par da rodada, false para não")
         @JsonDeserialize(using = StrictBooleanDeserializer.class) @NotNull Boolean interested) {
+
+    /** O Spring MVC registra o corpo lido por este toString em DEBUG: a escolha é privada e fica de fora. */
+    @Override
+    public String toString() {
+        return "DecideRequest[choice=redacted]";
+    }
+
 }

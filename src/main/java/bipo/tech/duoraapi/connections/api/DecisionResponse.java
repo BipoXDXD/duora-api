@@ -29,4 +29,10 @@ record DecisionResponse(
                 decision.decidedAt());
     }
 
+    /** O Spring MVC registra a resposta por este toString em DEBUG: a escolha é privada e fica de fora. */
+    @Override
+    public String toString() {
+        return "DecisionResponse[eventId=" + eventId + ", roundNumber=" + roundNumber + ", choice=redacted]";
+    }
+
 }
