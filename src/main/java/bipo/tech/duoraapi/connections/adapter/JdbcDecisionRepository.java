@@ -39,14 +39,6 @@ class JdbcDecisionRepository implements DecisionRepository {
         this.jdbcClient = jdbcClient;
     }
 
-    @Override
-    public void limitLockWait() {
-        jdbcClient.sql("select set_config('lock_timeout', :timeout, true)")
-                .param("timeout", LOCK_TIMEOUT)
-                .query(String.class)
-                .single();
-    }
-
     /**
      * Advisory lock de transação na chave (evento, rodada, par): não há linha para travar enquanto ninguém
      * decidiu, e o lock some sozinho no commit ou rollback. A chave vira um bigint por
@@ -56,6 +48,7 @@ class JdbcDecisionRepository implements DecisionRepository {
     public void lockPair(UUID eventId, int roundNumber, ConnectionPair pair) {
         String key = String.join(":", LOCK_NAMESPACE, eventId.toString(), Integer.toString(roundNumber),
                 pair.first().value().toString(), pair.second().value().toString());
+        limitLockWait();
         try {
             jdbcClient.sql("select 1 from (select pg_advisory_xact_lock(hashtextextended(:key, 0))) as locked")
                     .param("key", key)
@@ -68,6 +61,13 @@ class JdbcDecisionRepository implements DecisionRepository {
             }
             throw e;
         }
+    }
+
+    private void limitLockWait() {
+        jdbcClient.sql("select set_config('lock_timeout', :timeout, true)")
+                .param("timeout", LOCK_TIMEOUT)
+                .query(String.class)
+                .single();
     }
 
     @Override

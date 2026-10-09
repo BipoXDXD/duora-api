@@ -12,14 +12,9 @@ import bipo.tech.duoraapi.identity.AccountId;
 public interface RoundRepository {
 
     /**
-     * Limita quanto a transação atual espera por um lock, até o fim dela. Chame antes de
-     * {@link #addIfAbsent}: quem chega enquanto outra transação cria a mesma rodada espera por ela.
-     */
-    void limitLockWait();
-
-    /**
      * Grava a rodada, se o evento ainda não tem uma com esse número. Se outra transação estiver criando a
-     * mesma rodada, espera por ela; se ela confirmar, não grava nada.
+     * mesma rodada, espera por ela, até um teto que vale até o fim da transação atual; se ela confirmar, não
+     * grava nada.
      *
      * @return se gravou
      * @throws RoundOutOfSequenceException se a rodada anterior não existe

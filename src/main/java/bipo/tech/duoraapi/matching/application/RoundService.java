@@ -86,7 +86,6 @@ public class RoundService {
             Instant now) {
         var round = new Round(eventId, number, ThreadLocalRandom.current().nextLong(),
                 now.truncatedTo(ChronoUnit.MICROS));
-        rounds.limitLockWait();
         if (!rounds.addIfAbsent(round)) {
             return RoundOutcome.existing(rounds.findSummary(eventId, number).orElseThrow());
         }

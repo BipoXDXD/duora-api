@@ -54,7 +54,6 @@ public class DecisionService {
         AccountId partner = pairings.partnerOf(eventId, roundNumber, decider).orElseThrow(NotPairedException::new);
         var requested = new Decision(eventId, roundNumber, decider, partner, interested,
                 clock.instant().truncatedTo(ChronoUnit.MICROS));
-        decisions.limitLockWait();
         decisions.lockPair(eventId, roundNumber, ConnectionPair.of(decider, partner));
         if (!decisions.addIfAbsent(requested)) {
             Decision existing = decisions.findByDecider(eventId, roundNumber, decider).orElseThrow();
