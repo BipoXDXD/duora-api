@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.trustsafety;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -60,7 +61,6 @@ import bipo.tech.duoraapi.identity.AccountId;
 @Import(TestcontainersConfiguration.class)
 class BlockIT {
 
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String BLOCKED_ACCOUNTS_PATH = "/api/me/blocked-accounts";
     /** UUIDv7 bem formado que não é de conta nenhuma. */
     private static final String UNKNOWN_ACCOUNT_ID = "01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b";

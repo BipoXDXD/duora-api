@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.connections;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
 import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
@@ -65,7 +66,6 @@ class ConnectionIT {
 
     private static final Instant STARTS_AT = Instant.parse(EventFixtures.STARTS_AT);
     private static final String DECIDED_AT = "2026-11-01T22:00:00Z";
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String CONNECTIONS_PATH = "/api/me/connections";
     private static final String YES = "{\"interested\": true}";
     private static final String NO = "{\"interested\": false}";

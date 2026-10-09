@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
@@ -33,7 +34,6 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 class AdminRoleOnEveryAdminRouteIT {
 
     private static final String ADMIN_PREFIX = "/api/admin/";
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String SECURITY_FORBIDDEN = "{\"type\":\"about:blank\",\"title\":\"Forbidden\",\"status\":403}";
 
     @Autowired

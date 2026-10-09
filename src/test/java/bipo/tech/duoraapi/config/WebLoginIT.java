@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -80,7 +81,6 @@ class WebLoginIT {
     private static final String ADMIN_ONLY_PATH = "/api/admin/waitlist/stats";
     private static final String CURRENT_USER_PATH = "/api/me";
 
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String WEB_CLIENT_ID = "duora-web-client-id";
     private static final String API_AUDIENCE = "duora-api-client-id";
     private static final String USER_OBJECT_ID = "user-object-id";

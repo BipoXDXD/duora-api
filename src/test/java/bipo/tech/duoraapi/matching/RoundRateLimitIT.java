@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.matching;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
 import static bipo.tech.duoraapi.events.EventFixtures.randomId;
@@ -52,7 +53,6 @@ class RoundRateLimitIT {
 
     /** Uma ficha de volta a cada 1 h / 3 = 1200 s. */
     private static final String SECONDS_TO_NEXT_CALL = "1200";
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
 
     @Autowired
     private MockMvc mockMvc;

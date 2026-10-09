@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
@@ -40,8 +41,6 @@ class CsrfOnEveryMutationIT {
     private static final Set<String> CSRF_EXEMPT_ROUTES = Set.of("POST /api/waitlist");
 
     private static final Set<String> MUTATING_METHODS = Set.of("POST", "PUT", "PATCH", "DELETE");
-
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
 
     /** A recusa da segurança: sem detail nem reason, ao contrário das recusas de regra de negócio. */
     private static final String SECURITY_FORBIDDEN = "{\"type\":\"about:blank\",\"title\":\"Forbidden\",\"status\":403}";

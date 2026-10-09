@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
 import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
@@ -70,7 +71,6 @@ class SensitiveDataLoggingIT {
 
     private static final String PROFILE_PATH = "/api/me/profile";
     private static final String FIRST_VERSION = "\"0\"";
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     /** Data de nascimento marcada: improvável em qualquer outra linha de log. */
     private static final String CANARY_BIRTH_DATE = "1987-03-29";
 
