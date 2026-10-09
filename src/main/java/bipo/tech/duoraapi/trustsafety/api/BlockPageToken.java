@@ -20,6 +20,13 @@ final class BlockPageToken {
     static final int MAX_LENGTH = 200;
     static final String PATTERN = "^[A-Za-z0-9_-]+$";
 
+    /**
+     * Nenhum bloqueio existe fora de 1970 a 9999. O Instant aceita anos muito além desses, e um token
+     * adulterado com um deles devolveria uma página em vez do 400 de token que a API não gerou.
+     */
+    private static final Instant EARLIEST = Instant.EPOCH;
+    private static final Instant LATEST = Instant.parse("9999-12-31T23:59:59.999999Z");
+
     private static final String SEPARATOR = "|";
 
     private BlockPageToken() {
@@ -41,8 +48,11 @@ final class BlockPageToken {
             if (separator < 0) {
                 throw new InvalidPageTokenException();
             }
-            return new BlockPosition(Instant.parse(plain.substring(0, separator)),
-                    new AccountId(UUID.fromString(plain.substring(separator + 1))));
+            Instant blockedAt = Instant.parse(plain.substring(0, separator));
+            if (blockedAt.isBefore(EARLIEST) || blockedAt.isAfter(LATEST)) {
+                throw new InvalidPageTokenException();
+            }
+            return new BlockPosition(blockedAt, new AccountId(UUID.fromString(plain.substring(separator + 1))));
         } catch (IllegalArgumentException | DateTimeParseException e) {
             throw new InvalidPageTokenException();
         }

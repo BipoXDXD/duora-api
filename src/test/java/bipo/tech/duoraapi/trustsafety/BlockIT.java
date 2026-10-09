@@ -337,6 +337,17 @@ class BlockIT {
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
     }
 
+    /** O mesmo ProblemDetail das outras listas paginadas, com o teto desta lista e sem o valor recebido. */
+    @Test
+    void pageSizeOutsideTheLimitsNamesTheLimitOfThisList() throws Exception {
+        listBlocked(ana(), "?maxPageSize=101")
+                .andExpect(status().isBadRequest())
+                .andExpect(content().json("""
+                        {"title": "Bad Request", "status": 400,
+                         "detail": "maxPageSize must be between 1 and 100", "instance": "/api/me/blocked-accounts"}
+                        """, JsonCompareMode.STRICT));
+    }
+
     @ParameterizedTest
     @MethodSource("malformedPageTokens")
     void malformedPageTokenIsRejected(String pageToken) throws Exception {
@@ -352,6 +363,8 @@ class BlockIT {
                 Named.of("Base64 sem a posição", base64Url("not-a-token")),
                 Named.of("Base64 com conta que não é UUID", base64Url("2026-10-05T12:00:00Z|not-a-uuid")),
                 Named.of("Base64 com data inválida", base64Url("yesterday|01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b")),
+                Named.of("Base64 com ano que o timestamptz não guarda",
+                        base64Url("+200000-01-01T00:00:00Z|01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b")),
                 Named.of("NUL", "%00"),
                 Named.of("acima do teto de tamanho", "A".repeat(201)));
     }
