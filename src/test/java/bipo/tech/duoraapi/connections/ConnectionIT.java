@@ -431,6 +431,24 @@ class ConnectionIT {
         assertThat(body).contains("\"items\":[]").doesNotContain(accountOf("ana"), accountOf("bruno"));
     }
 
+    /** O token só marca a posição: a consulta continua filtrando por quem pede. */
+    @Test
+    void aPageTokenFromAnotherAccountOnlyPagesTheCallersOwnConnections() throws Exception {
+        connectDirectly("ana", "bruno", "2026-11-01T22:02:00Z");
+        connectDirectly("ana", "carla", "2026-11-01T22:01:00Z");
+        createAccount("davi");
+        String anaFirstPage = mockMvc.perform(get(CONNECTIONS_PATH).param("maxPageSize", "1").with(user("ana")))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String anaToken = JsonPath.read(anaFirstPage, "$.nextPageToken");
+
+        mockMvc.perform(get(CONNECTIONS_PATH).param("pageToken", anaToken).with(user("davi")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {"items": [], "nextPageToken": null}
+                        """, JsonCompareMode.STRICT));
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"0", "101", "-1", "abc", ""})
     void anInvalidPageSizeIsABadRequest(String size) throws Exception {
