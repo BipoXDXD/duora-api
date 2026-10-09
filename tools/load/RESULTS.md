@@ -13,7 +13,7 @@
 | API | imagem construída de `main` (3a4be1f), **1 vCPU e 2 GiB** (como a produção, ADR 0014), pool Hikari e Tomcat no padrão (10 conexões) |
 | Banco | `postgres:18-alpine`, 2 vCPU e 4 GiB (um B2s hipotético), sem ajuste |
 | Gerador | k6 2.3.0 em container na mesma rede, sem limite de CPU (compete com a API pelo mesmo hardware) |
-| Rate limit | produção, exceto o da rodada e o da decisão elevados (ver `README.md`) |
+| Rate limit | produção, exceto o da rodada, o da decisão e o do envio do chat elevados (ver `README.md`) |
 
 Três subidas completas e independentes, cada uma com cada cenário duas vezes: a **primeira passada é com a JVM
 fria** (o que um deploy novo enfrenta) e a **segunda com a JVM aquecida**. Todas passaram em todos os thresholds
@@ -139,11 +139,86 @@ acima (load average de 6 a 7, de outros processos), por isso as latências são 
   recuperada na repetição.
 - As invariantes valeram em todas as execuções: exatamente a capacidade em inscritas, o resto `409`.
 
+## Chat da rodada: o polling aguenta a meta? (ADR 0021, fatia 7)
+
+Cenário `chat.js`: 50 eventos em andamento com a rodada 1 sorteada = **50 pares e 100 participantes**. Cada um
+abre o chat, faz polling de `GET .../chat/messages?afterSeq=<maior seq visto>` **a cada 2 s** (como o front) e envia
+uma mensagem a cada 10 a 20 s, por **5 minutos**; em ~5% dos envios repete o `POST` com a mesma `Idempotency-Key`.
+Cada passada faz ~15.100 polls (~50 por segundo) e ~1.730 envios. Em 2026-10-08, na máquina da tabela "Ambiente"
+(API com 1 vCPU e 2 GiB, banco com 2 vCPU e 4 GiB; o limite de envio do chat foi elevado, ver `README.md`).
+
+Quatro subidas completas, cada uma com **duas passadas de 5 minutos** (a 1ª com a JVM fria, a 2ª aquecida).
+As três primeiras usaram a imagem de `main` em `1b75852`, a quarta a de `ce25393` (depois do PR #39), que repetiu
+os números. Todas passaram nos thresholds e nas invariantes. Latência em ms, medida pelo k6.
+
+| Subida | Passada | GET (polling) p50 / p95 / p99 / máx | POST (envio) p50 / p95 / p99 / máx | 503 | CPU da API (máx / média) |
+|---|---|---|---|---|---|
+| 1 | fria | 2 / 7 / 21 / 256 | 4 / 14 / 52 / 177 | 0 | 98% / 15% |
+| 1 | aquecida | 2 / 14 / 33 / 262 | 5 / 29 / 56 / 124 | 0 | 76% / 12% |
+| 2 | fria | 3 / 41 / 610 / 2197 | 6 / 77 / 478 / 2593 | 0 | 139% / 28% |
+| 2 | aquecida | 3 / 18 / 36 / 209 | 8 / 42 / 77 / 168 | 0 | 46% / 15% |
+| 3 | fria | 4 / 105 / 1222 / 2899 | 9 / 209 / 2104 / 3596 | 3 | 211% / 27% |
+| 3 | aquecida | 4 / 16 / 33 / 164 | 13 / 41 / 65 / 171 | 0 | 46% / 15% |
+| 4 (`ce25393`) | fria | 2 / 6 / 12 / 94 | 4 / 15 / 35 / 91 | 0 | 93% / 15% |
+| 4 (`ce25393`) | aquecida | 2 / 4 / 9 / 45 | 4 / 7 / 19 / 60 | 0 | 35% / 8% |
+
+(Mais uma subida, só para medir o banco, deu 25 / 93 ms de p95 frio e 9 / 26 ms aquecido, no mesmo padrão.)
+Picos de CPU acima de 100% são artefato da amostragem do `docker stats` com o limite de 1 vCPU; leia a média e o
+fato de que o container ficou perto de 100% nos primeiros ~20 s da passada fria.
+
+- **A passada fria é o único momento ruim.** Nos primeiros ~20 s a API (JVM sem JIT) satura a vCPU; daí a cauda de
+  1 a 3,6 s e os 3 `503` documentados (`Rate limit store failed for chat:`, o mesmo teto de 1 s do limitador do item 3
+  acima, sem nenhum `lock_timeout`), todos recuperados na repetição. Depois disso o p95 é de 4 a 18 ms.
+  Esse é o cenário real de uma réplica que acorda (escala a zero) com 100 pessoas já com a aba aberta.
+- **Banco: 4 comandos por poll.** O `pg_stat_statements` mostra, por `GET` de polling: a conta pelo `(issuer, subject)`,
+  o par em `round_seat` pela PK, o chat pela chave natural e a página de `chat_message` pela PK, mais `BEGIN READ ONLY`
+  e `COMMIT`; todos por índice, 0,006 a 0,05 ms de média. Cada envio custa uns 13 comandos (conta, par, evento, limitador,
+  `insert ... on conflict` do chat, lock, busca da chave, bloqueio, última rodada, `insert` e `update`).
+- **Carga sobre o banco com 100 participantes:** 49,6 a 49,9 requisições/s no k6 = **~283 comandos SQL/s** (mais ~120/s de
+  `BEGIN`/`COMMIT`) e ~128 transações/s (inclui ~4/s do amostrador). O container do banco ficou com **10 a 15% de CPU em
+  média** (até 165% num pico frio) e **no máximo 10 conexões** (o pool da API; nenhuma esperando lock).
+- **A estimativa da ADR 0021 ("~50 consultas/s pela PK") confere em requisições (49,8/s), mas em comandos SQL são ~5,7 vezes
+  mais** (283/s): o front não faz uma consulta por poll, e sim quatro. Continua baixo para o banco.
+
+### Folga (fora dos thresholds): polling mais frequente
+
+`CHAT_POLL_MS` menor, 120 s por passada, os mesmos 100 participantes (equivale a mais gente conversando ao mesmo tempo):
+
+| Polling | Polls/s medidos | Passada | GET p50 / p95 / p99 / máx | POST p50 / p95 | 503 | CPU da API (média) | CPU do banco (média) |
+|---|---|---|---|---|---|---|---|
+| 500 ms (4x) | 187 | fria | 5 / 390 / 1037 / 2877 | 9 / 395 | 0 | 59% | n/d |
+| 500 ms (4x) | 188 | aquecida | 7 / 200 / 924 / 2882 | 26 / 788 | 3 | 41% | n/d |
+| 200 ms (10x) | 466 | fria | 6 / 200 / 493 / 2301 | 7 / 600 | 0 | 62% | n/d |
+| 200 ms (10x) | 494 | aquecida | 3 / 10 / 17 / 213 | 5 / 12 | 0 | 41% | n/d |
+| 200 ms (10x) | 370 | fria | 100 / 514 / 997 / 2913 | 310 / 1094 | 6 | 99% | 27% |
+| 200 ms (10x) | 492 | aquecida | 5 / 32 / 88 / 607 | 17 / 86 | 0 | 51% | 28% |
+
+A API chega a ~490 polls/s (10x) com 41 a 51% de CPU e p95 de 10 a 32 ms quando aquecida. A passada fria a 10x satura
+a vCPU (99% de média, só 370 polls/s entregues) e o p95 vai a 0,5 s. Uma passada aquecida a 4x teve p95 de 200 ms e 3 `503`
+nos primeiros segundos (três estouros de 1 s do limitador, esperas de até 7,5 s), sem causa identificada além da
+variância do notebook; as outras três aquecidas ficaram em 10 a 32 ms. As invariantes (sem lacuna, sem duplicata,
+todos leram tudo) valeram nas 16 passadas, ~21.100 mensagens no total.
+
+### Conclusão
+
+**Sim: o polling de 2 s aguenta a meta experimental (50 salas, 100 participantes) com 1 vCPU**, com folga grande depois
+do aquecimento: ~50 requisições/s custam 8 a 28% de uma vCPU e 10 a 15% de CPU do banco, p95 de 4 a 18 ms. Com a JVM
+fria a API já sente 4 vezes essa carga (p95 de 0,4 s) e satura em 7 vezes; aquecida, passa de 10 vezes sem sofrer. O que dói
+é o **primeiro minuto de uma JVM fria** (em 2 das 5 passadas frias de 2 s o p99 passou de 0,6 s, e uma teve 3 `503`
+documentados), não o ritmo do polling. Para a decisão
+"polling para SSE" isto quer dizer: **a carga não é motivo para trocar**; o que justificaria o SSE é a latência de até 2 s e o
+custo de acordar uma réplica fria com muitas abas abertas (o aquecimento da JVM da ADR 0022 resolve isso nos dois transportes).
+
+Limites desta medição: gerador e API na mesma máquina; **Bearer**, sem a sessão do BFF nem o ingress do Container Apps
+nem TLS; banco com 2 vCPU e sem os créditos de CPU de um B1ms (que só uma rodada em homologação mede); cada poll lê a conta
+por `(issuer, subject)` sem cache. Por isso a conclusão vale como "não é o gargalo", e não como capacidade garantida.
+
 ## Como reproduzir
 
 ```bash
 docker build -t duora-api:load-local .
 REPEAT=2 tools/load/run.sh duora-api:load-local
+REPEAT=2 tools/load/run.sh duora-api:load-local chat      # o chat, 5 minutos por passada
 ```
 
 Para comparar configurações sem reconstruir a imagem, passe um arquivo de variáveis da API (o formato do

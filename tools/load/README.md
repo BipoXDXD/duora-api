@@ -2,7 +2,7 @@
 
 Cenários que medem as disputas que as ADRs [0016](../../docs/adr/0016-eventos-e-inscricoes.md),
 [0017](../../docs/adr/0017-pareamento.md) e [0019](../../docs/adr/0019-decisao-privada-e-conexoes.md) deixaram
-para o k6, e a carga do polling do chat da [ADR 0021](../../docs/adr/0021-chat-temporario-e-tempo-real.md), e
+para o k6, e a carga do polling do chat da [ADR 0021](../../docs/adr/0021-chat-temporario-e-reconexao.md), e
 conferem as invariantes depois. Decisões e números em [ADR 0022](../../docs/adr/0022-teste-de-carga-com-k6.md)
 e [RESULTS.md](RESULTS.md). **Manual**: não há workflow de CI, para não gastar minutos.
 

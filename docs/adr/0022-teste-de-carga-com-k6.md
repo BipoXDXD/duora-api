@@ -106,6 +106,12 @@ produção. Um `429` mediria o limite, que já tem teste próprio.
   sorteio mudar de critério, o `setup` do `decisions.js` lê os pares reais e o número esperado de conexões se
   ajusta sozinho (a invariante do banco recalcula a partir das decisões).
 
+- **Chat ([ADR 0021](0021-chat-temporario-e-reconexao.md)):** 100 participantes fazendo polling a cada 2 s e enviando
+  uma mensagem a cada 10 a 20 s (`chat.js`, 5 minutos, fora do `all`) deram sempre posições `1..last_seq` sem lacuna,
+  nenhuma chave repetida, mensagens gravadas iguais aos envios aceitos e todos lendo até a última. Com 1 vCPU na API o
+  polling custa 8 a 28% de CPU e p95 de 4 a 18 ms aquecido (até 105 ms frio); satura só perto de 7 vezes a carga. Os
+  números e a conclusão estão em `tools/load/RESULTS.md`.
+
 ## Pendente com o usuário
 
 1. **Rodar contra a homologação** com recursos fixos e, então, decidir se um workflow semanal compensa.
@@ -113,5 +119,5 @@ produção. Um `429` mediria o limite, que já tem teste próprio.
    do pool diante do B1ms (pendência 9 da [ADR 0016](0016-eventos-e-inscricoes.md)). Se a abertura real ainda
    der `503`, o semáforo por réplica já tem números.
 3. **Aquecimento da JVM** antes da readiness.
-4. **Cenários que faltam do plano:** chat, reconexão, queda do PubSub, reenvio da outbox e restauração do banco
+4. **Cenários que faltam do plano:** reconexão, queda do PubSub, reenvio da outbox e restauração do banco
    (dependem de módulos que ainda não existem) e o sorteio de 200 candidatos num evento só.

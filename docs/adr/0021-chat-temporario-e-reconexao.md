@@ -347,6 +347,12 @@ Cada fatia é um PR, com testes primeiro.
 | 6 | **Notificações de domínio** no mesmo canal: `connection.formed`, `event.cancelled` | `ConnectionHintIT` (sem aviso para "sim" sem conexão); conjunto de chaves exato; outbox só se houver entrega externa |
 | 7 | **Carga:** k6 com 50 chats e 100 participantes em homologação | Latência p95 do envio ao aviso, consultas/s no B1ms, conexões e custo do dia registrados; decisão de manter (b) ou subir para (a) registrada aqui |
 
+**Medição local da carga do polling (2026-10-08, `tools/load/chat.js`, [ADR 0022](0022-teste-de-carga-com-k6.md)):**
+50 chats e 100 participantes com polling de 2 s deram ~50 requisições/s e ~283 comandos SQL/s (4 por poll), p95 de 4 a
+18 ms aquecido e até 105 ms com a JVM fria, com 8 a 28% de uma vCPU da API e 10 a 15% de CPU do banco; a API só satura
+perto de 7 vezes essa carga com a JVM fria. Não é medição em homologação nem no B1ms, então a fatia 7 segue aberta, mas a
+carga do polling não é motivo medido para sair dele (detalhes em `tools/load/RESULTS.md`).
+
 ## Decidido pelo usuário (2026-10-08)
 
 - **Produto:** os defaults propostos na seção 1 valem para a primeira versão. O significado de "dupla saiu"
