@@ -8,6 +8,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.ArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -36,6 +42,8 @@ class JoinWaitlistIT {
     private static final String CLIENT_C = "198.51.100.3";
     private static final String CLIENT_D = "198.51.100.5";
     private static final String CLIENT_E = "198.51.100.6";
+    private static final String CLIENT_F = "198.51.100.7";
+    private static final int SIMULTANEOUS_JOINS = 4;
     private static final int CAPACITY = 10;
 
     @Autowired
@@ -60,6 +68,28 @@ class JoinWaitlistIT {
 
         assertThat(repository.count()).isEqualTo(1);
         assertThat(repository.findByEmail("ana@example.com")).isPresent();
+    }
+
+    /** A unicidade é do banco (on conflict), e não de um "existe? então insere" no código. */
+    @Test
+    void simultaneousJoinsWithTheSameEmailKeepSingleEntry() throws Exception {
+        var start = new CountDownLatch(1);
+        var statuses = new ArrayList<Future<Integer>>();
+
+        try (var executor = Executors.newFixedThreadPool(SIMULTANEOUS_JOINS)) {
+            for (int i = 0; i < SIMULTANEOUS_JOINS; i++) {
+                statuses.add(executor.submit(() -> {
+                    start.await();
+                    return join("carla@example.com", CLIENT_F).andReturn().getResponse().getStatus();
+                }));
+            }
+            start.countDown();
+            for (Future<Integer> status : statuses) {
+                assertThat(status.get(30, TimeUnit.SECONDS)).isEqualTo(202);
+            }
+        }
+
+        assertThat(repository.count()).isEqualTo(1);
     }
 
     @Test
