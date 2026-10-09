@@ -57,6 +57,40 @@ consultável por campo. O motivo de negócio é atender quem reporta um erro (o 
 sem expor dado pessoal de quem entrou na waitlist, e chegar ao Application Insights sem refazer a
 instrumentação.
 
+## Adendo de 2026-10-08: DTO com dado pessoal ou id de terceiro redige o `toString`
+
+A decisão acima tratou só o e-mail da waitlist. A auditoria de segurança de outubro de 2026
+(`docs/security-audit-2026-10.md`) mostrou que o mesmo mecanismo (o Spring MVC registra em DEBUG o corpo lido
+e o escrito pelo `toString` do record) vazava a decisão privada (`DecisionResponse`) e o nome do Entra
+(`CurrentUserResponse`), e que três respostas imprimiam o id de outra conta: `BlockedAccountsResponse` (quem foi
+bloqueado), `PairingResponse` (o par da rodada) e `ConnectionsResponse` (com quem houve interesse mútuo). Um id
+é um pseudônimo, mas ligar duas contas é justamente o dado que a ADR 0015 e a ADR 0019 protegem.
+
+| Opção | Prós | Contras |
+|---|---|---|
+| Deixar o `toString` gerado e confiar no nível de log | Nada a mudar | O DEBUG é o nível que se liga para investigar um incidente, justo quando o log é lido e exportado; a proteção some sem ninguém decidir |
+| Filtrar o log (convertedor do Logback que mascara UUIDs) | Cobre qualquer classe | Mascara também os ids de evento e de rodada, que o suporte precisa ver; regra frágil sobre texto |
+| **`toString` redigido nos DTOs** | Local, testável, sem custo em produção; o dado que não é sensível continua útil no log (evento, rodada) | Cada DTO novo precisa lembrar; a fitness function cobre o caso do id de conta |
+
+**Decisão:** DTO de requisição ou resposta com dado pessoal ou id de outra conta redige o `toString`: o campo sai
+(`accountId=redacted`), e o resto fica. O envelope de lista também imprime só a contagem e esconde o
+`nextPageToken`, porque o cursor é o último id em Base64. Redigidos hoje: `ConnectionsResponse` (e o item),
+`BlockedAccountsResponse` (e o item) e `PairingResponse`, somados a `DecideRequest`/`DecisionResponse`,
+`CurrentUserResponse`, `ProfileResponse`, `FileReportRequest`, `ReportResponse` e `JoinWaitlistRequest`.
+`FileReportRequest` mantém o `reportedAccountId` de propósito, como já estava: a denúncia é um fato que a
+moderação precisa achar no log. Ficam com o `toString` gerado os DTOs sem dado pessoal: contagens, ids e datas de
+evento e de rodada, inscrição própria e configuração.
+
+**Fitness function:** `ArchitectureTest.apiRecordsWithAnAccountIdRedactTheirToString` exige que todo record de
+um pacote `..api..` com um componente `*AccountId` (ou do tipo `identity.AccountId`) declare o `toString`. O
+`toString` que o compilador gera é `public final` (JLS 8.10.3), então o declarado se reconhece por não ser
+final. Limites: a regra olha o nome do componente, então um dado pessoal em outro nome (um texto livre, um nome)
+continua dependendo de revisão; e o envelope de uma lista de itens com id também depende da convenção acima.
+`ArchitectureRulesTest` confere que a regra recusa o record com `toString` gerado e aceita o redigido.
+
+**Limite do teste:** o MVC corta a linha em 100 caracteres (TRACE não corta). No `PairingResponse` o id do par
+começa depois do corte, então o teste confere o nome do campo (`partnerAccountId`), e não só o id.
+
 ## Consequências
 
 - A saída dos testes também é JSON (é o formato de produção que os testes verificam).
@@ -88,5 +122,10 @@ instrumentação.
   headers da resposta. No `PATCH /api/me/profile`, nome, bio e data de nascimento aceitos não vão
   para o log, e os recusados (nome longo, bio com invisível, data fora do formato) não vão nem para
   o log nem para a resposta.
+- `SensitiveDataLoggingIT` (adendo de 2026-10-08): o id do par (`getMyPairing`), os ids dos bloqueados e das
+  conexões, e os `nextPageToken` dessas listas não aparecem no log: `partnerOfARoundNeverReachesTheLog`,
+  `blockedAccountsNeverReachTheLog`, `connectionsNeverReachTheLog`. A decisão e o nome do Entra seguem em
+  `DecisionLoggingIT` e `currentUserNameNeverReachesTheLog`.
+- `ArchitectureTest.apiRecordsWithAnAccountIdRedactTheirToString` e `ArchitectureRulesTest` (três casos).
 - `EmailAddressTest`: o `toString` não traz o endereço.
 - `infra/docker/smoke-test.sh` continua achando "Graceful shutdown complete" na mensagem JSON.
