@@ -41,10 +41,13 @@ não puder ser multiplicado.
 
 - Toda requisição limitada abre uma transação curta no banco. Se o banco cair, a rota responde
   `503` em `ProblemDetail` em vez de passar sem limite (falha fechada); a inscrição dependeria do
-  banco de qualquer forma. Cada comando do Bucket4j tem teto de 1 s
+  banco de qualquer forma. Cada comando do Bucket4j tem teto de 3 s
   (`RateLimitConfiguration.REQUEST_TIMEOUT`), para requisições do mesmo cliente não esperarem o
-  lock da linha sem limite. A espera por conexão segue o timeout do pool (Hikari, 30 s): um pool
-  dedicado ao rate limit (bulkhead) só entra se a medição no k6 mostrar disputa.
+  lock da linha sem limite. O Bucket4j conta nesse teto a espera por conexão do pool, mas não a corta:
+  quem a corta é o timeout do pool (Hikari, 30 s). O teto era de 1 s e passou a 3 s em 2026-10-08,
+  quando o k6 mostrou `503` do limitador numa rajada de inscrições; o pool dedicado ao rate limit
+  (bulkhead) foi medido e piorou ([ADR 0016](0016-eventos-e-inscricoes.md), seção "O limite por conta
+  numa rajada de inscrições").
 - A tabela não tem teto de linhas, ao contrário do cache em memória. O crescimento fica limitado
   pela quantidade de IPv4 e de redes /64 de quem ataca, e cada linha some em até uma hora mais o
   intervalo da limpeza; a métrica de tamanho mostra se isso mudar.

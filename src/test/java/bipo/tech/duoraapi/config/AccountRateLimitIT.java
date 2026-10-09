@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.util.UUID;
 
@@ -18,6 +20,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+
+import com.zaxxer.hikari.HikariDataSource;
 
 import io.github.bucket4j.distributed.jdbc.PrimaryKeyMapper;
 import io.github.bucket4j.distributed.proxy.ProxyManager;
@@ -42,6 +46,9 @@ class AccountRateLimitIT {
 
     @Autowired
     private JdbcClient jdbcClient;
+
+    @Autowired
+    private HikariDataSource applicationPool;
 
     private AccountRateLimit limit;
 
@@ -98,6 +105,32 @@ class AccountRateLimitIT {
         assertThatThrownBy(() -> unreachable.consume(ANA)).isInstanceOf(RateLimitUnavailableException.class);
     }
 
+    /**
+     * Numa rajada, o comando espera conexão na fila do pool junto com as transações que esperam lock, e o
+     * Bucket4j conta essa espera no teto (docs/adr/0016, medição de 2026-10-08). Uma fila de 1,5 s, que com
+     * o teto antigo de 1 s virava 503, tem de ser absorvida.
+     */
+    @Test
+    void waitsForAPoolThatIsBusyForLessThanTheTimeout() throws SQLException {
+        try (var pool = singleConnectionPool()) {
+            var limitOnBusyPool = new AccountRateLimit(RateLimitConfiguration.bucketsOn(pool), PREFIX, CAPACITY, PERIOD);
+            holdTheOnlyConnection(pool, Duration.ofMillis(1500));
+
+            assertThatCode(() -> limitOnBusyPool.consume(ANA)).doesNotThrowAnyException();
+        }
+    }
+
+    /** A fila do pool acima do teto continua falhando fechada: a chamada não passa sem contar. */
+    @Test
+    void rejectsWhenThePoolStaysBusyBeyondTheTimeout() throws SQLException {
+        try (var pool = singleConnectionPool()) {
+            var limitOnBusyPool = new AccountRateLimit(RateLimitConfiguration.bucketsOn(pool), PREFIX, CAPACITY, PERIOD);
+            holdTheOnlyConnection(pool, RateLimitConfiguration.REQUEST_TIMEOUT.plusMillis(500));
+
+            assertThatThrownBy(() -> limitOnBusyPool.consume(ANA)).isInstanceOf(RateLimitUnavailableException.class);
+        }
+    }
+
     /** O Retry-After documentado tem teto de um dia; um período maior o quebraria. */
     @Test
     void acceptsAPeriodOfExactlyOneDay() {
@@ -119,6 +152,33 @@ class AccountRateLimitIT {
         assertThatThrownBy(() -> new AccountRateLimit(rateLimitBuckets, PREFIX, CAPACITY, Duration.parse(period)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("period");
+    }
+
+    private HikariDataSource singleConnectionPool() {
+        var pool = new HikariDataSource();
+        pool.setJdbcUrl(applicationPool.getJdbcUrl());
+        pool.setUsername(applicationPool.getUsername());
+        pool.setPassword(applicationPool.getPassword());
+        pool.setMaximumPoolSize(1);
+        pool.setPoolName("busy-rate-limit-test");
+        return pool;
+    }
+
+    /**
+     * Pega a única conexão do pool e a devolve depois de {@code duration}, como uma transação que espera o
+     * lock do evento. O que se testa é um teto de tempo, então a espera é real: não há evento a aguardar.
+     */
+    private static void holdTheOnlyConnection(HikariDataSource pool, Duration duration) throws SQLException {
+        Connection held = pool.getConnection();
+        Thread.ofVirtual().start(() -> {
+            try (held) {
+                Thread.sleep(duration);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (SQLException e) {
+                throw new IllegalStateException("could not give the held connection back", e);
+            }
+        });
     }
 
     private static ProxyManager<String> bucketsOn(DataSource dataSource) {

@@ -71,7 +71,8 @@ Uma execução extra e isolada de `rounds` (depois de editar comentários, fora 
    (`AccountRateLimit`, ADR 0006), cujo comando no Bucket4j tem teto de 1 s (`RateLimitConfiguration.REQUEST_TIMEOUT`)
    e disputa a mesma conexão do pool com as transações que esperam o lock do evento. Nos testes padrão foram 0 a 1
    por execução. Os logs da API confirmam a causa (`Rate limit store failed for registration:` com
-   `io.github.bucket4j.TimeoutException`), e nenhum `503` veio do `lock_timeout`.
+   `io.github.bucket4j.TimeoutException`), e nenhum `503` veio do `lock_timeout`. Corrigido com o teto de 3 s
+   (seção "Teto do limitador", abaixo).
 
 ## Variante de estresse (fora dos thresholds): 200 contas, capacidade 100
 
@@ -86,11 +87,72 @@ Dobrando a rajada, a passada fria passou do threshold de p95 (2,5 s) e produziu 
 recuperados na repetição de 1 s: a capacidade nunca foi ultrapassada. Os 21 `503` das duas passadas têm a mesma
 causa do item 3 (21 erros do limitador no log, nenhum `lock_timeout`).
 
+## Teto do limitador: opções e antes/depois (2026-10-08)
+
+O item 3 tem uma causa precisa: o Bucket4j começa a contar o teto do comando **antes** de pedir a conexão ao pool
+e o confere entre os passos. Na rajada, o comando espera a conexão atrás das transações que esperam o lock do
+evento, recebe-a depois de 1 s e falha. Decisão e prós e contras na ADR 0016 (seção "O limite por conta numa
+rajada de inscrições").
+
+Mesma máquina e mesmo ambiente da tabela de cima; imagens construídas do ramo `fix/rate-limit-pool-contention`.
+As opções de configuração rodaram com `API_ENV_FILE`; as de código, com imagens de protótipo descartadas depois.
+Variante de estresse (`REGISTRATION_ACCOUNTS=200 REGISTRATION_CAPACITY=100 REPEAT=2`), uma subida por linha de
+execução. **Tempo da conta** é a `iteration_duration` do k6: o primeiro `PUT` com as repetições do `503` (1 s de
+espera cada) mais o `PUT` repetido, isto é, o que a pessoa espera do clique à resposta final.
+
+| Opção | Subidas | 503 na passada fria | p95 frio por pedido (ms) | Tempo da conta, máx (ms) | 503 na passada aquecida | Conexões esperando lock (máx) |
+|---|---|---|---|---|---|---|
+| Antes: teto de 1 s, pool de 10 | 3 | 20, 22, 11 | 2585 a 2788 | 3725 a 3929 | 5, 2, 4 | 8 a 9 |
+| (a) Pool de 20 | 3 | 22, 22, 22 | 2336 a 2754 | 3326 a 3758 | 1, 1, 0 | 18 a 19 |
+| (b) Pool próprio de 2 para o limitador | 3 | 35, 6, 31 | 2198 a 2371 | 2907 a 3194 | 0, 0, 1 | 9 |
+| (c) Teto de 2 s | 6 | 0, 0, 0, 1, 0, 0 | 2530 a 2998 | 2946 a 3712 | 0 em todas | 8 a 9 |
+| **(c) Teto de 3 s (escolhida)** | 6 | **0 em todas** | 2651 a 3487 | 2942 a 3907 | 0 em todas | 8 a 9 |
+| (d) `lock_timeout` de 1 s | 3 | 24, 16, 28 | 2576 a 2812 | 3892 a 4161 | 0, 1, 0 | 7 a 9 |
+| (e) Semáforo de 4 inscrições por réplica | 3 | 0, 0, 0 | 2191 a 2649 | 2992 a 3165 | 0 em todas | 2 a 3 |
+
+Todos os `503` vieram do limitador (as contagens batem com `Rate limit store failed` no log da API); nenhum veio
+do `lock_timeout`, nem com ele em 1 s: cada espera pelo lock é curta, o que demora é a fila do pool. Pool maior só
+põe mais conexões na fila do lock. O pool próprio do limitador piora, porque as 200 chamadas fazem fila nas 2
+conexões dele. O p95 por pedido sobe um pouco com o teto maior porque o pedido que antes voltava `503` em ~1 s
+agora espera e termina; o tempo da conta não piora. O semáforo (e) tem a melhor latência, mas é código novo
+(ADR 0016).
+
+### Antes e depois, intercalados
+
+Para o ruído da máquina cair nos dois lados, as execuções finais alternaram a imagem de antes (teto de 1 s) e a
+de depois (teto de 3 s, o commit do ramo), três rodadas de quatro. A máquina estava mais carregada que nas linhas
+acima (load average de 6 a 7, de outros processos), por isso as latências são maiores que as de cima.
+
+| Cenário | Passada | Antes: 503 por subida | Depois: 503 por subida | Antes: p95 (ms) | Depois: p95 (ms) | Antes: tempo da conta, máx (ms) | Depois: tempo da conta, máx (ms) |
+|---|---|---|---|---|---|---|---|
+| `registration` padrão (100 contas, 50 vagas) | fria | 18, 0, 6 | 0, 0, 0 | 1875 / 1677 / 2089 | 1437 / 1719 / 2489 | 2855 / 1985 / 2899 | 1734 / 2019 / 2716 |
+| | aquecida | 0, 0, 0 | 0, 0, 0 | 1023 / 823 / 1108 | 1661 / 1839 / 861 | 1211 / 1023 / 1396 | 1861 / 2147 / 965 |
+| Estresse (200 contas, 100 vagas) | fria | 16, 49, 51 | 0, 2, 0 | 2400 / 3465 / 4076 | 2965 / 4466 / 3304 | 3662 / 5177 / 5288 | 3273 / 5073 / 3696 |
+| | aquecida | 4, 1, 10 | 0, 0, 0 | 1506 / 1838 / 2871 | 1517 / 1756 / 2098 | 2616 / 2663 / 3956 | 1712 / 1882 / 2318 |
+
+- O cenário padrão passou em todos os thresholds nas três subidas de depois; antes, uma das três falhou por 18
+  `503` (o teto aceito é 10).
+- O estresse continua fora do threshold de p95 (2,5 s) na passada fria, antes e depois: é a fila de CPU de uma
+  vCPU com a JVM fria (item 1), e não o limitador.
+- Com a máquina sobrecarregada, o teto de 3 s ainda deixou passar 2 `503` numa subida de estresse (p50 de 3,2 s):
+  ele absorve a rajada medida, mas não promete zero quando a CPU passa disso. A falha continua fechada e
+  recuperada na repetição.
+- As invariantes valeram em todas as execuções: exatamente a capacidade em inscritas, o resto `409`.
+
 ## Como reproduzir
 
 ```bash
 docker build -t duora-api:load-local .
 REPEAT=2 tools/load/run.sh duora-api:load-local
+```
+
+Para comparar configurações sem reconstruir a imagem, passe um arquivo de variáveis da API (o formato do
+`docker run --env-file`), que fica copiado junto dos resultados:
+
+```bash
+echo SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE=20 > /tmp/pool20.env
+API_ENV_FILE=/tmp/pool20.env REGISTRATION_ACCOUNTS=200 REGISTRATION_CAPACITY=100 REPEAT=2 \
+  tools/load/run.sh duora-api:load-local registration
 ```
 
 Resumos em JSON, logs, amostras e o log da API de cada execução ficam em `tools/load/results/<data>/`.

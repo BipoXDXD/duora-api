@@ -199,6 +199,42 @@ Todos os serviços recebem o `Clock` injetado. Os testes de integração de even
 `TestClockConfiguration` (relógio parado em 2026-10-06T12:00Z, que o teste avança), num contexto Spring
 próprio com o próprio PostgreSQL.
 
+### O limite por conta numa rajada de inscrições (2026-10-08) **(autônoma)**
+
+O k6 ([ADR 0022](0022-teste-de-carga-com-k6.md)) mostrou que os `503` de uma abertura de inscrições não vêm
+do `lock_timeout` de 2 s, como esta ADR previa, e sim do limite por conta. A causa está no Bucket4j: o teto de
+cada comando (`RateLimitConfiguration.REQUEST_TIMEOUT`, então 1 s) começa a contar **antes** de pedir a conexão
+ao pool e só é conferido entre os passos. Numa rajada, o comando espera na fila do pool de 10 conexões atrás
+das transações de inscrição, que seguram a conexão enquanto esperam o lock do evento; recebe a conexão depois
+de 1 s, descobre que o prazo passou e responde `503` (falha fechada, `Retry-After: 1`, nada gravado). O teto
+não corta a espera pelo pool; só a transforma em erro depois que ela já aconteceu. Quem corta a espera é o
+`connectionTimeout` do Hikari (30 s).
+
+Medição: 200 contas ao mesmo tempo num evento de 100 vagas (2x o plano), 1 vCPU e 2 GiB na API, três subidas
+por opção, primeira passada com a JVM fria; detalhes e a tabela completa em `tools/load/RESULTS.md`.
+
+| Opção | 503 na passada fria (3 subidas) | p95 frio (ms) | Prós | Contras |
+|---|---|---|---|---|
+| Antes: teto de 1 s, pool de 10 | 20, 22, 11 | 2585 a 2788 | — | 1 conta em 10 recebe `503` e repete |
+| (a) Pool de 20 | 22, 22, 22 | 2336 a 2754 | Só configuração | Não resolve: as 10 conexões a mais ficam esperando o lock (19 de 20 esperando); passa da regra de ~4 conexões por núcleo do banco: o B1ms tem 1 vCore e até ~50 conexões, e 3 réplicas com 20 já seriam 60 |
+| (b) Pool próprio de 2 conexões para o limitador | 35, 6, 31 | 2198 a 2371 | Isola o limitador do lock | Pior: as 200 chamadas fazem fila nas 2 conexões, e a primeira chamada de cada conta precisa de duas transações (cria o bucket e consome); um `DataSource` a mais para configurar e fechar |
+| (c) **Teto de 3 s no comando do limitador** | **0, 0, 0** (e 0 em mais 3 subidas) | 2651 a 3487 | Uma constante; o limitador continua falhando fechado com pool ocupado além de 3 s | O pedido que antes voltava `503` em ~1 s agora espera e termina; o p95 por pedido sobe um pouco, mas o tempo da pessoa (pedido e repetição) não piora, e o máximo cai |
+| (c) Teto de 2 s | 0, 0, 0, 1, 0, 0 (6 subidas) | 2530 a 2998 | Igual ao teto do lock | Ainda deixou um `503` escapar |
+| (d) `lock_timeout` de 1 s em vez de 2 s | 24, 16, 28 | 2576 a 2812 | Uma constante | Não resolve: nenhuma espera individual pelo lock passou de 1 s; o que demora é a fila do pool, e não o lock |
+| (e) Semáforo de 4 inscrições por réplica antes de pegar conexão (bulkhead) | 0, 0, 0 | 2191 a 2649 | Resolve e baixa a latência; só 3 conexões esperando lock em vez de 9 | Código novo: semáforo em memória por réplica, teto de espera e `503` próprios, testes; global (um evento quente segura os outros) ou por evento (mapa com limpeza); acopla o número de permissões ao tamanho do pool |
+
+**Decisão:** (c), teto de 3 s. É a mudança mais simples que zerou os `503` nas seis subidas de estresse, sem
+conexão a mais no banco e sem mecanismo novo. A falha fechada continua: com o pool ocupado além de 3 s, ou o
+banco fora, o limitador responde `503`. O valor vale para todos os limites por conta (denúncia, rodada,
+decisão, inscrição), que dividem a mesma tabela e o mesmo pool. Com a máquina mais carregada (load average
+de 6 a 7 por outros processos), as passadas intercaladas antes e depois deram 16, 49 e 51 `503` antes e 0, 2
+e 0 depois: o teto maior absorve a rajada medida, mas não promete zero quando a CPU passa do que foi medido.
+Se a abertura de inscrições real mostrar `503` de novo, o próximo passo é o semáforo (e), que já tem números.
+
+Testes: `AccountRateLimitIT.waitsForAPoolThatIsBusyForLessThanTheTimeout` (o pool ocupado por 1,5 s, que
+com o teto de 1 s virava `503`) e `rejectsWhenThePoolStaysBusyBeyondTheTimeout` (ocupado além do teto, falha
+fechada). A spec não muda: o `503` com `Retry-After: 1` já estava documentado.
+
 ## Pendente com o usuário (decisões críticas, só o mínimo implementado)
 
 1. **Cobrança.** As inscrições são gratuitas. Evento pago muda a inscrição (reserva com prazo enquanto o
@@ -217,6 +253,11 @@ próprio com o próprio PostgreSQL.
 7. **Mostrar vagas restantes ou "lotado" ao usuário.** Hoje a pessoa só descobre ao tentar (`409`).
 8. **Retenção (LGPD)** das inscrições de eventos passados e exclusão de conta: a FK `restrict` obriga o
    fluxo de exclusão a passar por aqui.
+9. **Espera pelo pool e tamanho do pool** (seção "O limite por conta numa rajada"). A espera por conexão só é
+   cortada pelo `connectionTimeout` do Hikari, de 30 s: encurtá-lo (Fail Fast) pede mapear a falta de conexão
+   para `503` com `Retry-After` na API toda, e não só aqui. E o pool padrão de 10 por réplica, com até 3
+   réplicas, já passa das ~4 conexões ativas por núcleo do B1ms; a medição mostrou que conexão a mais só
+   aumenta a fila no lock. Diminuir o pool ou trocar o banco é decisão de infraestrutura (ADR 0014).
 
 ## Consequências
 
@@ -236,7 +277,8 @@ próprio com o próprio PostgreSQL.
   tempo num evento de 50 vagas dão sempre 50 inscritas, p95 de 1,5 a 1,7 s com a JVM fria e 0,5 s aquecida
   (1 vCPU); o contador com `CHECK` não se justifica por esses números. O teto de 2 s do lock nunca disparou:
   os raros `503` (0 a 1 por execução; 18 com 200 contas) vieram do teto de 1 s do limite por conta esperando
-  conexão do pool de 10.
+  conexão do pool de 10. Com o teto em 3 s (seção "O limite por conta numa rajada"), as rajadas de 200
+  contas deixaram de dar `503` nas subidas medidas.
 
 ## Compliance
 
@@ -261,7 +303,8 @@ STRIDE do fluxo (permissão de ADMIN e dado pessoal: quem vai a qual encontro):
 | Denial of service: entrada inválida ou enorme vira `500` | Limites em todo campo, horário com fuso, inteiro estrito, `maxPageSize` e token limitados | `AdminEventIT.invalidInputIsRejectedWithoutWriting`, `acceptsValuesOnTheBorder`, `sqlInTheTitleIsStoredAsPlainText`, `EventCatalogIT.invalidPageSizeIsABadRequest`, `invalidPageTokenIsABadRequest` (inclusive ano fora do `timestamptz`), `RegistrationIT.invalidPageOfOwnRegistrationsIsABadRequest`; `PageTokenTest`, `PageSizeTest` |
 | Denial of service: inscrição presa no lock segura conexões | `lock_timeout` de 2 s → `503` com `Retry-After` | `RegistrationIT.registrationThatWaitsTooLongForTheEventLockIsRefused` |
 | Denial of service: uma conta repete `PUT`/`DELETE` e disputa o lock do evento | 60 chamadas por hora por conta, entre réplicas; `429` + `Retry-After`; repetição idempotente também gasta; um bucket para as duas operações | `RegistrationRateLimitIT.callsAboveTheLimitAreRejectedWithRetryAfterAndChangeNothing`, `idempotentRepeatsSpendTheLimit`, `registeringAndCancellingShareOneLimit`, `callsForUnknownEventsSpendTheLimit`, `theLimitIsCountedForEachAccountSeparately`; `AccountRateLimitIT` |
-| Denial of service: limite que cai com o banco deixa passar | Falha fechada: `503` com `Retry-After: 1`, sem gravar nem cancelar | `RegistrationRateLimitIT.registrationIsRefusedWithoutWritingWhenTheLimitCannotBeCounted`, `cancellationIsRefusedWithoutChangingAnythingWhenTheLimitCannotBeCounted`; `AccountRateLimitIT.rejectsWhenTheStoreIsDown` |
+| Denial of service: rajada de inscrições recebe `503` do limitador antes de chegar ao lock | Teto de 3 s no comando do limitador, que conta também a fila do pool | `AccountRateLimitIT.waitsForAPoolThatIsBusyForLessThanTheTimeout`; k6 de estresse em `tools/load/RESULTS.md` |
+| Denial of service: limite que cai com o banco deixa passar | Falha fechada: `503` com `Retry-After: 1`, sem gravar nem cancelar | `RegistrationRateLimitIT.registrationIsRefusedWithoutWritingWhenTheLimitCannotBeCounted`, `cancellationIsRefusedWithoutChangingAnythingWhenTheLimitCannotBeCounted`; `AccountRateLimitIT.rejectsWhenTheStoreIsDown`, `rejectsWhenThePoolStaysBusyBeyondTheTimeout` |
 | Denial of service: configuração com valor que desliga ou quebra o limite | Capacidade positiva e período de até um dia validados no boot | `RequiredRateLimitSettingsIT.applicationRefusesToStartWithAnInvalidLimit`; `AccountRateLimitIT.refusesACapacityThatIsNotPositive`, `refusesAPeriodOutsideZeroToOneDay` |
 
 Repudiation (quem criou, publicou ou cancelou) não é tratada: não há trilha de auditoria. Entra junto com a

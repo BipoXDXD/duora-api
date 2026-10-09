@@ -24,7 +24,9 @@ cenário, o resumo em JSON do k6, as amostras do banco e da API e o log da API. 
 um threshold ou uma invariante falhar.
 
 Variáveis: `ACCOUNTS` (200 contas sintéticas), `REGISTRATION_ACCOUNTS` (100) e `REGISTRATION_CAPACITY` (50) para o
-cenário da inscrição, `REPEAT` (1), `API_CPUS`/`API_MEMORY`, `DB_CPUS`/`DB_MEMORY` e `LOAD_RESULTS_DIR`.
+cenário da inscrição, `REPEAT` (1), `API_CPUS`/`API_MEMORY`, `DB_CPUS`/`DB_MEMORY`, `LOAD_RESULTS_DIR` e
+`API_ENV_FILE` (arquivo do `docker run --env-file` com variáveis a mais para a API, como o tamanho do pool, para
+comparar configurações sem reconstruir a imagem).
 
 ## O que cada cenário faz
 
