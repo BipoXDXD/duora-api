@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -39,7 +40,6 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 @Import(TestcontainersConfiguration.class)
 class ControlCharactersInRequestIT {
 
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final List<String> ENCODED_CONTROL_CHARACTERS = List.of("%00", "%01", "%1B", "%7F");
 
     @Autowired

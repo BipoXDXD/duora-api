@@ -1,5 +1,8 @@
 package bipo.tech.duoraapi.trustsafety.api;
 
+import static bipo.tech.duoraapi.config.ApiSchemaConventions.PROBLEM_JSON;
+import static bipo.tech.duoraapi.config.ApiSchemaConventions.PROBLEM_SCHEMA;
+
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -12,9 +15,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 import bipo.tech.duoraapi.config.AccountRateLimit;
+import bipo.tech.duoraapi.config.MaxPageSize;
 import bipo.tech.duoraapi.identity.AccountId;
 import bipo.tech.duoraapi.trustsafety.application.BlockService;
 import bipo.tech.duoraapi.trustsafety.domain.SelfBlockException;
@@ -40,8 +43,6 @@ class BlockController {
     static final int DEFAULT_PAGE_SIZE = 20;
     static final int MAX_PAGE_SIZE = 100;
 
-    private static final String PROBLEM_JSON = "application/problem+json";
-    private static final String PROBLEM_SCHEMA = "#/components/schemas/ProblemDetail";
     private static final String RATE_LIMIT_DESCRIPTION = "Cada chamada, repetida ou não, gasta o limite da conta, "
             + "somado com o do outro: 60 por hora, repostas aos poucos.";
     private static final String ACCOUNT_ID_DESCRIPTION = "Id da outra conta, como o app o recebe ao mostrar a pessoa";
@@ -134,28 +135,9 @@ class BlockController {
                     schema = @Schema(type = "string", pattern = BlockPageToken.PATTERN,
                             maxLength = BlockPageToken.MAX_LENGTH))
             @RequestParam(required = false) String pageToken) {
-        int maxPageSize = pageSizeOf(maxPageSizeText);
+        int maxPageSize = MaxPageSize.parse(maxPageSizeText, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
         var after = pageToken == null ? null : BlockPageToken.decode(pageToken);
         return BlockedAccountsResponse.of(blocks.blockedBy(caller, maxPageSize, after));
-    }
-
-    /**
-     * Ausente vale o padrão. Lido como texto porque o Spring trata {@code maxPageSize=} vazio como
-     * ausente, e o contrato o recusa como qualquer valor que não é inteiro.
-     */
-    private static int pageSizeOf(String text) {
-        if (text == null) {
-            return DEFAULT_PAGE_SIZE;
-        }
-        try {
-            int size = Integer.parseInt(text);
-            if (size >= 1 && size <= MAX_PAGE_SIZE) {
-                return size;
-            }
-        } catch (NumberFormatException e) {
-            // cai no 400 abaixo, como um número fora da faixa
-        }
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "maxPageSize must be between 1 and " + MAX_PAGE_SIZE);
     }
 
     @ExceptionHandler(SelfBlockException.class)

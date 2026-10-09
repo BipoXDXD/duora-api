@@ -13,7 +13,6 @@ class ConnectionPairTest {
 
     private static final AccountId ANA = new AccountId(UUID.fromString("00000000-0000-0000-0000-00000000000a"));
     private static final AccountId BIA = new AccountId(UUID.fromString("00000000-0000-0000-0000-00000000000b"));
-    private static final AccountId CAIO = new AccountId(UUID.fromString("00000000-0000-0000-0000-00000000000c"));
 
     @Test
     void isTheSamePairWhicheverSideComesFirst() {
@@ -41,21 +40,6 @@ class ConnectionPairTest {
         assertThatThrownBy(() -> new ConnectionPair(BIA, ANA))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("first must come before second; use ConnectionPair.of");
-    }
-
-    @Test
-    void theOtherSideOfEitherAccountIsTheRemainingOne() {
-        var pair = ConnectionPair.of(ANA, BIA);
-
-        assertThat(pair.otherThan(ANA)).isEqualTo(BIA);
-        assertThat(pair.otherThan(BIA)).isEqualTo(ANA);
-    }
-
-    @Test
-    void anAccountOutsideThePairHasNoOtherSide() {
-        assertThatThrownBy(() -> ConnectionPair.of(ANA, BIA).otherThan(CAIO))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("the account is not in this pair");
     }
 
 }

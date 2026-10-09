@@ -54,20 +54,13 @@ class JdbcRoundRepository implements RoundRepository {
         this.jdbcClient = jdbcClient;
     }
 
-    @Override
-    public void limitLockWait() {
-        jdbcClient.sql("select set_config('lock_timeout', :timeout, true)")
-                .param("timeout", LOCK_TIMEOUT)
-                .query(String.class)
-                .single();
-    }
-
     /**
      * {@code on conflict do nothing} na chave primária: com a mesma rodada sendo criada por outra transação,
      * o insert espera ela terminar e, se ela confirmar, não faz nada.
      */
     @Override
     public boolean addIfAbsent(Round round) {
+        limitLockWait();
         try {
             int inserted = jdbcClient.sql("""
                             insert into round (event_id, number, previous_number, seed, started_at)
@@ -94,6 +87,14 @@ class JdbcRoundRepository implements RoundRepository {
             }
             throw e;
         }
+    }
+
+    /** Até o fim da transação: o teto vale também para o que ela grava depois da rodada. */
+    private void limitLockWait() {
+        jdbcClient.sql("select set_config('lock_timeout', :timeout, true)")
+                .param("timeout", LOCK_TIMEOUT)
+                .query(String.class)
+                .single();
     }
 
     @Override

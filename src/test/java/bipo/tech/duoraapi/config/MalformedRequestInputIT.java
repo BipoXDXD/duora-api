@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -32,7 +33,6 @@ import bipo.tech.testfixtures.routing.MalformedQueryController;
 @Import({TestcontainersConfiguration.class, MalformedQueryController.class})
 class MalformedRequestInputIT {
 
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final int PROBLEM_TEXT_MAX_LENGTH = 1_000;
 
     @Autowired

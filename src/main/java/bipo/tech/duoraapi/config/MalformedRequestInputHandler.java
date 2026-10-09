@@ -22,9 +22,6 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @Order(Ordered.HIGHEST_PRECEDENCE)
 class MalformedRequestInputHandler {
 
-    /** O teto de texto do ProblemDetail na spec (OpenApiConfiguration). */
-    private static final int PROBLEM_TEXT_MAX_LENGTH = 1_000;
-
     /** O Tomcat recusa a query string ({@code ?=null}, chave vazia) quando o handler lê um parâmetro. */
     @ExceptionHandler(InvalidParameterException.class)
     ProblemDetail handleMalformedQuery(HttpServletRequest request) {
@@ -37,6 +34,12 @@ class MalformedRequestInputHandler {
         return badRequest(exception.getName() + " has an invalid value", request);
     }
 
+    /** maxPageSize ou pageToken de uma lista paginada ({@link MaxPageSize}, {@link KeysetPageToken}). */
+    @ExceptionHandler(InvalidPageParameterException.class)
+    ProblemDetail handleInvalidPageParameter(InvalidPageParameterException exception, HttpServletRequest request) {
+        return badRequest(exception.getMessage(), request);
+    }
+
     /**
      * O instance é o path pedido, que traz o valor recusado: acima do teto, vai o path sem a parte
      * variável, que ainda identifica a rota sem repetir o valor.
@@ -44,7 +47,7 @@ class MalformedRequestInputHandler {
     private static ProblemDetail badRequest(String detail, HttpServletRequest request) {
         var problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
         String path = request.getRequestURI();
-        problem.setInstance(URI.create(path.length() <= PROBLEM_TEXT_MAX_LENGTH ? path : firstSegmentsOf(path)));
+        problem.setInstance(URI.create(path.length() <= OpenApiConfiguration.PROBLEM_TEXT_MAX_LENGTH ? path : firstSegmentsOf(path)));
         return problem;
     }
 

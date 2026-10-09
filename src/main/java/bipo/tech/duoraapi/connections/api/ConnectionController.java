@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import bipo.tech.duoraapi.config.MaxPageSize;
 import bipo.tech.duoraapi.connections.application.ConnectionService;
 import bipo.tech.duoraapi.identity.AccountId;
 import io.swagger.v3.oas.annotations.Operation;
@@ -47,28 +48,9 @@ class ConnectionController {
                     schema = @Schema(type = "string", pattern = ConnectionPageToken.PATTERN,
                             maxLength = ConnectionPageToken.MAX_LENGTH))
             @RequestParam(required = false) String pageToken) {
-        int maxPageSize = pageSizeOf(maxPageSizeText);
+        int maxPageSize = MaxPageSize.parse(maxPageSizeText, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE);
         var after = pageToken == null ? null : ConnectionPageToken.decode(pageToken);
         return ConnectionsResponse.of(connections.connectionsOf(account, maxPageSize, after));
-    }
-
-    /**
-     * Ausente vale o padrão. Lido como texto porque o Spring trata {@code maxPageSize=} vazio como ausente, e o
-     * contrato o recusa como qualquer valor que não é inteiro (o mesmo de /api/me/blocked-accounts).
-     */
-    private static int pageSizeOf(String text) {
-        if (text == null) {
-            return DEFAULT_PAGE_SIZE;
-        }
-        try {
-            int size = Integer.parseInt(text);
-            if (size >= 1 && size <= MAX_PAGE_SIZE) {
-                return size;
-            }
-        } catch (NumberFormatException e) {
-            // cai no 400 abaixo, como um número fora da faixa
-        }
-        throw new InvalidRequestException("maxPageSize must be between 1 and " + MAX_PAGE_SIZE);
     }
 
 }

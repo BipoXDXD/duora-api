@@ -11,8 +11,8 @@ import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 
-import bipo.tech.duoraapi.config.WebLoginConfiguration;
 import bipo.tech.duoraapi.identity.AccountId;
+import bipo.tech.duoraapi.identity.IdentityClaims;
 import bipo.tech.duoraapi.identity.application.AccountService;
 import bipo.tech.duoraapi.identity.domain.ExternalIdentity;
 
@@ -44,7 +44,7 @@ final class CurrentAccountArgumentResolver implements HandlerMethodArgumentResol
             throw new IllegalStateException("AccountId requires an authenticated principal with claims");
         }
         var identity = new ExternalIdentity(claims.getClaimAsString(JwtClaimNames.ISS),
-                claims.getClaimAsString(WebLoginConfiguration.OBJECT_ID_CLAIM));
+                claims.getClaimAsString(IdentityClaims.OBJECT_ID));
         return accounts.findOrOpenAccount(identity);
     }
 

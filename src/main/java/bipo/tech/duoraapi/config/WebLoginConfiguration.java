@@ -35,6 +35,7 @@ import org.springframework.util.Assert;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import bipo.tech.duoraapi.identity.IdentityClaims;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -42,12 +43,10 @@ import tools.jackson.databind.json.JsonMapper;
  * do Entra External ID, e os tokens ficam no servidor.
  */
 @Configuration(proxyBeanMethods = false)
-public class WebLoginConfiguration {
+class WebLoginConfiguration {
 
     static final String REGISTRATION_ID = "entra";
     static final String LOGIN_PATH = "/oauth2/authorization/" + REGISTRATION_ID;
-    /** A identidade do usuário nas duas portas de entrada (docs/adr/0002). */
-    public static final String OBJECT_ID_CLAIM = "oid";
     private static final String END_SESSION_ENDPOINT = "end_session_endpoint";
 
     /**
@@ -104,7 +103,7 @@ public class WebLoginConfiguration {
             Jwt accessToken = decodeApiToken(apiTokenDecoder, request.getAccessToken());
             requireSameUser(idTokenUser, accessToken);
             Collection<GrantedAuthority> roles = apiAuthoritiesConverter.convert(accessToken).getAuthorities();
-            return new DefaultOidcUser(roles, idTokenUser.getIdToken(), OBJECT_ID_CLAIM);
+            return new DefaultOidcUser(roles, idTokenUser.getIdToken(), IdentityClaims.OBJECT_ID);
         };
     }
 
@@ -118,8 +117,8 @@ public class WebLoginConfiguration {
     }
 
     private static void requireSameUser(OidcUser idTokenUser, Jwt accessToken) {
-        String idTokenUserId = idTokenUser.getIdToken().getClaimAsString(OBJECT_ID_CLAIM);
-        if (idTokenUserId == null || !Objects.equals(idTokenUserId, accessToken.getClaimAsString(OBJECT_ID_CLAIM))) {
+        String idTokenUserId = idTokenUser.getIdToken().getClaimAsString(IdentityClaims.OBJECT_ID);
+        if (idTokenUserId == null || !Objects.equals(idTokenUserId, accessToken.getClaimAsString(IdentityClaims.OBJECT_ID))) {
             throw new OAuth2AuthenticationException(
                     new OAuth2Error(OAuth2ErrorCodes.INVALID_TOKEN, "ID token and access token belong to different users", null));
         }

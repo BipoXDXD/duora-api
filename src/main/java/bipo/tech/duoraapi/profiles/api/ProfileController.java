@@ -1,5 +1,8 @@
 package bipo.tech.duoraapi.profiles.api;
 
+import static bipo.tech.duoraapi.config.ApiSchemaConventions.PROBLEM_JSON;
+import static bipo.tech.duoraapi.config.ApiSchemaConventions.PROBLEM_SCHEMA;
+
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -44,8 +47,6 @@ class ProfileController {
 
     static final String PATH = "/api/me/profile";
 
-    private static final String PROBLEM_JSON = "application/problem+json";
-    private static final String PROBLEM_SCHEMA = "#/components/schemas/ProblemDetail";
     private static final String ETAG_DESCRIPTION = "Versão do perfil, para mandar no If-Match da próxima edição";
     /** Como {@link #VERSION_ETAG}: a versão entre aspas, sem prefixo W/. */
     private static final String ETAG_PATTERN = "^\"[0-9]{1,18}\"$";

@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.trustsafety;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -45,7 +46,6 @@ class BlockRateLimitIT {
 
     /** Uma ficha de volta a cada 1 h / 3 = 1200 s. */
     private static final String SECONDS_TO_NEXT_CALL = "1200";
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     /** UUIDv7 bem formado que não é de conta nenhuma. */
     private static final String UNKNOWN_ACCOUNT_ID = "01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b";
 

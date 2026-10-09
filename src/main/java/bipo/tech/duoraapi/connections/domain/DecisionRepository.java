@@ -11,12 +11,10 @@ import bipo.tech.duoraapi.identity.AccountId;
  */
 public interface DecisionRepository {
 
-    /** Limita quanto a transação atual espera por um lock, até o fim dela. Chame antes de {@link #lockPair}. */
-    void limitLockWait();
-
     /**
      * Trava o par naquela rodada até o fim da transação: as decisões das duas pessoas sobre o mesmo par
-     * passam uma de cada vez, e a segunda enxerga a primeira já confirmada.
+     * passam uma de cada vez, e a segunda enxerga a primeira já confirmada. A espera tem um teto, que vale até
+     * o fim da transação atual.
      */
     void lockPair(UUID eventId, int roundNumber, ConnectionPair pair);
 

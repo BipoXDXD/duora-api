@@ -39,6 +39,8 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
+import bipo.tech.duoraapi.identity.IdentityClaims;
+
 /**
  * Duas portas de entrada, ambas negando por padrão, com as mesmas regras de rota:
  * <ul>
@@ -149,7 +151,7 @@ public class SecurityConfiguration {
     /** Sem oid não há como saber quem é o usuário: ele é a identidade nas duas portas de entrada. */
     @Bean
     OAuth2TokenValidator<Jwt> objectIdRequiredValidator() {
-        return new JwtClaimValidator<String>(WebLoginConfiguration.OBJECT_ID_CLAIM, StringUtils::hasText);
+        return new JwtClaimValidator<String>(IdentityClaims.OBJECT_ID, StringUtils::hasText);
     }
 
 }

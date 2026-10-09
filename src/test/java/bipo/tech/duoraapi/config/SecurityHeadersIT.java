@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -30,7 +31,6 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 @Import(TestcontainersConfiguration.class)
 class SecurityHeadersIT {
 
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String PROFILE_PATH = "/api/me/profile";
     private static final String FOREIGN_ORIGIN = "https://evil.example";
 

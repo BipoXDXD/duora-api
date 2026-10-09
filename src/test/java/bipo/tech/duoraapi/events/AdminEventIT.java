@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.events;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.ADMIN_EVENTS_PATH;
 import static bipo.tech.duoraapi.events.EventFixtures.adminEventPath;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
@@ -503,7 +504,7 @@ class AdminEventIT {
     }
 
     private static RequestPostProcessor adminWebSession() {
-        return oidcLogin().idToken(token -> token.issuer("https://tenant-id.ciamlogin.example/tenant-id/v2.0")
+        return oidcLogin().idToken(token -> token.issuer(ISSUER)
                         .claim("oid", "oid-admin"))
                 .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
     }

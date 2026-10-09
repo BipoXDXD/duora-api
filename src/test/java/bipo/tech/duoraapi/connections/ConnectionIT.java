@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.connections;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
 import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
@@ -65,7 +66,6 @@ class ConnectionIT {
 
     private static final Instant STARTS_AT = Instant.parse(EventFixtures.STARTS_AT);
     private static final String DECIDED_AT = "2026-11-01T22:00:00Z";
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String CONNECTIONS_PATH = "/api/me/connections";
     private static final String YES = "{\"interested\": true}";
     private static final String NO = "{\"interested\": false}";
@@ -486,6 +486,28 @@ class ConnectionIT {
         mockMvc.perform(get(CONNECTIONS_PATH).param("pageToken", token).with(user("ana")))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
+    }
+
+    @Test
+    void anInvalidPageSizeNamesTheLimitOfThisList() throws Exception {
+        createAccount("ana");
+
+        mockMvc.perform(get(CONNECTIONS_PATH).param("maxPageSize", "101").with(user("ana")))
+                .andExpect(content().json("""
+                        {"title": "Bad Request", "status": 400,
+                         "detail": "maxPageSize must be between 1 and 100", "instance": "/api/me/connections"}
+                        """, JsonCompareMode.STRICT));
+    }
+
+    @Test
+    void aPageTokenTheApiDidNotIssueIsReportedWithoutEchoingIt() throws Exception {
+        createAccount("ana");
+
+        mockMvc.perform(get(CONNECTIONS_PATH).param("pageToken", "bm90LWEtdG9rZW4").with(user("ana")))
+                .andExpect(content().json("""
+                        {"title": "Bad Request", "status": 400,
+                         "detail": "pageToken is invalid", "instance": "/api/me/connections"}
+                        """, JsonCompareMode.STRICT));
     }
 
     /** Publica um evento, inscreve as pessoas, leva o relógio ao início e sorteia a rodada 1. */

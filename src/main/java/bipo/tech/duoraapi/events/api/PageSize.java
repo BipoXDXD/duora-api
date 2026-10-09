@@ -1,10 +1,8 @@
 package bipo.tech.duoraapi.events.api;
 
-/**
- * Quantos itens uma página traz, pelo {@code maxPageSize} da query: o padrão da lista quando o cliente não
- * diz, de 1 a 50 quando diz. Lido como texto porque o Spring trataria {@code maxPageSize=} vazio como ausente, e o
- * contrato o recusa como qualquer valor que não é inteiro (o mesmo de /api/me/blocked-accounts).
- */
+import bipo.tech.duoraapi.config.MaxPageSize;
+
+/** Os limites do {@code maxPageSize} das listas de eventos: o padrão quando o cliente não diz, e o teto. */
 final class PageSize {
 
     static final int DEFAULT = 10;
@@ -19,19 +17,9 @@ final class PageSize {
         return of(requested, DEFAULT);
     }
 
+    /** @throws bipo.tech.duoraapi.config.InvalidPageParameterException fora de 1 a {@link #MAX} */
     static int of(String requested, int defaultSize) {
-        if (requested == null) {
-            return defaultSize;
-        }
-        try {
-            int size = Integer.parseInt(requested);
-            if (size >= 1 && size <= MAX) {
-                return size;
-            }
-        } catch (NumberFormatException e) {
-            // cai no 400 abaixo, como um número fora da faixa
-        }
-        throw new InvalidPageRequestException("maxPageSize must be between 1 and " + MAX);
+        return MaxPageSize.parse(requested, defaultSize, MAX);
     }
 
 }

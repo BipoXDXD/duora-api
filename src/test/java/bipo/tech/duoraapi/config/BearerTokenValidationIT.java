@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
@@ -65,7 +66,6 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 @Import(TestcontainersConfiguration.class)
 class BearerTokenValidationIT {
 
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String AUDIENCE = "duora-api-client-id";
     private static final String KEY_ID = "signing-key";
     private static final String ADMIN_ONLY_PATH = "/api/admin/waitlist/stats";

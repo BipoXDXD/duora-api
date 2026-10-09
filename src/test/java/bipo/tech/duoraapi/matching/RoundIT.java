@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.matching;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.adminEventPath;
 import static bipo.tech.duoraapi.events.EventFixtures.createDraft;
@@ -73,7 +74,6 @@ class RoundIT {
 
     private static final Instant STARTS_AT = Instant.parse(EventFixtures.STARTS_AT);
     private static final Instant ENDS_AT = Instant.parse(EventFixtures.ENDS_AT);
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final int CONCURRENT_REQUESTS = 5;
 
     @Autowired

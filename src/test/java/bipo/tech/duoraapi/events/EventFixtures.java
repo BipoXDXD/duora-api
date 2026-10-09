@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.events;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -30,8 +31,6 @@ public final class EventFixtures {
     public static final String STARTS_AT = "2026-11-01T22:00:00Z";
     public static final String ENDS_AT = "2026-11-02T01:00:00Z";
     public static final int CAPACITY = 10;
-
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
 
     private EventFixtures() {
     }

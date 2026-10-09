@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.identity;
 
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
@@ -39,7 +40,6 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 @Import(TestcontainersConfiguration.class)
 class AccountProvisioningIT {
 
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String OTHER_ISSUER = "https://other-tenant.ciamlogin.example/other-tenant/v2.0";
     private static final String CURRENT_USER_PATH = "/api/me";
     private static final int CONCURRENT_REQUESTS = 8;
