@@ -3,6 +3,7 @@ package bipo.tech.duoraapi.matching.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.HashSet;
+import java.util.Random;
 import java.util.Set;
 import java.util.stream.IntStream;
 
@@ -11,6 +12,9 @@ import org.junit.jupiter.api.Test;
 class MaximumMatchingTest {
 
     private static final int SMALL_GRAPH_VERTICES = 6;
+    private static final int LARGE_GRAPH_VERTICES = 10;
+    private static final int RANDOM_GRAPHS = 3000;
+    private static final int EDGE_PERCENT = 25;
 
     @Test
     void emptyGraphMatchesNobody() {
@@ -80,6 +84,30 @@ class MaximumMatchingTest {
             assertThat(matchedCount(partner) / 2)
                     .as("graph %s", Integer.toBinaryString(mask))
                     .isEqualTo(exhaustiveMatchingSize(graph, SMALL_GRAPH_VERTICES, 0));
+        }
+    }
+
+    /** Grafos maiores têm blossoms aninhados, que os de 6 vértices não alcançam. */
+    @Test
+    void matchesTheSizeOfAnExhaustiveSearchOnRandomGraphsWithTenVertices() {
+        Random random = new Random(20261008L);
+        for (int graphNumber = 0; graphNumber < RANDOM_GRAPHS; graphNumber++) {
+            Set<Long> allowed = new HashSet<>();
+            for (int one = 0; one < LARGE_GRAPH_VERTICES; one++) {
+                for (int other = one + 1; other < LARGE_GRAPH_VERTICES; other++) {
+                    if (random.nextInt(100) < EDGE_PERCENT) {
+                        allowed.add(key(one, other));
+                    }
+                }
+            }
+            MaximumMatching.Compatibility graph = (one, other) -> allowed.contains(key(one, other));
+
+            int[] partner = MaximumMatching.partners(LARGE_GRAPH_VERTICES, graph);
+
+            assertConsistent(partner, graph);
+            assertThat(matchedCount(partner) / 2)
+                    .as("graph number %d", graphNumber)
+                    .isEqualTo(exhaustiveMatchingSize(graph, LARGE_GRAPH_VERTICES, 0));
         }
     }
 
