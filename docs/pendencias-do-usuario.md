@@ -93,7 +93,7 @@ Ordem sugerida, porque cada item destrava os seguintes:
 |---|---|---|---|
 | 1 | Aviso do chat por `NOTIFY` fora da outbox, contra a regra da ADR 0009 para avisos internos | [0021](adr/0021-chat-temporario-e-reconexao.md) (1), [0009](adr/0009-outbox-e-eventos.md) | aberta |
 | 2 | Forma da jogada (`PUT` por chave de negócio ou `POST .../actions` com `Idempotency-Key`), lock pessimista no lugar da versão otimista do plano, e a consulta "dupla ativa" no `matching` | [0024](adr/0024-primeiro-jogo-e-modulo-experiences.md) (9, 10, 11) | aberta |
-| 3 | Adotar o jqwik (o spike de 2026-10-07 funcionou no JUnit 6) | [0017](adr/0017-pareamento.md) (10), [0003](adr/0003-estilo-de-testes.md) | aberta |
+| 3 | Adotar o jqwik (o spike de 2026-10-07 funcionou no JUnit 6) | [0017](adr/0017-pareamento.md) (10), [0003](adr/0003-estilo-de-testes.md) | resolvida em 2026-10-09 |
 | 4 | Transporte do chat: polling e depois SSE, Web PubSub só se o k6 exigir | [0021](adr/0021-chat-temporario-e-reconexao.md) | resolvida em 2026-10-08 |
 | 5 | PIT: onde roda o mutation testing | [0025](adr/0025-mutation-testing-com-pit.md) | resolvida em 2026-10-09: só manual, pelo profile `mutation` |
 

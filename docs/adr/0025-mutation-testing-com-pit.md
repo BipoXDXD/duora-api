@@ -96,6 +96,16 @@ por menos de 2 minutos; o custo principal é a disciplina de lembrar de rodar, e
 - Um módulo de domínio novo entra na lista `targetClasses` e `targetTests` do profile.
 - Se o PIT passar a falhar com um JUnit mais novo, a saída é fixar o `junit-platform` do profile ou abrir uma
   issue no `pitest-junit5-plugin`; o spike não achou esse problema com o JUnit 6.0.3.
+- **Atualização de 2026-10-09 (jqwik):** com o jqwik no classpath ([ADR 0003](0003-estilo-de-testes.md)), o
+  `pitest-junit5-plugin` descobre e roda as propriedades junto com os testes Jupiter, sem configuração nova; 16
+  mutantes passaram a ser mortos por uma propriedade. Medição no mesmo escopo (260 mutantes, 4 threads):
+  `main` antes do jqwik, 245 mortos (94%); com as propriedades, 245 (94%), com o mesmo conjunto de 15 sobreviventes
+  em duas rodadas seguidas. As propriedades sorteiam semente nova a cada rodada, então um mutante que só cai num
+  grafo raro pode oscilar entre rodadas; o caso que apareceu foi o `markPath` da linha 120 de `MaximumMatching`,
+  que os 3000 grafos de semente fixa matavam por timeout num grafo específico e as propriedades não alcançavam.
+  Esse grafo virou exemplo em `MaximumMatchingTest`, com timeout preemptivo, e o mutante voltou a ser morto de
+  forma determinística. O tempo da análise ficou igual (1 min 3 s antes, 1 min 6 s depois) e as execuções de
+  teste por mutante caíram de 35 para 4, porque cada propriedade conta como um teste.
 
 ## Compliance
 

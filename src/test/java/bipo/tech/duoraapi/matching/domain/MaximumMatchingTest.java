@@ -3,18 +3,15 @@ package bipo.tech.duoraapi.matching.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.HashSet;
-import java.util.Random;
 import java.util.Set;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 class MaximumMatchingTest {
 
-    private static final int SMALL_GRAPH_VERTICES = 6;
-    private static final int LARGE_GRAPH_VERTICES = 10;
-    private static final int RANDOM_GRAPHS = 3000;
-    private static final int EDGE_PERCENT = 25;
+    private static final int BLOSSOM_TIMEOUT_SECONDS = 5;
 
     @Test
     void emptyGraphMatchesNobody() {
@@ -71,44 +68,19 @@ class MaximumMatchingTest {
         assertThat(matchedCount(partner)).isEqualTo(6);
     }
 
-    /** Todo grafo de até 6 vértices (32 768) contra a busca exaustiva do tamanho do emparelhamento máximo. */
+    /**
+     * Um dos grafos aleatórios de antes das propriedades: sem marcar os dois lados ao contrair o blossom, a busca
+     * entra em laço infinito nele. Perfeito: 0-6, 1-4, 2-8, 3-9 e 5-7.
+     */
     @Test
-    void matchesTheSizeOfAnExhaustiveSearchOnEveryGraphWithSixVertices() {
-        int possibleEdges = SMALL_GRAPH_VERTICES * (SMALL_GRAPH_VERTICES - 1) / 2;
-        for (int mask = 0; mask < 1 << possibleEdges; mask++) {
-            var graph = graphOf(mask);
+    @Timeout(value = BLOSSOM_TIMEOUT_SECONDS, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void aBlossomContractedFromBothSidesStillEndsWithAPerfectMatching() {
+        var graph = edges(0, 1, 0, 6, 0, 8, 1, 4, 1, 8, 2, 3, 2, 8, 3, 4, 3, 6, 3, 7, 3, 8, 3, 9, 4, 7, 4, 8, 5, 7, 5, 8);
 
-            int[] partner = MaximumMatching.partners(SMALL_GRAPH_VERTICES, graph);
+        int[] partner = MaximumMatching.partners(10, graph);
 
-            assertConsistent(partner, graph);
-            assertThat(matchedCount(partner) / 2)
-                    .as("graph %s", Integer.toBinaryString(mask))
-                    .isEqualTo(exhaustiveMatchingSize(graph, SMALL_GRAPH_VERTICES, 0));
-        }
-    }
-
-    /** Grafos maiores têm blossoms aninhados, que os de 6 vértices não alcançam. */
-    @Test
-    void matchesTheSizeOfAnExhaustiveSearchOnRandomGraphsWithTenVertices() {
-        Random random = new Random(20261008L);
-        for (int graphNumber = 0; graphNumber < RANDOM_GRAPHS; graphNumber++) {
-            Set<Long> allowed = new HashSet<>();
-            for (int one = 0; one < LARGE_GRAPH_VERTICES; one++) {
-                for (int other = one + 1; other < LARGE_GRAPH_VERTICES; other++) {
-                    if (random.nextInt(100) < EDGE_PERCENT) {
-                        allowed.add(key(one, other));
-                    }
-                }
-            }
-            MaximumMatching.Compatibility graph = (one, other) -> allowed.contains(key(one, other));
-
-            int[] partner = MaximumMatching.partners(LARGE_GRAPH_VERTICES, graph);
-
-            assertConsistent(partner, graph);
-            assertThat(matchedCount(partner) / 2)
-                    .as("graph number %d", graphNumber)
-                    .isEqualTo(exhaustiveMatchingSize(graph, LARGE_GRAPH_VERTICES, 0));
-        }
+        assertThat(matchedCount(partner)).isEqualTo(10);
+        assertConsistent(partner, graph);
     }
 
     private static MaximumMatching.Compatibility edges(int... endpoints) {
@@ -121,33 +93,6 @@ class MaximumMatchingTest {
 
     private static long key(int one, int other) {
         return Math.min(one, other) * 100L + Math.max(one, other);
-    }
-
-    private static MaximumMatching.Compatibility graphOf(int mask) {
-        Set<Long> allowed = new HashSet<>();
-        int bit = 0;
-        for (int one = 0; one < SMALL_GRAPH_VERTICES; one++) {
-            for (int other = one + 1; other < SMALL_GRAPH_VERTICES; other++) {
-                if ((mask >> bit++ & 1) == 1) {
-                    allowed.add(key(one, other));
-                }
-            }
-        }
-        return (one, other) -> allowed.contains(key(one, other));
-    }
-
-    private static int exhaustiveMatchingSize(MaximumMatching.Compatibility graph, int vertices, int usedMask) {
-        int first = IntStream.range(0, vertices).filter(vertex -> (usedMask >> vertex & 1) == 0).findFirst().orElse(-1);
-        if (first == -1) {
-            return 0;
-        }
-        int best = exhaustiveMatchingSize(graph, vertices, usedMask | 1 << first);
-        for (int other = first + 1; other < vertices; other++) {
-            if ((usedMask >> other & 1) == 0 && graph.allows(first, other)) {
-                best = Math.max(best, 1 + exhaustiveMatchingSize(graph, vertices, usedMask | 1 << first | 1 << other));
-            }
-        }
-        return best;
     }
 
     private static int matchedCount(int[] partner) {

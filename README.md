@@ -112,6 +112,7 @@ ou um serviço de e-mail (e o Web PubSub, se um dia entrar; [ADR 0021](docs/adr/
 | Tipo | Exemplo |
 |---|---|
 | Unitário puro (JUnit + AssertJ) | `waitlist/domain/EmailAddressTest`, `profiles/domain/ProfileTest` |
+| Propriedades (jqwik), com oráculo de busca exaustiva no sorteio | `matching/domain/RoundPairingPropertiesTest`, `identity/AccountIdPropertiesTest` |
 | `@SpringBootTest` + MockMvc, ponta a ponta | `waitlist/JoinWaitlistIT`, `profiles/ProfileIT` |
 | Concorrência (primeiro acesso, edições simultâneas) | `identity/AccountProvisioningIT`, `profiles/ProfileIT` |
 | Concorrência no chat (sequência sem lacunas, mesma `Idempotency-Key` em paralelo) | `chat/ChatIT` |
@@ -144,6 +145,24 @@ rápido falha; mutante sobrevivente aponta teste que falta ou é fraco. Fica num
 Um módulo de domínio novo entra na lista `targetClasses`/`targetTests` do profile `mutation` no `pom.xml`.
 Para uma classe só: `-DtargetClasses=bipo.tech.duoraapi.matching.domain.Pair -DtargetTests=bipo.tech.duoraapi.matching.domain.PairTest`.
 Roda só à mão, antes de mexer em domínio crítico (sorteio, conexões, chat, perfil). Resultado do spike e decisão: [ADR 0025](docs/adr/0025-mutation-testing-com-pit.md).
+
+### Propriedades (jqwik)
+
+Invariantes do domínio puro rodam como propriedades do [jqwik](https://jqwik.net), uma engine da JUnit Platform que o
+`./mvnw test` executa junto com o Jupiter: o sorteio (cada pessoa num só lugar, nenhum par proibido, máximo de pares e
+justiça contra uma busca exaustiva, resultado igual em qualquer ordem de chegada), o emparelhamento máximo e o
+prioritário, a ordem dos ids igual à do PostgreSQL, a idade que só cresce e os textos livres que, aceitos uma vez,
+voltam iguais do banco. As propriedades ficam em classes `*PropertiesTest`, separadas dos exemplos, e a configuração
+(200 tentativas por padrão, base de falhas em `target/jqwik-database`) está em
+`src/test/resources/junit-platform.properties`.
+
+A cada execução as propriedades sorteiam uma semente nova. Quando uma falha, o relatório traz o `seed` e o
+`Shrunk Sample`, o menor caso que ainda falha. Para reproduzir:
+
+- na mesma máquina, basta rodar de novo: a base de falhas repete primeiro o caso mínimo e depois a mesma semente;
+- em outra máquina ou a partir do log do CI, fixe a semente na propriedade, `@Property(seed = "<seed do relatório>")`,
+  e tire-a depois de corrigir (semente fixa esquecida vira aviso no relatório);
+- para ver as estatísticas de uma propriedade que passa, `./mvnw test -Dtest=NomeDaClasse -Djqwik.reporting.onlyfailures=false`.
 
 ### Carga (k6)
 
