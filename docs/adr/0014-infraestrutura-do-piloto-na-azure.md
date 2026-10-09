@@ -307,3 +307,36 @@ onde conflita com esta seção, vale esta.
   pode ter políticas e visibilidade sobre eles. Mitigação: tudo é recriável a partir do repositório
   (Bicep), os segredos têm cópia local, e o piloto é só homologação. Antes de produção, migrar para
   uma assinatura própria (pay-as-you-go) fora do tenant da universidade.
+
+## Atualização de 2026-10-08: alinhamento com o estado do app
+
+Revisão do `infra/azure` contra a `main` (limites de taxa configuráveis, ADR 0021, ADR 0022). Sem apply
+e sem consulta à Azure; só leitura do código e validação offline.
+
+- **Consistente, sem mudança:** todas as variáveis que o app exige no boot (`DUORA_AUTH_*`,
+  `SPRING_DATASOURCE_*`, `DUORA_TRUSTED_PROXIES`) estão no Container App, e as `DUORA_MIGRATION_*` e
+  `DUORA_APP_DB_*` no job; as duas senhas e o segredo do Entra saem do Key Vault por `secretRef`. Os
+  limites de taxa novos (`duora.events`, `matching`, `connections`, `trustsafety`) têm padrão no
+  `application.properties` e não pedem variável. A tabela está no README de infra.
+- **Web PubSub:** nunca houve recurso nem parâmetro no Bicep; a ADR 0021 só confirma que não entra no
+  primeiro deploy.
+- **Static Web Apps:** continua fora do Bicep. A ligação com o BFF depende de decisão do usuário
+  (README do `duora-web`), então nenhum recurso foi acrescentado.
+- **Probes e shutdown:** coerentes. Startup tolera ~110 s (10 s + 10 × 10 s, o máximo de 10 falhas da
+  plataforma), liveness só interna, readiness com o banco; `terminationGracePeriodSeconds: 30` acima dos
+  20 s de `spring.lifecycle.timeout-per-shutdown-phase`.
+- **Conexões (SQL 13), o que o README agora documenta:** o B1ms dá 35 conexões de usuário (50 menos 15
+  reservadas) e cada réplica abre até 10 (Hikari padrão). Homologação (no máximo 1 réplica) fecha, mesmo
+  com 2 réplicas na troca de revisão. **Produção (1 a 3 réplicas) estoura no pior caso de uma troca**:
+  3 antigas + 1 nova = 40 conexões. Não alterei réplicas nem pool, porque o tamanho do pool é decisão
+  pendente da ADR 0022.
+
+**Pendente com o usuário (decisões, não consistência):**
+
+1. Conexões de produção antes de aplicá-la: reduzir o pool (por exemplo 8 por réplica: 3 × 8 + 8 = 32),
+   limitar a 2 réplicas (2 × 10 + 10 = 30) ou subir o banco (B2s tem 414). Custo de cada um:
+   menos paralelismo por réplica, menos teto de escala, ou cerca de US$ 77/mês a mais.
+2. CPU: o k6 (ADR 0022) mediu a API com 1 vCPU e 2 GiB, mas a homologação roda com 0,5 vCPU e 1 GiB, e
+   a regra de escala usa 50 requisições concorrentes por réplica, escolhida antes da medição. A
+   latência medida era fila de CPU; revisar os dois valores depende de rodar o k6 na homologação.
+3. Static Web Apps e sua ligação com o BFF, junto com o domínio próprio (pendência 4 acima).

@@ -25,6 +25,7 @@ param memory string
 @minValue(0)
 param minReplicas int
 
+@description('Cada réplica abre até 10 conexões (pool Hikari padrão); a soma tem de caber nas 35 conexões de usuário do B1ms. Orçamento em infra/azure/README.md.')
 @minValue(1)
 param maxReplicas int
 
