@@ -43,6 +43,7 @@ import com.jayway.jsonpath.JsonPath;
 import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
+import bipo.tech.duoraapi.chat.application.ChatPurge;
 import bipo.tech.duoraapi.events.EventFixtures;
 
 /**
@@ -72,6 +73,9 @@ class ChatReportIT {
 
     @Autowired
     private TestClock clock;
+
+    @Autowired
+    private ChatPurge purge;
 
     @BeforeEach
     void resetState() {
@@ -156,6 +160,28 @@ class ChatReportIT {
                 .andExpect(jsonPath("$.description").isEmpty());
 
         assertThat(evidenceRows()).isOne();
+    }
+
+    /** Repudiation: depois do expurgo, o chat sumiu, mas a denúncia guarda quem disse o quê e quando. */
+    @Test
+    void theReportKeepsTheMessageAfterThePurge() throws Exception {
+        String eventId = paired("ana", "bruno");
+        send(eventId, "bruno", "ameaça guardada");
+        String id = JsonPath.read(report(eventId, "ana", 1, HARASSMENT)
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString(), "$.id");
+        String chatId = chatIdOf(eventId);
+
+        clock.setTo(ENDS_AT.plus(Duration.ofHours(24)).plusNanos(1_000));
+        assertThat(purge.purgeExpired(10, 10)).isOne();
+
+        assertThat(jdbcClient.sql("select count(*) from chat").query(Long.class).single()).isZero();
+        assertThat(ChatFixtures.messageRows(jdbcClient)).isZero();
+        assertThat(evidenceOf(id)).isEqualTo(chatId + " " + eventId + " 1 1 ameaça guardada " + STARTS_AT);
+        mockMvc.perform(get("/api/reports/" + id).with(user("ana")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reportedAccountId").value(accountOf("bruno")));
+        report(eventId, "ana", 1, HARASSMENT).andExpect(status().isNotFound());
     }
 
     /** A cota é a mesma de POST /api/reports: as duas portas somam na conta de quem denuncia. */
