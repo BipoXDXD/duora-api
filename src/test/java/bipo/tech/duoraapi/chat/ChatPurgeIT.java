@@ -1,6 +1,7 @@
 package bipo.tech.duoraapi.chat;
 
 import static bipo.tech.duoraapi.ConcurrentCalls.inAnotherThread;
+import static bipo.tech.duoraapi.SchemaSupport.insertAccount;
 import static bipo.tech.duoraapi.chat.ChatFixtures.ENDS_AT;
 import static bipo.tech.duoraapi.chat.ChatFixtures.messagesPath;
 import static bipo.tech.duoraapi.chat.ChatFixtures.newKey;
@@ -81,8 +82,8 @@ class ChatPurgeIT {
     void resetState() {
         clock.setTo(TestClockConfiguration.NOW);
         EventFixtures.cleanDatabase(jdbcClient);
-        first = insertAccount("oid-first");
-        second = insertAccount("oid-second");
+        first = insertAccount(jdbcClient, "oid-first");
+        second = insertAccount(jdbcClient, "oid-second");
         if (first.toString().compareTo(second.toString()) > 0) {
             UUID swap = first;
             first = second;
@@ -231,15 +232,6 @@ class ChatPurgeIT {
         return jdbcClient.sql("select purge_after from chat")
                 .query((row, number) -> row.getObject("purge_after", OffsetDateTime.class).toInstant())
                 .list();
-    }
-
-    private UUID insertAccount(String subject) {
-        return jdbcClient.sql("""
-                        insert into account (issuer, subject, created_at) values ('https://issuer.example', :subject, now())
-                        returning id
-                        """)
-                .param("subject", subject)
-                .query(UUID.class).single();
     }
 
 }

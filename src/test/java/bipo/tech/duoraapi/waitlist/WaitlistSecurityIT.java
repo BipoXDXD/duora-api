@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.waitlist;
 
+import static bipo.tech.duoraapi.TestIdentities.adminWithoutIdentity;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -17,7 +18,6 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
@@ -75,7 +75,7 @@ class WaitlistSecurityIT {
         insertEntry("bruno@example.com");
         insertEntry("carla@example.com");
 
-        mockMvc.perform(get(STATS_PATH).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+        mockMvc.perform(get(STATS_PATH).with(adminWithoutIdentity()))
                 .andExpect(status().isOk())
                 .andExpect(content().json("""
                         {"total": 3}

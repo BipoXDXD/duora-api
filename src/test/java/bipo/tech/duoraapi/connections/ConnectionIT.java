@@ -5,13 +5,11 @@ import static bipo.tech.duoraapi.AccountFixtures.firstAccess;
 import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
 import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
 import static bipo.tech.duoraapi.ConcurrentCalls.together;
-import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
 import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
 import static bipo.tech.duoraapi.events.EventFixtures.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -51,6 +49,7 @@ import com.jayway.jsonpath.JsonPath;
 import bipo.tech.duoraapi.HeldLock;
 import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
+import bipo.tech.duoraapi.TestIdentities;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 import bipo.tech.duoraapi.events.EventFixtures;
 import bipo.tech.duoraapi.matching.RoundFixtures;
@@ -580,7 +579,7 @@ class ConnectionIT {
     }
 
     private static RequestPostProcessor webSession(String name) {
-        return oidcLogin().idToken(token -> token.issuer(ISSUER).claim("oid", "oid-" + name));
+        return TestIdentities.webSession("oid-" + name);
     }
 
 }

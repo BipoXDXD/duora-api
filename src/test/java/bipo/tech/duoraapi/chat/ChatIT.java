@@ -15,7 +15,6 @@ import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfil
 import static bipo.tech.duoraapi.events.EventFixtures.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -57,6 +56,7 @@ import com.jayway.jsonpath.JsonPath;
 import bipo.tech.duoraapi.HeldLock;
 import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
+import bipo.tech.duoraapi.TestIdentities;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 import bipo.tech.duoraapi.events.EventFixtures;
 
@@ -72,7 +72,6 @@ import bipo.tech.duoraapi.events.EventFixtures;
 class ChatIT {
 
     private static final String SENT_AT = EventFixtures.STARTS_AT;
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String CLOSED_DETAIL = "the chat is closed";
 
     @Autowired
@@ -682,7 +681,7 @@ class ChatIT {
     }
 
     private static RequestPostProcessor webSession(String name) {
-        return oidcLogin().idToken(token -> token.issuer(ISSUER).claim("oid", "oid-" + name));
+        return TestIdentities.webSession("oid-" + name);
     }
 
 }

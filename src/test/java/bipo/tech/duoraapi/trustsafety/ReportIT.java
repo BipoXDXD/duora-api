@@ -5,11 +5,10 @@ import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
 import static bipo.tech.duoraapi.RateLimitTestSupport.expectRejectedByTheLimit;
 import static bipo.tech.duoraapi.RateLimitTestSupport.expectUnavailableBecauseTheLimitCannotBeCounted;
 import static bipo.tech.duoraapi.RateLimitTestSupport.whileTheLimitCannotBeCounted;
-import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.TestIdentities.bearer;
+import static bipo.tech.duoraapi.TestIdentities.webSession;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -358,7 +357,7 @@ class ReportIT {
     void webSessionReportWithoutCsrfTokenIsRejectedWithoutWriting() throws Exception {
         var bruno = accountIdOf("oid-bruno");
 
-        mockMvc.perform(post(REPORTS_PATH).with(anaWebSession())
+        mockMvc.perform(post(REPORTS_PATH).with(webSession("oid-ana"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(harassmentOf(bruno)))
                 .andExpect(status().isForbidden());
@@ -416,10 +415,6 @@ class ReportIT {
 
     private static RequestPostProcessor bruno() {
         return bearer("oid-bruno");
-    }
-
-    private static RequestPostProcessor anaWebSession() {
-        return oidcLogin().idToken(token -> token.issuer(ISSUER).claim("oid", "oid-ana"));
     }
 
 }

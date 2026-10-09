@@ -4,9 +4,9 @@ import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
 import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.TestIdentities.bearer;
+import static bipo.tech.duoraapi.TestIdentities.webSession;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -374,7 +374,7 @@ class BlockIT {
     void webSessionBlockWithoutCsrfTokenIsRejectedWithoutWriting() throws Exception {
         var bruno = accountIdOf("oid-bruno");
 
-        mockMvc.perform(post("/api/accounts/{id}:block", bruno).with(anaWebSession()))
+        mockMvc.perform(post("/api/accounts/{id}:block", bruno).with(webSession("oid-ana")))
                 .andExpect(status().isForbidden());
 
         assertThat(blockRows()).isEmpty();
@@ -384,7 +384,7 @@ class BlockIT {
     void webSessionBlockWithCsrfTokenIsAccepted() throws Exception {
         var bruno = accountIdOf("oid-bruno");
 
-        mockMvc.perform(post("/api/accounts/{id}:block", bruno).with(anaWebSession()).with(csrf()))
+        mockMvc.perform(post("/api/accounts/{id}:block", bruno).with(webSession("oid-ana")).with(csrf()))
                 .andExpect(status().isNoContent());
 
         assertThat(blockRows()).hasSize(1);
@@ -515,10 +515,6 @@ class BlockIT {
 
     private static RequestPostProcessor davi() {
         return bearer("oid-davi");
-    }
-
-    private static RequestPostProcessor anaWebSession() {
-        return oidcLogin().idToken(token -> token.issuer(ISSUER).claim("oid", "oid-ana"));
     }
 
 }

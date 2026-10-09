@@ -1,6 +1,7 @@
 package bipo.tech.duoraapi.config;
 
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
@@ -74,7 +75,7 @@ class AdminRoleOnEveryAdminRouteIT {
     }
 
     private static RequestPostProcessor userWithoutRoles() {
-        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", "oid-plain-user"));
+        return bearer("oid-plain-user");
     }
 
     private static RequestPostProcessor moderator() {

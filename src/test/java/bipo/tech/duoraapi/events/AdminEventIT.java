@@ -4,7 +4,7 @@ import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
 import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
 import static bipo.tech.duoraapi.ConcurrentCalls.together;
 import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
-import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.adminWebSession;
 import static bipo.tech.duoraapi.events.EventFixtures.ADMIN_EVENTS_PATH;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.adminEventPath;
@@ -17,7 +17,6 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -51,7 +50,6 @@ import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
@@ -315,7 +313,7 @@ class AdminEventIT {
 
     @Test
     void adminWebSessionWithoutCsrfTokenCannotCreate() throws Exception {
-        mockMvc.perform(post(ADMIN_EVENTS_PATH).with(adminWebSession())
+        mockMvc.perform(post(ADMIN_EVENTS_PATH).with(adminWebSession("oid-admin"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(eventJson()))
                 .andExpect(status().isForbidden());
@@ -325,7 +323,7 @@ class AdminEventIT {
 
     @Test
     void adminWebSessionWithCsrfTokenCreates() throws Exception {
-        mockMvc.perform(post(ADMIN_EVENTS_PATH).with(adminWebSession()).with(csrf())
+        mockMvc.perform(post(ADMIN_EVENTS_PATH).with(adminWebSession("oid-admin")).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(eventJson()))
                 .andExpect(status().isCreated());
@@ -479,12 +477,6 @@ class AdminEventIT {
     private static String withField(String field, String value) {
         return eventJson().replaceFirst("\"" + field + "\": \"[^\"]*\"",
                 Matcher.quoteReplacement("\"" + field + "\": \"" + value + "\""));
-    }
-
-    private static RequestPostProcessor adminWebSession() {
-        return oidcLogin().idToken(token -> token.issuer(ISSUER)
-                        .claim("oid", "oid-admin"))
-                .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
     }
 
     /** O 409 inteiro de uma ação do ADMIN, com o motivo em reason (docs/adr/0020). */

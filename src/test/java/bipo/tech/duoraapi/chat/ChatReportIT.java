@@ -7,7 +7,6 @@ import static bipo.tech.duoraapi.chat.ChatFixtures.newKey;
 import static bipo.tech.duoraapi.events.EventFixtures.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -42,6 +41,7 @@ import com.jayway.jsonpath.JsonPath;
 
 import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
+import bipo.tech.duoraapi.TestIdentities;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 import bipo.tech.duoraapi.chat.application.ChatPurge;
 import bipo.tech.duoraapi.events.EventFixtures;
@@ -62,7 +62,6 @@ import bipo.tech.duoraapi.events.EventFixtures;
 @ExtendWith(OutputCaptureExtension.class)
 class ChatReportIT {
 
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String HARASSMENT = "{\"reason\": \"HARASSMENT\", \"description\": \"na rodada 1\"}";
 
     @Autowired
@@ -353,7 +352,7 @@ class ChatReportIT {
     }
 
     private static RequestPostProcessor webSession(String name) {
-        return oidcLogin().idToken(token -> token.issuer(ISSUER).claim("oid", "oid-" + name));
+        return TestIdentities.webSession("oid-" + name);
     }
 
 }

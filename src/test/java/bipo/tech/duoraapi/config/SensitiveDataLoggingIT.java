@@ -1,12 +1,11 @@
 package bipo.tech.duoraapi.config;
 
 import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
-import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
 import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -202,8 +201,7 @@ class SensitiveDataLoggingIT {
     @Test
     void currentUserNameNeverReachesTheLog(CapturedOutput output) throws Exception {
         var response = mockMvc.perform(get("/api/me")
-                        .with(jwt().jwt(token -> token.issuer(ISSUER).claim("oid", "oid-" + UUID.randomUUID())
-                                .claim("name", canary))))
+                        .with(bearer("oid-" + UUID.randomUUID(), canary)))
                 .andReturn().getResponse();
 
         assertThat(response.getStatus()).isEqualTo(OK);
@@ -378,7 +376,7 @@ class SensitiveDataLoggingIT {
 
     private MockHttpServletResponse fileReport(String body) throws Exception {
         return mockMvc.perform(post(REPORTS_PATH)
-                        .with(jwt().jwt(token -> token.issuer(ISSUER).claim("oid", "oid-" + UUID.randomUUID())))
+                        .with(bearer("oid-" + UUID.randomUUID()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andReturn().getResponse();
@@ -391,7 +389,7 @@ class SensitiveDataLoggingIT {
 
     private MockHttpServletResponse editProfile(String body) throws Exception {
         return mockMvc.perform(patch(PROFILE_PATH)
-                        .with(jwt().jwt(token -> token.issuer(ISSUER).claim("oid", "oid-" + UUID.randomUUID())))
+                        .with(bearer("oid-" + UUID.randomUUID()))
                         .header(HttpHeaders.IF_MATCH, FIRST_VERSION)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))

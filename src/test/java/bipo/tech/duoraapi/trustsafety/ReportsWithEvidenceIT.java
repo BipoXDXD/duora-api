@@ -17,6 +17,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 import bipo.tech.duoraapi.AccountTables;
 import bipo.tech.duoraapi.InvalidFieldException;
+import bipo.tech.duoraapi.SchemaSupport;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 import bipo.tech.duoraapi.identity.AccountId;
 
@@ -119,12 +120,7 @@ class ReportsWithEvidenceIT {
     }
 
     private AccountId insertAccount(String subject) {
-        return new AccountId(jdbcClient.sql("""
-                        insert into account (issuer, subject, created_at) values ('https://issuer.example', :subject, now())
-                        returning id
-                        """)
-                .param("subject", subject)
-                .query(UUID.class).single());
+        return new AccountId(SchemaSupport.insertAccount(jdbcClient, subject));
     }
 
 }

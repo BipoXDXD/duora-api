@@ -1,5 +1,7 @@
 package bipo.tech.duoraapi.trustsafety;
 
+import static bipo.tech.duoraapi.SchemaSupport.assertViolates;
+import static bipo.tech.duoraapi.SchemaSupport.insertAccount;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -33,15 +35,13 @@ class TrustSafetySchemaIT {
     @BeforeEach
     void setUp() {
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
-        ana = insertAccount("oid-ana");
-        bruno = insertAccount("oid-bruno");
+        ana = insertAccount(jdbcClient, "oid-ana");
+        bruno = insertAccount(jdbcClient, "oid-bruno");
     }
 
     @Test
     void anAccountCannotBlockItself() {
-        assertThatThrownBy(() -> insertBlock(ana, ana))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("account_block_not_self");
+        assertViolates("account_block_not_self", () -> insertBlock(ana, ana));
     }
 
     @Test
@@ -49,16 +49,13 @@ class TrustSafetySchemaIT {
         insertBlock(ana, bruno);
         insertBlock(bruno, ana);
 
-        assertThatThrownBy(() -> insertBlock(ana, bruno))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("account_block_pkey");
+        assertViolates("account_block_pkey", () -> insertBlock(ana, bruno));
     }
 
     @Test
     void blockedAccountMustExist() {
-        assertThatThrownBy(() -> insertBlock(ana, UUID.fromString("01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b")))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("account_block_blocked_account_id_fkey");
+        assertViolates("account_block_blocked_account_id_fkey",
+                () -> insertBlock(ana, UUID.fromString("01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b")));
     }
 
     /** on delete restrict: a exclusão de conta passa pelo trustsafety, em vez de uma cascata invisível. */
@@ -73,32 +70,24 @@ class TrustSafetySchemaIT {
 
     @Test
     void anAccountCannotReportItself() {
-        assertThatThrownBy(() -> insertReport(ana, ana, "HARASSMENT", null))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("report_not_self");
+        assertViolates("report_not_self", () -> insertReport(ana, ana, "HARASSMENT", null));
     }
 
     @Test
     void otherReasonNeedsADescription() {
-        assertThatThrownBy(() -> insertReport(ana, bruno, "OTHER", null))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("report_other_needs_description");
+        assertViolates("report_other_needs_description", () -> insertReport(ana, bruno, "OTHER", null));
     }
 
     @Test
     void reasonComesFromTheClosedList() {
-        assertThatThrownBy(() -> insertReport(ana, bruno, "BORING", null))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("report_reason_check");
+        assertViolates("report_reason_check", () -> insertReport(ana, bruno, "BORING", null));
     }
 
     @Test
     void descriptionHasAtMostAThousandCharacters() {
         insertReport(ana, bruno, "OTHER", "a".repeat(1000));
 
-        assertThatThrownBy(() -> insertReport(ana, bruno, "OTHER", "a".repeat(1001)))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("report_description_check");
+        assertViolates("report_description_check", () -> insertReport(ana, bruno, "OTHER", "a".repeat(1001)));
     }
 
     @Test
@@ -117,15 +106,6 @@ class TrustSafetySchemaIT {
                 .isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(() -> jdbcClient.sql("delete from account where id = :id").param("id", bruno).update())
                 .isInstanceOf(DataIntegrityViolationException.class);
-    }
-
-    private UUID insertAccount(String subject) {
-        return jdbcClient.sql("""
-                        insert into account (issuer, subject, created_at) values ('https://issuer.example', :subject, now())
-                        returning id
-                        """)
-                .param("subject", subject)
-                .query(UUID.class).single();
     }
 
     private void insertReport(UUID reporter, UUID reported, String reason, String description) {
