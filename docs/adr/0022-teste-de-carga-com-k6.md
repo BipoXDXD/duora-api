@@ -82,9 +82,14 @@ produção. Um `429` mediria o limite, que já tem teste próprio.
   - O teto de 2 s do lock nunca disparou. Os `503` observados (0 a 1 por execução, 18 numa rajada de 200 contas)
     vieram do limite por conta: o comando do Bucket4j tem teto de 1 s e disputa o pool de 10 conexões com as
     transações que esperam o lock do evento. O comportamento é correto (falha fechada, `Retry-After: 1`,
-    nada gravado), mas a causa não é a descrita na ADR 0016. Se a rajada de abertura de um evento de 200 vagas
-    for real, o próximo passo é decidir entre aumentar o pool, relaxar o teto do limitador ou deixar o front
-    repetir.
+    nada gravado), mas a causa não é a descrita na ADR 0016.
+  - **Atualização de 2026-10-08:** as cinco saídas (pool maior, pool próprio do limitador, teto maior no
+    limitador, `lock_timeout` menor e semáforo antes da conexão) foram medidas na variante de estresse, com o
+    `API_ENV_FILE` do `run.sh` para as de configuração e imagens de protótipo para as de código. O teto do
+    limitador passou de 1 s a 3 s: os `503` da passada fria caíram de 11 a 22 para 0 em seis subidas. Pool maior
+    e `lock_timeout` menor não mudaram nada, e o pool próprio piorou. Números e decisão na [ADR
+    0016](0016-eventos-e-inscricoes.md) (seção "O limite por conta numa rajada de inscrições") e em
+    `tools/load/RESULTS.md`.
   - Sorteio: 50 eventos em paralelo, cada pedido em dobro, deram sempre um sorteio por (evento, número) e p95 de
     0,46 a 0,59 s frio. O teto de 5 s não foi nem tocado. O pior caso de 200 candidatos num evento só (1,2 s na
     ADR 0017) **não** foi medido aqui.
@@ -104,7 +109,9 @@ produção. Um `429` mediria o limite, que já tem teste próprio.
 ## Pendente com o usuário
 
 1. **Rodar contra a homologação** com recursos fixos e, então, decidir se um workflow semanal compensa.
-2. **Pool, tamanho e teto do limitador** (acima), se a rajada de abertura for um caso real.
+2. **Pool:** o teto do limitador foi resolvido (acima); ficam o `connectionTimeout` de 30 s do Hikari e o tamanho
+   do pool diante do B1ms (pendência 9 da [ADR 0016](0016-eventos-e-inscricoes.md)). Se a abertura real ainda
+   der `503`, o semáforo por réplica já tem números.
 3. **Aquecimento da JVM** antes da readiness.
 4. **Cenários que faltam do plano:** chat, reconexão, queda do PubSub, reenvio da outbox e restauração do banco
    (dependem de módulos que ainda não existem) e o sorteio de 200 candidatos num evento só.
