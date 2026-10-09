@@ -226,9 +226,11 @@ class SensitiveDataLoggingIT {
 
         assertThat(response.getStatus()).isEqualTo(OK);
         assertThat(response.getContentAsString()).contains(partner);
-        // O MVC corta a linha em 100 caracteres, e o id do par começa no 95º: só o nome do campo prova que ele
-        // não é impresso (com TRACE, que não corta, o id inteiro iria).
-        assertThat(output.getAll()).doesNotContainIgnoringCase(partner).doesNotContain(PARTNER_FIELD);
+        // O MVC corta a linha em 100 caracteres e o id do par começaria no 95º, então o id inteiro nunca aparece,
+        // com ou sem redação (com TRACE, que não corta, apareceria). O que prova a redação é o campo vir sempre
+        // seguido de "red", o começo de "redacted" que sobra do corte.
+        assertThat(output.getAll()).doesNotContainIgnoringCase(partner)
+                .doesNotContainPattern(PARTNER_FIELD + "=(?!red)");
     }
 
     /** A lista devolve a quem bloqueou as contas bloqueadas, e o log não leva os ids nem o cursor da próxima página. */
