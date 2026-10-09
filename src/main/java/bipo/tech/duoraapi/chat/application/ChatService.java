@@ -59,13 +59,11 @@ public class ChatService {
      */
     @Transactional
     public ChatView chatOf(UUID eventId, int roundNumber, AccountId caller) {
-        AccountId partner = partnerOf(eventId, roundNumber, caller);
+        ChatKey key = chatKeyOf(eventId, roundNumber, caller);
         Instant now = now();
-        var key = new ChatKey(eventId, roundNumber, ChatPair.of(caller, partner));
         EventPeriod period = periodOf(eventId, now);
         Chat chat = chats.findOrAdd(key, Chat.purgeAfter(period.endsAt()), now);
-        return new ChatView(chat.id(), chat.acceptsMessages(conditionsOf(key, period, caller, partner)),
-                chat.lastSeq());
+        return new ChatView(chat.id(), chat.acceptsMessages(conditionsOf(key, period)), chat.lastSeq());
     }
 
     /**
@@ -79,16 +77,15 @@ public class ChatService {
     @Transactional
     public SendOutcome send(UUID eventId, int roundNumber, AccountId sender, ChatMessageText text,
             UUID idempotencyKey) {
-        AccountId partner = partnerOf(eventId, roundNumber, sender);
+        ChatKey key = chatKeyOf(eventId, roundNumber, sender);
         Instant now = now();
-        var key = new ChatKey(eventId, roundNumber, ChatPair.of(sender, partner));
         EventPeriod period = periodOf(eventId, now);
         Chat chat = chats.lockOrAdd(key, Chat.purgeAfter(period.endsAt()), now);
         Optional<ChatMessage> earlier = chats.findBySenderAndIdempotencyKey(chat.id(), sender, idempotencyKey);
         if (earlier.isPresent()) {
             return new SendOutcome(earlier.get().replayFor(text), false);
         }
-        ChatMessage message = chat.send(sender, text, idempotencyKey, now, conditionsOf(key, period, sender, partner));
+        ChatMessage message = chat.send(sender, text, idempotencyKey, now, conditionsOf(key, period));
         chats.record(message);
         return new SendOutcome(message, true);
     }
@@ -101,8 +98,7 @@ public class ChatService {
      */
     @Transactional(readOnly = true)
     public MessagesPage messagesOf(UUID eventId, int roundNumber, AccountId caller, int afterSeq, int maxPageSize) {
-        AccountId partner = partnerOf(eventId, roundNumber, caller);
-        return chats.find(new ChatKey(eventId, roundNumber, ChatPair.of(caller, partner)))
+        return chats.find(chatKeyOf(eventId, roundNumber, caller))
                 .map(chat -> MessagesPage.of(chats.findAfter(chat.id(), afterSeq, maxPageSize + 1), maxPageSize))
                 .orElseGet(MessagesPage::empty);
     }
@@ -113,8 +109,7 @@ public class ChatService {
      */
     @Transactional(readOnly = true)
     public ChatMessage messageOf(UUID eventId, int roundNumber, AccountId caller, int seq) {
-        AccountId partner = partnerOf(eventId, roundNumber, caller);
-        return chats.find(new ChatKey(eventId, roundNumber, ChatPair.of(caller, partner)))
+        return chats.find(chatKeyOf(eventId, roundNumber, caller))
                 .flatMap(chat -> chats.findMessage(chat.id(), seq))
                 .orElseThrow(MessageNotFoundException::new);
     }
@@ -132,18 +127,19 @@ public class ChatService {
      */
     public FiledReport reportMessage(UUID eventId, int roundNumber, AccountId reporter, int seq, ReportReason reason,
             String description) {
-        AccountId partner = partnerOf(eventId, roundNumber, reporter);
-        Chat chat = chats.find(new ChatKey(eventId, roundNumber, ChatPair.of(reporter, partner)))
+        Chat chat = chats.find(chatKeyOf(eventId, roundNumber, reporter))
                 .orElseThrow(MessageNotFoundException::new);
         ChatMessage message = chats.findMessage(chat.id(), seq).orElseThrow(MessageNotFoundException::new);
         message.ensureReportableBy(reporter);
         var evidence = new ChatMessageEvidence(chat.id(), eventId, roundNumber, seq, message.text().value(),
                 message.sentAt());
-        return reports.fileWithEvidence(reporter, partner, reason, description, evidence);
+        return reports.fileWithEvidence(reporter, message.sender(), reason, description, evidence);
     }
 
-    private AccountId partnerOf(UUID eventId, int roundNumber, AccountId caller) {
-        return pairings.partnerOf(eventId, roundNumber, caller).orElseThrow(ChatNotFoundException::new);
+    /** O chat de quem chama com o par que o sorteio lhe deu na rodada; sem par, não há chat. */
+    private ChatKey chatKeyOf(UUID eventId, int roundNumber, AccountId caller) {
+        AccountId partner = pairings.partnerOf(eventId, roundNumber, caller).orElseThrow(ChatNotFoundException::new);
+        return new ChatKey(eventId, roundNumber, ChatPair.of(caller, partner));
     }
 
     /** Com par formado o evento existe; a falta dele é tratada como a do par, sem revelar nada a mais. */
@@ -151,9 +147,10 @@ public class ChatService {
         return calendar.periodOf(eventId, now).orElseThrow(ChatNotFoundException::new);
     }
 
-    private OpeningConditions conditionsOf(ChatKey key, EventPeriod period, AccountId caller, AccountId partner) {
+    private OpeningConditions conditionsOf(ChatKey key, EventPeriod period) {
         boolean roundIsCurrent = key.isLatestRound(pairings.latestRoundOf(key.eventId()));
-        return new OpeningConditions(period.underway(), roundIsCurrent, blocking.existsBetween(caller, partner));
+        boolean separatedByBlock = blocking.existsBetween(key.pair().first(), key.pair().second());
+        return new OpeningConditions(period.underway(), roundIsCurrent, separatedByBlock);
     }
 
     /** Em microssegundos, a precisão do timestamptz: a resposta do envio é igual à da leitura depois. */
