@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.matching;
 
+import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
@@ -149,8 +150,7 @@ class RoundRateLimitIT {
     void theBucketLivesUnderTheRoundKeyOfTheAdminAccount() throws Exception {
         startRound(randomId(), 1, admin()).andExpect(status().isNotFound());
 
-        String accountId = jdbcClient.sql("select id::text from account where subject = 'oid-admin'")
-                .query(String.class).single();
+        String accountId = accountIdOf(jdbcClient, "admin");
 
         assertThat(keysOfTheLimit()).containsExactly("round:" + accountId);
     }

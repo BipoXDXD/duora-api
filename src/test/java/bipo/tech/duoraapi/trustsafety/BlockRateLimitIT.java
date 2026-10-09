@@ -1,8 +1,7 @@
 package bipo.tech.duoraapi.trustsafety;
 
-import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -10,7 +9,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
-import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import bipo.tech.duoraapi.AccountFixtures;
 import bipo.tech.duoraapi.AccountTables;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
@@ -196,10 +195,7 @@ class BlockRateLimitIT {
 
     /** Abre a conta pelo primeiro acesso, como acontece em produção, e devolve o id dela. */
     private String accountIdOf(String objectId) throws Exception {
-        mockMvc.perform(get("/api/me").with(user(objectId))).andExpect(status().isOk());
-        return jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", objectId)
-                .query(UUID.class).single().toString();
+        return AccountFixtures.openAccount(mockMvc, jdbcClient, objectId);
     }
 
     private List<String> blockedAccounts() {
@@ -213,15 +209,11 @@ class BlockRateLimitIT {
     }
 
     private static RequestPostProcessor ana() {
-        return user("oid-ana");
+        return bearer("oid-ana");
     }
 
     private static RequestPostProcessor bruno() {
-        return user("oid-bruno");
-    }
-
-    private static RequestPostProcessor user(String objectId) {
-        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", objectId));
+        return bearer("oid-bruno");
     }
 
 }

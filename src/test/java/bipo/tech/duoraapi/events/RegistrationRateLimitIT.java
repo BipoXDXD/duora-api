@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.events;
 
+import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
 import static bipo.tech.duoraapi.events.EventFixtures.completeProfile;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
 import static bipo.tech.duoraapi.events.EventFixtures.randomId;
@@ -150,8 +151,7 @@ class RegistrationRateLimitIT {
         completeProfile(mockMvc, ana());
         register(ana(), eventId).andExpect(status().isCreated());
 
-        String accountId = jdbcClient.sql("select id::text from account where subject = 'oid-ana'")
-                .query(String.class).single();
+        String accountId = accountIdOf(jdbcClient, "ana");
 
         assertThat(keysOfTheLimit()).containsExactly("registration:" + accountId);
     }

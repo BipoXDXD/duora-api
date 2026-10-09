@@ -1,5 +1,7 @@
 package bipo.tech.duoraapi.connections;
 
+import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
+import static bipo.tech.duoraapi.AccountFixtures.firstAccess;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
@@ -442,7 +444,7 @@ class ConnectionIT {
     @Test
     void nobodySeesTheConnectionsOfOthers() throws Exception {
         connectDirectly("ana", "bruno", DECIDED_AT);
-        createAccount("carla");
+        firstAccess(mockMvc, user("carla"));
 
         String body = connectionsBodyOf("carla");
 
@@ -454,7 +456,7 @@ class ConnectionIT {
     void aPageTokenFromAnotherAccountOnlyPagesTheCallersOwnConnections() throws Exception {
         connectDirectly("ana", "bruno", "2026-11-01T22:02:00Z");
         connectDirectly("ana", "carla", "2026-11-01T22:01:00Z");
-        createAccount("davi");
+        firstAccess(mockMvc, user("davi"));
         String anaFirstPage = mockMvc.perform(get(CONNECTIONS_PATH).param("maxPageSize", "1").with(user("ana")))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
@@ -470,7 +472,7 @@ class ConnectionIT {
     @ParameterizedTest
     @ValueSource(strings = {"0", "101", "-1", "abc", ""})
     void anInvalidPageSizeIsABadRequest(String size) throws Exception {
-        createAccount("ana");
+        firstAccess(mockMvc, user("ana"));
 
         mockMvc.perform(get(CONNECTIONS_PATH).param("maxPageSize", size).with(user("ana")))
                 .andExpect(status().isBadRequest())
@@ -481,7 +483,7 @@ class ConnectionIT {
     @ValueSource(strings = {"bm90LWEtdG9rZW4", "!!!", "", "MTk2OS0xMi0zMVQyMzo1OTo1OVogMDE5NjZjNGUtN2QxYS03YzNlLTliNWYtM2YyYTFjMGQ5ZThi",
             "KzEwMDAwMDAtMDEtMDFUMDA6MDA6MDBaIDAxOTY2YzRlLTdkMWEtN2MzZS05YjVmLTNmMmExYzBkOWU4Yg"})
     void aPageTokenTheApiDidNotIssueIsABadRequest(String token) throws Exception {
-        createAccount("ana");
+        firstAccess(mockMvc, user("ana"));
 
         mockMvc.perform(get(CONNECTIONS_PATH).param("pageToken", token).with(user("ana")))
                 .andExpect(status().isBadRequest())
@@ -490,7 +492,7 @@ class ConnectionIT {
 
     @Test
     void anInvalidPageSizeNamesTheLimitOfThisList() throws Exception {
-        createAccount("ana");
+        firstAccess(mockMvc, user("ana"));
 
         mockMvc.perform(get(CONNECTIONS_PATH).param("maxPageSize", "101").with(user("ana")))
                 .andExpect(content().json("""
@@ -501,7 +503,7 @@ class ConnectionIT {
 
     @Test
     void aPageTokenTheApiDidNotIssueIsReportedWithoutEchoingIt() throws Exception {
-        createAccount("ana");
+        firstAccess(mockMvc, user("ana"));
 
         mockMvc.perform(get(CONNECTIONS_PATH).param("pageToken", "bm90LWEtdG9rZW4").with(user("ana")))
                 .andExpect(content().json("""
@@ -596,8 +598,8 @@ class ConnectionIT {
     }
 
     private void connectDirectly(String one, String other, String connectedAt) throws Exception {
-        createAccount(one);
-        createAccount(other);
+        firstAccess(mockMvc, user(one));
+        firstAccess(mockMvc, user(other));
         String first = accountOf(one);
         String second = accountOf(other);
         jdbcClient.sql("""
@@ -609,15 +611,8 @@ class ConnectionIT {
                 .update();
     }
 
-    /** O primeiro acesso cria a conta. */
-    private void createAccount(String name) throws Exception {
-        mockMvc.perform(get("/api/me").with(user(name))).andExpect(status().isOk());
-    }
-
     private String accountOf(String name) {
-        return jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", "oid-" + name)
-                .query(UUID.class).single().toString();
+        return accountIdOf(jdbcClient, name);
     }
 
     private static RequestPostProcessor webSession(String name) {

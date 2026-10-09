@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.matching;
 
+import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.adminEventPath;
@@ -587,9 +588,7 @@ class RoundIT {
     }
 
     private String accountOf(String name) {
-        return jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", "oid-" + name)
-                .query(UUID.class).single().toString();
+        return accountIdOf(jdbcClient, name);
     }
 
     private String nameOf(String accountId) {

@@ -1,8 +1,8 @@
 package bipo.tech.duoraapi.profiles;
 
-import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
+import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -126,8 +126,7 @@ class ProfileRateLimitIT {
     void theBucketLivesUnderTheProfileKeyOfTheAccount() throws Exception {
         editBio(ana(), 0).andExpect(status().isOk());
 
-        String accountId = jdbcClient.sql("select id::text from account where subject = 'oid-ana'")
-                .query(String.class).single();
+        String accountId = accountIdOf(jdbcClient, "ana");
 
         assertThat(keysOfTheLimit()).containsExactly("profile:" + accountId);
     }
@@ -174,15 +173,11 @@ class ProfileRateLimitIT {
     }
 
     private static RequestPostProcessor ana() {
-        return user("oid-ana");
+        return bearer("oid-ana");
     }
 
     private static RequestPostProcessor bruno() {
-        return user("oid-bruno");
-    }
-
-    private static RequestPostProcessor user(String objectId) {
-        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", objectId));
+        return bearer("oid-bruno");
     }
 
 }

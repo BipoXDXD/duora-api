@@ -1,8 +1,7 @@
 package bipo.tech.duoraapi.profiles;
 
-import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -131,7 +130,7 @@ class ProfileFieldErrorsIT {
     }
 
     private static RequestPostProcessor ana() {
-        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", "oid-ana-field-errors"));
+        return bearer("oid-ana-field-errors");
     }
 
 }

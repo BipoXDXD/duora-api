@@ -1,5 +1,7 @@
 package bipo.tech.duoraapi.connections;
 
+import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
+import static bipo.tech.duoraapi.AccountFixtures.firstAccess;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
 import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
@@ -102,7 +104,7 @@ class DecisionRateLimitIT {
     @Test
     void callsFromWhoFormedNoPairSpendTheLimit() throws Exception {
         String eventId = pairedInRoundOne("ana", "bruno");
-        createAccount("carla");
+        firstAccess(mockMvc, user("carla"));
         for (int i = 0; i < CAPACITY; i++) {
             decide(eventId, "carla", YES).andExpect(status().isNotFound());
         }
@@ -155,8 +157,7 @@ class DecisionRateLimitIT {
         String eventId = pairedInRoundOne("ana", "bruno");
         decide(eventId, "ana", YES).andExpect(status().isCreated());
 
-        String accountId = jdbcClient.sql("select id::text from account where subject = 'oid-ana'")
-                .query(String.class).single();
+        String accountId = accountIdOf(jdbcClient, "ana");
 
         assertThat(keysOfTheLimit()).containsExactly("decision:" + accountId);
     }
@@ -196,11 +197,6 @@ class DecisionRateLimitIT {
     private ResultActions decide(String eventId, String name, String body) throws Exception {
         return mockMvc.perform(put(decisionPath(eventId, 1)).with(user(name))
                 .contentType(MediaType.APPLICATION_JSON).content(body));
-    }
-
-    /** O primeiro acesso cria a conta. */
-    private void createAccount(String name) throws Exception {
-        mockMvc.perform(get("/api/me").with(user(name))).andExpect(status().isOk());
     }
 
     private static String decisionPath(String eventId, int number) {

@@ -1,9 +1,9 @@
 package bipo.tech.duoraapi.trustsafety;
 
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -46,6 +46,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import com.jayway.jsonpath.JsonPath;
 
+import bipo.tech.duoraapi.AccountFixtures;
 import bipo.tech.duoraapi.AccountTables;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 import bipo.tech.duoraapi.identity.AccountId;
@@ -180,7 +181,7 @@ class BlockIT {
         var carla = accountIdOf("oid-carla");
         block(ana(), bruno).andExpect(status().isNoContent());
         block(ana(), carla).andExpect(status().isNoContent());
-        block(user("oid-carla"), bruno).andExpect(status().isNoContent());
+        block(bearer("oid-carla"), bruno).andExpect(status().isNoContent());
 
         unblock(ana(), bruno).andExpect(status().isNoContent());
 
@@ -468,10 +469,7 @@ class BlockIT {
 
     /** Abre a conta pelo primeiro acesso, como acontece em produção, e devolve o id dela. */
     private String accountIdOf(String objectId) throws Exception {
-        mockMvc.perform(get("/api/me").with(user(objectId))).andExpect(status().isOk());
-        return jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", objectId)
-                .query(UUID.class).single().toString();
+        return AccountFixtures.openAccount(mockMvc, jdbcClient, objectId);
     }
 
     private void insertBlock(String blocker, String blocked, OffsetDateTime createdAt) {
@@ -515,23 +513,19 @@ class BlockIT {
     }
 
     private static RequestPostProcessor ana() {
-        return user("oid-ana");
+        return bearer("oid-ana");
     }
 
     private static RequestPostProcessor bruno() {
-        return user("oid-bruno");
+        return bearer("oid-bruno");
     }
 
     private static RequestPostProcessor carla() {
-        return user("oid-carla");
+        return bearer("oid-carla");
     }
 
     private static RequestPostProcessor davi() {
-        return user("oid-davi");
-    }
-
-    private static RequestPostProcessor user(String objectId) {
-        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", objectId));
+        return bearer("oid-davi");
     }
 
     private static RequestPostProcessor anaWebSession() {

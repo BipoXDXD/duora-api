@@ -1,8 +1,7 @@
 package bipo.tech.duoraapi.trustsafety;
 
+import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -26,8 +25,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import bipo.tech.duoraapi.AccountFixtures;
 import bipo.tech.duoraapi.AccountTables;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
@@ -40,7 +39,6 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 @Import(TestcontainersConfiguration.class)
 class ReportFieldErrorsIT {
 
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String REPORTS_PATH = "/api/reports";
     private static final String REPORTER = "oid-reporter-field-errors";
     private static final String REPORTED = "oid-reported-field-errors";
@@ -133,25 +131,18 @@ class ReportFieldErrorsIT {
     }
 
     private ResultActions file(String body) throws Exception {
-        return mockMvc.perform(post(REPORTS_PATH).with(user(REPORTER))
+        return mockMvc.perform(post(REPORTS_PATH).with(bearer(REPORTER))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body));
     }
 
     /** O primeiro acesso cria a conta; o id é o que o banco gerou. */
     private String accountIdOf(String objectId) throws Exception {
-        mockMvc.perform(get("/api/me").with(user(objectId))).andExpect(status().isOk());
-        return jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", objectId)
-                .query(UUID.class).single().toString();
+        return AccountFixtures.openAccount(mockMvc, jdbcClient, objectId);
     }
 
     private long reportRows() {
         return jdbcClient.sql("select count(*) from report").query(Long.class).single();
-    }
-
-    private static RequestPostProcessor user(String objectId) {
-        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", objectId));
     }
 
 }

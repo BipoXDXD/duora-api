@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.events;
 
+import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.MY_REGISTRATIONS_PATH;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
@@ -411,7 +412,8 @@ class RegistrationIT {
                 .andExpect(jsonPath("$.registrationCount").value(2))
                 .andReturn().getResponse().getContentAsString();
 
-        assertThat(body).doesNotContain("ana", "bruno", accountIdOf("ana"), accountIdOf("bruno"));
+        assertThat(body)
+                .doesNotContain("ana", "bruno", accountIdOf(jdbcClient, "ana"), accountIdOf(jdbcClient, "bruno"));
     }
 
     @Test
@@ -503,7 +505,7 @@ class RegistrationIT {
                         """, JsonCompareMode.STRICT))
                 .andReturn().getResponse().getContentAsString();
 
-        assertThat(brunoView + brunoList).doesNotContain(accountIdOf("ana"), NOW);
+        assertThat(brunoView + brunoList).doesNotContain(accountIdOf(jdbcClient, "ana"), NOW);
         assertThat(registrationsOf(eventId)).isEqualTo(1);
     }
 
@@ -666,12 +668,6 @@ class RegistrationIT {
         return jdbcClient.sql("select count(*) from registration where event_id = cast(:id as uuid)")
                 .param("id", eventId)
                 .query(Long.class).single();
-    }
-
-    private String accountIdOf(String name) {
-        return jdbcClient.sql("select id::text from account where subject = :subject")
-                .param("subject", "oid-" + name)
-                .query(String.class).single();
     }
 
     private static void awaitQuietly(CountDownLatch latch) {

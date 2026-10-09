@@ -26,6 +26,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
 
+import bipo.tech.duoraapi.AccountFixtures;
 import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
@@ -128,9 +129,7 @@ class EventRosterIT {
     }
 
     private AccountId accountOf(String name) {
-        return new AccountId(jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", "oid-" + name)
-                .query(UUID.class).single());
+        return AccountFixtures.accountOf(jdbcClient, name);
     }
 
 }
