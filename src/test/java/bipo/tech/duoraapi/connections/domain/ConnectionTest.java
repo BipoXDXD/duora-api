@@ -87,12 +87,4 @@ class ConnectionTest {
         assertThat(Connection.fromDecisions(latest, Optional.of(otherEvent), NOT_BLOCKED)).isEmpty();
     }
 
-    @Test
-    void eachSideSeesTheOtherAccount() {
-        var connection = new Connection(ConnectionPair.of(BIA, ANA), LATEST_AT);
-
-        assertThat(connection.otherThan(ANA)).isEqualTo(new ConnectedAccount(BIA, LATEST_AT));
-        assertThat(connection.otherThan(BIA)).isEqualTo(new ConnectedAccount(ANA, LATEST_AT));
-    }
-
 }

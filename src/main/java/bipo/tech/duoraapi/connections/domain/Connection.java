@@ -4,8 +4,6 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 
-import bipo.tech.duoraapi.identity.AccountId;
-
 /**
  * Duas pessoas que disseram sim uma à outra (docs/adr/0019). Uma por par, qualquer que seja o evento: a
  * chave é o par normalizado.
@@ -33,11 +31,6 @@ public record Connection(ConnectionPair pair, Instant connectedAt) {
             return Optional.empty();
         }
         return Optional.of(new Connection(ConnectionPair.of(latest.decider(), latest.partner()), latest.decidedAt()));
-    }
-
-    /** A conexão do ponto de vista de um dos lados. */
-    public ConnectedAccount otherThan(AccountId account) {
-        return new ConnectedAccount(pair.otherThan(account), connectedAt);
     }
 
 }
