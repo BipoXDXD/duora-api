@@ -4,8 +4,12 @@
 
 Backend do Duora. Java 25, Spring Boot 4, PostgreSQL e Flyway.
 
-O projeto está no início: há uma **waitlist** de pré-lançamento e a **conta e o perfil** do
-usuário autenticado (etapa 1 do plano). Matching, chat, eventos e pagamentos vêm depois.
+O projeto está na etapa 2 do [plano](docs/duora-plano.md) (§9): há a **waitlist** de pré-lançamento,
+login (BFF e bearer), **conta e perfil**, **bloqueio e denúncia**, **eventos e inscrições**, **pareamento por
+rodada**, **decisão privada e conexões** e a API do **chat temporário** da rodada. O primeiro jogo
+([ADR 0024](docs/adr/0024-primeiro-jogo-e-modulo-experiences.md)), a exclusão de conta
+([ADR 0023](docs/adr/0023-exclusao-de-conta-e-retencao.md)) e os pagamentos ainda são só proposta ou plano. As decisões
+que esperam o usuário estão em [`docs/pendencias-do-usuario.md`](docs/pendencias-do-usuario.md).
 
 ## Pré-requisitos
 
@@ -120,6 +124,7 @@ ou um serviço de e-mail (e o Web PubSub, se um dia entrar; [ADR 0021](docs/adr/
 | Correlation ID (`X-Request-Id`, `traceparent`) | `config/RequestCorrelationIT` |
 | Canário de dados sensíveis no log | `config/SensitiveDataLoggingIT` |
 | Contrato OpenAPI: sem drift, acesso à documentação | `config/OpenApiContractIT`, `config/ApiDocsAccessIT` |
+| Varreduras sobre as rotas registradas (401, CSRF, papel ADMIN, caracteres de controle, headers) | `config/DenyByDefaultIT`, `config/CsrfOnEveryMutationIT`, `config/AdminRoleOnEveryAdminRouteIT`, `config/ControlCharactersInRequestIT`, `config/SecurityHeadersIT` |
 | `@DataJpaTest` + PostgreSQL | `waitlist/domain/WaitlistEntryRepositoryIT` |
 | Migrations Flyway | `FlywayMigrationIT` |
 | Regras de arquitetura (ArchUnit) | `ArchitectureTest`, `ArchitectureRulesTest` |
@@ -158,13 +163,13 @@ bipo.tech.duoraapi
 │   ├── api/             # chat como sub-recurso singular da rodada, cursor afterSeq, denúncia de mensagem
 │   ├── application/     # ChatService (par, horário, bloqueio e denúncia pelas APIs publicadas), ChatPurge
 │   └── domain/          # chat aberto ou fechado, sequência, texto validado, Idempotency-Key, ports
-├── config/              # segurança, sessão, relógio, rate limit compartilhado
+├── config/              # segurança, sessão, relógio, rate limit compartilhado, tradução dos erros em ProblemDetail
 ├── connections/         # decisão privada depois da rodada e conexões por interesse mútuo
 │   ├── adapter/         # repositórios JDBC; advisory lock por par e rodada
 │   ├── api/             # decisão como sub-recurso singular da rodada, lista das próprias conexões
 │   ├── application/     # DecisionService (par e bloqueio pelas APIs publicadas), ConnectionService
 │   └── domain/          # decisão final, regra do interesse mútuo, par normalizado, ports
-├── events/              # eventos e inscrições; EventRoster e EventCalendar são as APIs publicadas
+├── events/              # eventos e inscrições; EventRoster, EventCalendar e RoundProgress (esta, o matching implementa) são as APIs publicadas
 │   ├── api/             # rotas do ADMIN, lista e inscrição; paginação por keyset
 │   ├── application/     # casos de uso (administração, catálogo, inscrição)
 │   └── domain/          # evento e suas regras de estado, repositórios
@@ -178,7 +183,7 @@ bipo.tech.duoraapi
 │   ├── application/     # RoundService (inscritos e bloqueios pelas APIs publicadas)
 │   └── domain/          # sorteio puro (emparelhamento máximo), rodada, port do repositório
 ├── migration/           # job de migração do deploy (Flyway + papel restrito da API)
-├── profiles/            # perfil do próprio usuário e GET /api/me; ProfileCompleteness é a API publicada
+├── profiles/            # perfil do próprio usuário e GET /api/me; ProfileCompleteness e Eligibility são as APIs publicadas
 │   ├── api/
 │   ├── application/
 │   └── domain/          # regras 18+, value objects, repositório
@@ -196,8 +201,8 @@ bipo.tech.duoraapi
 Os testes espelham a mesma estrutura. Um módulo só usa de outro a API publicada, que são as
 classes na raiz do pacote dele (como `identity.AccountId`); as camadas são internas
 ([ADR 0011](docs/adr/0011-conta-e-perfil.md)). Módulos de apoio (waitlist, identity, profiles, events) usam
-essas camadas simples; os do core (pareamento, minijogos, conexões, chat, trustsafety) usam ports & adapters, com
-domínio sem framework. O `ArchitectureTest` cobra a classificação e a direção das dependências
+essas camadas simples; os do core (matching, connections, chat, trustsafety e, quando existir, experiences, a
+[ADR 0024](docs/adr/0024-primeiro-jogo-e-modulo-experiences.md)) usam ports & adapters, com domínio sem framework. O `ArchitectureTest` cobra a classificação e a direção das dependências
 ([ADR 0007](docs/adr/0007-estilo-por-modulo.md)).
 
 As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida o schema
@@ -239,7 +244,8 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 | `GET` | `/api/events/{eventId}/rounds/{number}/chat/messages/{seq}` | Autenticado | Uma mensagem, ou `404` |
 | `POST` | `/api/events/{eventId}/rounds/{number}/chat/messages` | Autenticado | Envia `{"text": "..."}` (1 a 500 caracteres, sem invisíveis) com o header `Idempotency-Key` (UUID). `201` com `Location`; `200` com a mesma mensagem ao repetir chave e texto; `409` com `reason` `IDEMPOTENCY_KEY_REUSED` (chave com outro texto) ou `CHAT_CLOSED`; `429` acima de 20 por minuto |
 | `POST` | `/api/events/{eventId}/rounds/{number}/chat/messages/{seq}:report` | Autenticado | Denuncia a mensagem do par nessa posição: `{"reason": "...", "description": "..."}`, com os motivos e as regras de `POST /api/reports`. `201` com `Location` em `/api/reports/{id}` e a denúncia; a moderação recebe uma cópia da mensagem, que fica depois do expurgo do chat. Vale com o chat fechado e depois de bloquear, até o expurgo. A própria mensagem é `400`; posição vazia ou quem não formou par, `404`. Soma na cota de 10 denúncias por dia |
-| `GET` | `/actuator/health` | Público | Estado da aplicação |
+| `POST` | `/logout` | Sessão web | Encerra a sessão. Exige o header `X-XSRF-TOKEN` (`403` sem ele); `200` com `{"logoutUrl": "..."}`, a URL de logout do Entra para o front navegar até ela ([ADR 0002](docs/adr/0002-front-web-com-bff.md)) |
+| `GET` | `/actuator/health` | Público | Estado da aplicação (as probes `/actuator/health/liveness` e `/readiness` também são públicas, só com o estado) |
 
 ### Contrato (OpenAPI)
 
@@ -350,6 +356,9 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 
 ## Decisões de arquitetura
 
+Status de cada ADR e o que espera decisão do usuário: [`docs/pendencias-do-usuario.md`](docs/pendencias-do-usuario.md).
+Uma ADR não se apaga: quando o código a ultrapassa, ela ganha uma nota datada.
+
 | ADR | Decisão |
 |---|---|
 | [0001](docs/adr/0001-autenticacao-entra-external-id.md) | Entra External ID; API como resource server |
@@ -372,7 +381,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0018](docs/adr/0018-erros-de-campo-no-problem-detail.md) | Erros de campo (`errors: [{field, code}]`) no ProblemDetail dos 400 de validação |
 | [0019](docs/adr/0019-decisao-privada-e-conexoes.md) | Decisão privada e final por rodada; conexão por interesse mútuo, serializada por advisory lock e única pelo par normalizado |
 | [0020](docs/adr/0020-motivo-das-recusas-no-problem-detail.md) | Motivo (`reason`) no ProblemDetail dos 409 e 403 de regra de negócio |
-| [0021](docs/adr/0021-chat-temporario-e-reconexao.md) | Chat temporário da rodada, transporte de tempo real e reconexão por cursor de sequência; polling e depois SSE |
+| [0021](docs/adr/0021-chat-temporario-e-reconexao.md) | Chat temporário da rodada, transporte de tempo real e reconexão por cursor de sequência; polling e depois SSE (aceita em 2026-10-08; a API das fatias 1 e 2 está na `main`) |
 | [0022](docs/adr/0022-teste-de-carga-com-k6.md) | Teste de carga manual com k6 contra a imagem, com invariantes conferidas no banco |
 | [0023](docs/adr/0023-exclusao-de-conta-e-retencao.md) | Exclusão de conta com tombstone, direitos do titular e retenção por categoria (proposta, aguarda decisão) |
 | [0024](docs/adr/0024-primeiro-jogo-e-modulo-experiences.md) | Primeiro jogo e módulo `experiences`: catálogo versionado, jogada por etapa idempotente, revelação simultânea (proposta) |
@@ -430,4 +439,8 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
   por execução); a métrica `duora.chat.purge.backlog` conta os chats vencidos que ainda não saíram, e o log só
   traz contagens. Mensagem apagada continua nos backups do PostgreSQL até o fim da retenção deles
   ([ADR 0021](docs/adr/0021-chat-temporario-e-reconexao.md)).
+- **Sem limite por conta, por decisão ainda aberta:** `PATCH /api/me/profile`, `:block` e `:unblock`
+  (o `:block` responde `404` para conta inexistente). Está na pendência 1 da
+  [auditoria de 2026-10](docs/security-audit-2026-10.md), que também registra as varreduras de segurança, os dois
+  bugs de log achados e as demais pendências. O módulo `chat` ficou fora dessa auditoria.
 - **CI:** o gitleaks varre o histórico em busca de segredos a cada push e pull request.
