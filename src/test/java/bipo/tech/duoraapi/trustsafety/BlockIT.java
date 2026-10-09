@@ -1,5 +1,7 @@
 package bipo.tech.duoraapi.trustsafety;
 
+import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
+import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -19,11 +21,6 @@ import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -110,21 +107,10 @@ class BlockIT {
     void concurrentBlocksOfTheSamePairKeepASingleBlock() throws Exception {
         accountIdOf("oid-ana");
         var bruno = accountIdOf("oid-bruno");
-        var start = new CountDownLatch(1);
-        var statuses = new ArrayList<Future<Integer>>();
 
-        try (var executor = Executors.newFixedThreadPool(CONCURRENT_BLOCKS)) {
-            for (int i = 0; i < CONCURRENT_BLOCKS; i++) {
-                statuses.add(executor.submit(blockAfter(start, bruno)));
-            }
-            start.countDown();
-            var results = new ArrayList<Integer>();
-            for (var status : statuses) {
-                results.add(status.get(30, TimeUnit.SECONDS));
-            }
-            assertThat(results).containsOnly(204);
-        }
+        var statuses = sameCallTogether(CONCURRENT_BLOCKS, statusCodeOf(() -> block(ana(), bruno)));
 
+        assertThat(statuses).containsOnly(204);
         assertThat(blockRows()).hasSize(1);
     }
 
@@ -446,13 +432,6 @@ class BlockIT {
     @Test
     void anEmptyGroupHasNoBlockedPairs() {
         assertThat(blocking.blockedPairsAmong(List.of())).isEmpty();
-    }
-
-    private Callable<Integer> blockAfter(CountDownLatch start, String blocked) {
-        return () -> {
-            start.await();
-            return block(ana(), blocked).andReturn().getResponse().getStatus();
-        };
     }
 
     private ResultActions block(RequestPostProcessor user, String accountId) throws Exception {

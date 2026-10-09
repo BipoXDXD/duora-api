@@ -1,5 +1,7 @@
 package bipo.tech.duoraapi.identity;
 
+import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
+import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -7,14 +9,8 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.RepeatedTest;
@@ -146,27 +142,12 @@ class AccountProvisioningIT {
      */
     @RepeatedTest(3)
     void concurrentFirstRequestsOpenASingleAccount() throws Exception {
-        var start = new CountDownLatch(1);
-        var statuses = new ArrayList<Future<Integer>>();
-        try (var executor = Executors.newFixedThreadPool(CONCURRENT_REQUESTS)) {
-            for (int i = 0; i < CONCURRENT_REQUESTS; i++) {
-                statuses.add(executor.submit(firstRequestAfter(start)));
-            }
-            start.countDown();
-            for (var status : statuses) {
-                assertThat(status.get(30, TimeUnit.SECONDS)).isEqualTo(200);
-            }
-        }
+        var statuses = sameCallTogether(CONCURRENT_REQUESTS,
+                statusCodeOf(() -> mockMvc.perform(
+                        get(CURRENT_USER_PATH).with(bearer(ISSUER, "oid-ana", "ana@example.com")))));
 
+        assertThat(statuses).containsOnly(200);
         assertThat(accountIds()).hasSize(1);
-    }
-
-    private Callable<Integer> firstRequestAfter(CountDownLatch start) {
-        return () -> {
-            start.await();
-            return mockMvc.perform(get(CURRENT_USER_PATH).with(bearer(ISSUER, "oid-ana", "ana@example.com")))
-                    .andReturn().getResponse().getStatus();
-        };
     }
 
     private List<UUID> accountIds() {

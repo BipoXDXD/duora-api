@@ -1,5 +1,7 @@
 package bipo.tech.duoraapi.waitlist;
 
+import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
+import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -8,13 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.util.ArrayList;
 import java.util.Locale;
 import java.util.Set;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import jakarta.servlet.http.Cookie;
@@ -101,22 +98,10 @@ class JoinWaitlistIT {
     /** A unicidade é do banco (on conflict), e não de um "existe? então insere" no código. */
     @Test
     void simultaneousJoinsWithTheSameEmailKeepSingleEntry() throws Exception {
-        var start = new CountDownLatch(1);
-        var statuses = new ArrayList<Future<Integer>>();
+        var statuses = sameCallTogether(SIMULTANEOUS_JOINS,
+                statusCodeOf(() -> join("carla@example.com", CLIENT_F)));
 
-        try (var executor = Executors.newFixedThreadPool(SIMULTANEOUS_JOINS)) {
-            for (int i = 0; i < SIMULTANEOUS_JOINS; i++) {
-                statuses.add(executor.submit(() -> {
-                    start.await();
-                    return join("carla@example.com", CLIENT_F).andReturn().getResponse().getStatus();
-                }));
-            }
-            start.countDown();
-            for (Future<Integer> status : statuses) {
-                assertThat(status.get(30, TimeUnit.SECONDS)).isEqualTo(202);
-            }
-        }
-
+        assertThat(statuses).containsOnly(202);
         assertThat(repository.count()).isEqualTo(1);
     }
 

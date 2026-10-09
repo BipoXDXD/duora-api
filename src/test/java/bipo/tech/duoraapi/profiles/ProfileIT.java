@@ -1,5 +1,7 @@
 package bipo.tech.duoraapi.profiles;
 
+import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
+import static bipo.tech.duoraapi.ConcurrentCalls.together;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -11,13 +13,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.util.ArrayList;
 import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -164,20 +161,12 @@ class ProfileIT {
     @RepeatedTest(3)
     void concurrentEditsFromTheSameVersionKeepOnlyOne() throws Exception {
         edit(ana(), "\"0\"", anaProfileJson()).andExpect(status().isOk());
-        var start = new CountDownLatch(1);
-        var statuses = new ArrayList<Future<Integer>>();
 
-        try (var executor = Executors.newFixedThreadPool(CONCURRENT_EDITS)) {
-            for (int i = 0; i < CONCURRENT_EDITS; i++) {
-                statuses.add(executor.submit(editNameAfter(start, "Nome " + i)));
-            }
-            start.countDown();
-            var results = new ArrayList<Integer>();
-            for (var status : statuses) {
-                results.add(status.get(30, TimeUnit.SECONDS));
-            }
-            assertThat(results).containsOnly(200, 412).containsOnlyOnce(200);
-        }
+        var statuses = together(IntStream.range(0, CONCURRENT_EDITS)
+                .mapToObj(i -> statusCodeOf(() -> editNameFromVersionOne("Nome " + i)))
+                .toList());
+
+        assertThat(statuses).containsOnly(200, 412).containsOnlyOnce(200);
 
         var version = jdbcClient.sql("select version from profile").query(Long.class).single();
         assertThat(version).isEqualTo(2);
@@ -410,13 +399,10 @@ class ProfileIT {
                         """, JsonCompareMode.STRICT));
     }
 
-    private Callable<Integer> editNameAfter(CountDownLatch start, String name) {
-        return () -> {
-            start.await();
-            return edit(ana(), "\"1\"", """
-                    {"displayName": "%s"}
-                    """.formatted(name)).andReturn().getResponse().getStatus();
-        };
+    private ResultActions editNameFromVersionOne(String name) throws Exception {
+        return edit(ana(), "\"1\"", """
+                {"displayName": "%s"}
+                """.formatted(name));
     }
 
     private ResultActions edit(RequestPostProcessor user, String ifMatch, String body) throws Exception {

@@ -2,6 +2,9 @@ package bipo.tech.duoraapi.connections;
 
 import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
 import static bipo.tech.duoraapi.AccountFixtures.firstAccess;
+import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
+import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
+import static bipo.tech.duoraapi.ConcurrentCalls.together;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
@@ -24,11 +27,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.RepeatedTest;
@@ -51,6 +49,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import com.jayway.jsonpath.JsonPath;
 
+import bipo.tech.duoraapi.HeldLock;
 import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
@@ -239,16 +238,12 @@ class ConnectionIT {
     @RepeatedTest(5)
     void simultaneousYesesCreateExactlyOneConnection() throws Exception {
         String eventId = pairedInRoundOne("ana", "bruno");
-        var start = new CountDownLatch(1);
 
-        try (var executor = Executors.newFixedThreadPool(2)) {
-            Future<Integer> ana = executor.submit(decideAfter(start, eventId, "ana"));
-            Future<Integer> bruno = executor.submit(decideAfter(start, eventId, "bruno"));
-            start.countDown();
-            assertThat(ana.get(30, TimeUnit.SECONDS)).isEqualTo(201);
-            assertThat(bruno.get(30, TimeUnit.SECONDS)).isEqualTo(201);
-        }
+        var statuses = together(List.of(
+                statusCodeOf(() -> decide(eventId, "ana", YES)),
+                statusCodeOf(() -> decide(eventId, "bruno", YES))));
 
+        assertThat(statuses).containsExactly(201, 201);
         assertThat(connectionRows()).isEqualTo(1);
     }
 
@@ -256,20 +251,10 @@ class ConnectionIT {
     @RepeatedTest(3)
     void simultaneousRepeatsOfTheSameDecisionRecordItOnce() throws Exception {
         String eventId = pairedInRoundOne("ana", "bruno");
-        var start = new CountDownLatch(1);
-        var statuses = new ArrayList<Future<Integer>>();
 
-        try (var executor = Executors.newFixedThreadPool(3)) {
-            for (int i = 0; i < 3; i++) {
-                statuses.add(executor.submit(decideAfter(start, eventId, "ana")));
-            }
-            start.countDown();
-            var results = new ArrayList<Integer>();
-            for (var result : statuses) {
-                results.add(result.get(30, TimeUnit.SECONDS));
-            }
-            assertThat(results).containsOnly(201, 200).containsOnlyOnce(201);
-        }
+        var statuses = sameCallTogether(3, statusCodeOf(() -> decide(eventId, "ana", YES)));
+
+        assertThat(statuses).containsOnly(201, 200).containsOnlyOnce(201);
         assertThat(decisionRows(eventId)).isEqualTo(1);
     }
 
@@ -373,27 +358,17 @@ class ConnectionIT {
     @Test
     void aDecisionIsRefusedWhenThePartnersTakesTooLong() throws Exception {
         String eventId = pairedInRoundOne("ana", "bruno");
-        var holding = new CountDownLatch(1);
-        var release = new CountDownLatch(1);
 
-        try (var executor = Executors.newSingleThreadExecutor()) {
-            Future<?> holder = executor.submit(() -> transactionTemplate.executeWithoutResult(transaction -> {
-                jdbcClient.sql("select 1 from (select pg_advisory_xact_lock(hashtextextended(:key, 0))) as locked")
-                        .param("key", lockKeyOf(eventId, "ana", "bruno"))
-                        .query(Integer.class).single();
-                holding.countDown();
-                awaitQuietly(release);
-            }));
-            assertThat(holding.await(30, TimeUnit.SECONDS)).isTrue();
-
+        try (var _ = HeldLock.hold(transactionTemplate, () -> jdbcClient
+                .sql("select 1 from (select pg_advisory_xact_lock(hashtextextended(:key, 0))) as locked")
+                .param("key", lockKeyOf(eventId, "ana", "bruno"))
+                .query(Integer.class).single())) {
             decide(eventId, "ana", YES)
                     .andExpect(status().isServiceUnavailable())
                     .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
                     .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
-
-            release.countDown();
-            holder.get(30, TimeUnit.SECONDS);
         }
+
         assertThat(decisionRows(eventId)).isZero();
     }
 
@@ -545,13 +520,6 @@ class ConnectionIT {
                 .contentType(MediaType.APPLICATION_JSON).content(body));
     }
 
-    private Callable<Integer> decideAfter(CountDownLatch start, String eventId, String name) {
-        return () -> {
-            start.await();
-            return decide(eventId, name, YES).andReturn().getResponse().getStatus();
-        };
-    }
-
     private String connectionsBodyOf(String name) throws Exception {
         return mockMvc.perform(get(CONNECTIONS_PATH).with(user(name)))
                 .andExpect(status().isOk())
@@ -617,14 +585,6 @@ class ConnectionIT {
 
     private static RequestPostProcessor webSession(String name) {
         return oidcLogin().idToken(token -> token.issuer(ISSUER).claim("oid", "oid-" + name));
-    }
-
-    private static void awaitQuietly(CountDownLatch latch) {
-        try {
-            latch.await(30, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 
 }
