@@ -4,7 +4,7 @@ import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
 import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
 import static bipo.tech.duoraapi.ConcurrentCalls.together;
 import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
-import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.webSession;
 import static bipo.tech.duoraapi.events.EventFixtures.MY_REGISTRATIONS_PATH;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.adminEventPath;
@@ -18,7 +18,6 @@ import static bipo.tech.duoraapi.events.EventFixtures.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -573,11 +572,11 @@ class RegistrationIT {
     void webSessionWithoutCsrfTokenCannotRegisterNorCancel() throws Exception {
         String eventId = createPublishedEvent(mockMvc);
         completeProfile(mockMvc, ana());
-        mockMvc.perform(put(registrationPath(eventId)).with(anaWebSession())).andExpect(status().isForbidden());
+        mockMvc.perform(put(registrationPath(eventId)).with(webSession("oid-ana"))).andExpect(status().isForbidden());
         assertThat(registrationsOf(eventId)).isZero();
         register(ana(), eventId).andExpect(status().isCreated());
 
-        mockMvc.perform(delete(registrationPath(eventId)).with(anaWebSession())).andExpect(status().isForbidden());
+        mockMvc.perform(delete(registrationPath(eventId)).with(webSession("oid-ana"))).andExpect(status().isForbidden());
 
         assertThat(registrationsOf(eventId)).isEqualTo(1);
     }
@@ -587,7 +586,7 @@ class RegistrationIT {
         String eventId = createPublishedEvent(mockMvc);
         completeProfile(mockMvc, ana());
 
-        mockMvc.perform(put(registrationPath(eventId)).with(anaWebSession()).with(csrf()))
+        mockMvc.perform(put(registrationPath(eventId)).with(webSession("oid-ana")).with(csrf()))
                 .andExpect(status().isCreated());
 
         assertThat(registrationsOf(eventId)).isEqualTo(1);
@@ -650,11 +649,6 @@ class RegistrationIT {
 
     private static RequestPostProcessor bruno() {
         return user("bruno");
-    }
-
-    private static RequestPostProcessor anaWebSession() {
-        return oidcLogin().idToken(token -> token.issuer(ISSUER)
-                .claim("oid", "oid-ana"));
     }
 
     /** O 409 inteiro da inscrição, com o motivo em reason (docs/adr/0020). */

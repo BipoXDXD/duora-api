@@ -4,10 +4,10 @@ import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
 import static bipo.tech.duoraapi.ConcurrentCalls.together;
 import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.webSession;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -360,7 +360,7 @@ class ProfileIT {
 
     @Test
     void webSessionEditWithoutCsrfTokenIsRejectedWithoutWriting() throws Exception {
-        mockMvc.perform(patch(PROFILE_PATH).with(anaWebSession())
+        mockMvc.perform(patch(PROFILE_PATH).with(webSession("oid-ana"))
                         .header(HttpHeaders.IF_MATCH, "\"0\"")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(anaProfileJson()))
@@ -371,7 +371,7 @@ class ProfileIT {
 
     @Test
     void webSessionEditWithCsrfTokenIsAccepted() throws Exception {
-        mockMvc.perform(patch(PROFILE_PATH).with(anaWebSession()).with(csrf())
+        mockMvc.perform(patch(PROFILE_PATH).with(webSession("oid-ana")).with(csrf())
                         .header(HttpHeaders.IF_MATCH, "\"0\"")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(anaProfileJson()))
@@ -451,10 +451,6 @@ class ProfileIT {
 
     private static RequestPostProcessor bruno() {
         return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", "oid-bruno").claim("name", "Bruno do Entra"));
-    }
-
-    private static RequestPostProcessor anaWebSession() {
-        return oidcLogin().idToken(token -> token.issuer(ISSUER).claim("oid", "oid-ana"));
     }
 
 }
