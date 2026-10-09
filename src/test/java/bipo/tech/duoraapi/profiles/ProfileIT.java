@@ -271,12 +271,13 @@ class ProfileIT {
         assertThat(output.getAll()).doesNotContain(canary);
     }
 
-    /** id, versão, dono e estado calculado são do servidor (mass assignment). */
+    /** id, versão, dono, papel e estado calculado são do servidor (mass assignment). */
     @ParameterizedTest
     @ValueSource(strings = {"{\"displayName\": \"Ana\", \"complete\": true}",
             "{\"displayName\": \"Ana\", \"version\": 7}",
             "{\"displayName\": \"Ana\", \"accountId\": \"01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b\"}",
-            "{\"displayName\": \"Ana\", \"adult\": true}"})
+            "{\"displayName\": \"Ana\", \"adult\": true}",
+            "{\"displayName\": \"Ana\", \"role\": \"ADMIN\"}"})
     void unknownFieldIsRejectedWithoutWriting(String body) throws Exception {
         edit(ana(), "\"0\"", body)
                 .andExpect(status().isBadRequest())
