@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 import bipo.tech.duoraapi.identity.AccountId;
 import bipo.tech.duoraapi.trustsafety.application.ReportService;
 import bipo.tech.duoraapi.trustsafety.domain.Report;
+import bipo.tech.duoraapi.trustsafety.domain.ReportDescription;
 
 /**
  * API publicada do trustsafety para os outros módulos (docs/adr/0021): denunciar uma conta por algo que ela
@@ -13,6 +14,9 @@ import bipo.tech.duoraapi.trustsafety.domain.Report;
  */
 @Component
 public class Reports {
+
+    /** Teto do relato, em caracteres: quem documenta o campo na própria rota repete o mesmo limite. */
+    public static final int DESCRIPTION_MAX_LENGTH = ReportDescription.MAX_LENGTH;
 
     private final ReportService reports;
 

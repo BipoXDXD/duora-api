@@ -2525,6 +2525,227 @@
         "tags" : [ "chat" ]
       }
     },
+    "/api/events/{eventId}/rounds/{number}/chat/messages/{seq}:report" : {
+      "post" : {
+        "description" : "Cria uma denúncia contra o par, com uma cópia da mensagem guardada para a moderação: a cópia continua depois que o chat é apagado, 24 h após o fim do evento. Vale com o chat fechado e depois de bloquear o par. Só a mensagem do outro pode ser denunciada. A cota é a mesma de fileReport: 10 denúncias por dia, somando as duas rotas. Denunciar não bloqueia: para isso, chame blockAccount.",
+        "operationId" : "reportRoundChatMessage",
+        "parameters" : [ {
+          "description" : "Id do evento",
+          "in" : "path",
+          "name" : "eventId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        }, {
+          "description" : "Número da rodada no evento, a partir de 1",
+          "in" : "path",
+          "name" : "number",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        }, {
+          "description" : "A posição da mensagem do par no chat",
+          "in" : "path",
+          "name" : "seq",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 300,
+            "minimum" : 1
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ReportChatMessageRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ChatMessageReport"
+                }
+              }
+            },
+            "description" : "A denúncia criada",
+            "headers" : {
+              "Location" : {
+                "description" : "Endereço da denúncia criada",
+                "required" : true,
+                "schema" : {
+                  "type" : "string",
+                  "format" : "uri",
+                  "maxLength" : 2048
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID, ou número fora de 1 a 100, posição fora de 1 a 300, mensagem enviada por quem chama, motivo OTHER sem descrição, descrição inválida, JSON malformado ou campo desconhecido",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sessão web sem o token CSRF no header X-XSRF-TOKEN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Não há mensagem nessa posição, ou quem chama não formou par nessa rodada",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "415" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Corpo em outro formato que não application/json",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Cota diária de denúncias desta conta esgotada; nada foi gravado",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até a próxima denúncia ficar disponível",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int64",
+                  "maximum" : 86400,
+                  "minimum" : 0
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "503" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Cota indisponível; a denúncia é recusada",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até tentar de novo",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int32",
+                  "maximum" : 1,
+                  "minimum" : 1
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Denuncia uma mensagem do par da rodada",
+        "tags" : [ "chat" ]
+      }
+    },
     "/api/events/{eventId}/rounds/{number}/decision" : {
       "get" : {
         "description" : "Só a de quem chama. Sem decisão gravada, 404, tenha a pessoa formado par ou não.",
@@ -4357,6 +4578,46 @@
         },
         "required" : [ "fromMe", "sentAt", "seq", "text" ]
       },
+      "ChatMessageReport" : {
+        "type" : "object",
+        "properties" : {
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Quando a denúncia foi feita",
+            "maxLength" : 35
+          },
+          "description" : {
+            "type" : [ "string", "null" ],
+            "description" : "O relato, ou null se não houve",
+            "maxLength" : 1000
+          },
+          "id" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Id da denúncia",
+            "maxLength" : 36,
+            "minLength" : 36
+          },
+          "reason" : {
+            "type" : "string",
+            "enum" : [ "HARASSMENT", "HATE_SPEECH", "SEXUAL_CONTENT", "VIOLENCE_OR_THREAT", "SCAM_OR_SPAM", "FAKE_PROFILE", "SUSPECTED_MINOR", "OTHER" ]
+          },
+          "reportedAccountId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Id da conta denunciada: o par da rodada",
+            "maxLength" : 36,
+            "minLength" : 36
+          },
+          "status" : {
+            "type" : "string",
+            "description" : "Estado na moderação",
+            "enum" : [ "OPEN" ]
+          }
+        },
+        "required" : [ "createdAt", "description", "id", "reason", "reportedAccountId", "status" ]
+      },
       "ChatMessages" : {
         "type" : "object",
         "properties" : {
@@ -4927,6 +5188,23 @@
           }
         },
         "required" : [ "eventId", "registeredAt" ]
+      },
+      "ReportChatMessageRequest" : {
+        "type" : "object",
+        "additionalProperties" : false,
+        "properties" : {
+          "description" : {
+            "type" : [ "string", "null" ],
+            "description" : "Relato livre em parágrafos, sem caracteres invisíveis; obrigatório com o motivo OTHER. Vazio ou só com espaços conta como ausente.",
+            "maxLength" : 1000
+          },
+          "reason" : {
+            "type" : "string",
+            "description" : "Motivo, da mesma lista de fileReport",
+            "enum" : [ "HARASSMENT", "HATE_SPEECH", "SEXUAL_CONTENT", "VIOLENCE_OR_THREAT", "SCAM_OR_SPAM", "FAKE_PROFILE", "SUSPECTED_MINOR", "OTHER" ]
+          }
+        },
+        "required" : [ "reason" ]
       },
       "ReportResponse" : {
         "type" : "object",

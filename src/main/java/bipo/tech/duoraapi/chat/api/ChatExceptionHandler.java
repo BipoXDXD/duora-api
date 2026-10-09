@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import bipo.tech.duoraapi.chat.application.ChatNotFoundException;
 import bipo.tech.duoraapi.chat.application.MessageNotFoundException;
+import bipo.tech.duoraapi.chat.domain.OwnMessageNotReportableException;
 
 /**
  * Erros das rotas do chat em ProblemDetail (docs/adr/0005). As mensagens nunca trazem o valor recebido, o
@@ -30,6 +31,11 @@ class ChatExceptionHandler {
     @ExceptionHandler(ChatNotFoundException.class)
     ProblemDetail handleChatNotFound(ChatNotFoundException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(OwnMessageNotReportableException.class)
+    ProblemDetail handleOwnMessageReport(OwnMessageNotReportableException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
     @ExceptionHandler(MessageNotFoundException.class)

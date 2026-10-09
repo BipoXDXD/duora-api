@@ -54,7 +54,8 @@ class DenyByDefaultIT {
                         "GET /api/events/{eventId}/rounds/{number}/chat",
                         "GET /api/events/{eventId}/rounds/{number}/chat/messages",
                         "POST /api/events/{eventId}/rounds/{number}/chat/messages",
-                        "GET /api/events/{eventId}/rounds/{number}/chat/messages/{seq}")
+                        "GET /api/events/{eventId}/rounds/{number}/chat/messages/{seq:[^:]+}",
+                        "POST /api/events/{eventId}/rounds/{number}/chat/messages/{seq}:report")
                 .containsAll(PUBLIC_ROUTES);
     }
 

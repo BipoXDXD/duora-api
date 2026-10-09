@@ -2,6 +2,7 @@ package bipo.tech.duoraapi.chat.api;
 
 import bipo.tech.duoraapi.chat.domain.Chat;
 import bipo.tech.duoraapi.matching.Pairings;
+import bipo.tech.duoraapi.trustsafety.Reports;
 
 /** Tetos e textos repetidos da spec das rotas do chat; o lint OWASP exige limite em todo texto (docs/adr/0012). */
 final class ApiSchemas {
@@ -21,6 +22,9 @@ final class ApiSchemas {
     static final String FIRST_ROUND = "" + Pairings.FIRST_ROUND;
     static final String LAST_ROUND = "" + Pairings.LAST_ROUND;
     static final String MAX_MESSAGES = "" + Chat.MAX_MESSAGES;
+
+    /** O relato da denúncia de mensagem segue o de POST /api/reports (docs/adr/0015). */
+    static final int REPORT_DESCRIPTION_MAX_LENGTH = Reports.DESCRIPTION_MAX_LENGTH;
 
     static final String EVENT_ID_DESCRIPTION = "Id do evento";
     static final String ROUND_NUMBER_DESCRIPTION = "Número da rodada no evento, a partir de 1";

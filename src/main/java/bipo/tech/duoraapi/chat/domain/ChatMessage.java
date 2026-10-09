@@ -44,4 +44,16 @@ public record ChatMessage(UUID chatId, int seq, AccountId sender, ChatMessageTex
         return sender.equals(account);
     }
 
+    /**
+     * Só o par denuncia, e só a mensagem do outro (docs/adr/0021). Quem chama já conferiu que {@code reporter} é
+     * do par do chat.
+     *
+     * @throws OwnMessageNotReportableException se {@code reporter} enviou a mensagem
+     */
+    public void ensureReportableBy(AccountId reporter) {
+        if (sentBy(reporter)) {
+            throw new OwnMessageNotReportableException();
+        }
+    }
+
 }
