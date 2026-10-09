@@ -361,6 +361,7 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
 | [0020](docs/adr/0020-motivo-das-recusas-no-problem-detail.md) | Motivo (`reason`) no ProblemDetail dos 409 e 403 de regra de negócio |
 | [0021](docs/adr/0021-chat-temporario-e-reconexao.md) | Chat temporário da rodada, transporte de tempo real e reconexão por cursor de sequência; polling e depois SSE |
 | [0022](docs/adr/0022-teste-de-carga-com-k6.md) | Teste de carga manual com k6 contra a imagem, com invariantes conferidas no banco |
+| [0023](docs/adr/0023-exclusao-de-conta-e-retencao.md) | Exclusão de conta com tombstone, direitos do titular e retenção por categoria (proposta, aguarda decisão) |
 | [0024](docs/adr/0024-primeiro-jogo-e-modulo-experiences.md) | Primeiro jogo e módulo `experiences`: catálogo versionado, jogada por etapa idempotente, revelação simultânea (proposta) |
 
 ## Segurança
