@@ -121,4 +121,11 @@ class ChatTest {
                 .isEqualTo(Instant.parse("2026-11-03T01:00:00Z"));
     }
 
+    @Test
+    void exposesTheIdAndTheKeyItWasCreatedWith() {
+        var chat = new Chat(CHAT_ID, KEY, 0);
+
+        assertThat(chat.id()).isEqualTo(CHAT_ID);
+        assertThat(chat.key()).isEqualTo(KEY);
+    }
 }

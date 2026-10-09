@@ -83,7 +83,7 @@ class BioTest {
     @Test
     void doesNotExposeTheTextInToString() {
         assertThat(Bio.fromText("Gosto de trilhas")).hasValueSatisfying(
-                bio -> assertThat(bio.toString()).doesNotContain("trilhas"));
+                bio -> assertThat(bio.toString()).doesNotContain("trilhas").contains("redacted"));
     }
 
 }
