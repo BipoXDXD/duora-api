@@ -103,7 +103,7 @@ class ChatMessageTextTest {
 
     @Test
     void doesNotExposeTheTextInToString() {
-        assertThat(new ChatMessageText("segredo do encontro").toString()).doesNotContain("segredo");
+        assertThat(new ChatMessageText("segredo do encontro").toString()).doesNotContain("segredo").contains("redacted");
     }
 
 }

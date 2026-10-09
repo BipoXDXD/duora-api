@@ -76,7 +76,7 @@ class DisplayNameTest {
 
     @Test
     void doesNotExposeTheNameInToString() {
-        assertThat(new DisplayName("Ana Souza").toString()).doesNotContain("Ana");
+        assertThat(new DisplayName("Ana Souza").toString()).doesNotContain("Ana").contains("redacted");
     }
 
 }

@@ -36,7 +36,7 @@ class FieldChangeTest {
 
     @Test
     void doesNotExposeTheNewValueInToString() {
-        assertThat(FieldChange.setTo("1990-05-10").toString()).doesNotContain("1990");
+        assertThat(FieldChange.setTo("1990-05-10").toString()).doesNotContain("1990").contains("redacted");
     }
 
 }
