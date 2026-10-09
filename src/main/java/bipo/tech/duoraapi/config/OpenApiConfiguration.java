@@ -11,7 +11,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.PathContainer;
 import org.springframework.web.util.pattern.PathPattern;
@@ -157,10 +156,10 @@ class OpenApiConfiguration {
 
     private static void documentStatusResponses(String path, PathItem.HttpMethod method, Operation operation) {
         // ProblemDetailErrorController: só status e título, a causa fica no log.
-        operation.getResponses().addApiResponse("500", problem(HttpStatus.INTERNAL_SERVER_ERROR, "Erro inesperado"));
+        operation.getResponses().addApiResponse("500", problem("Erro inesperado"));
         if (operation.getRequestBody() != null) {
             operation.getResponses().addApiResponse("415",
-                    problem(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Corpo em outro formato que não application/json"));
+                    problem("Corpo em outro formato que não application/json"));
             documentFieldErrors(operation);
         }
         if (isPublic(operation)) {
@@ -168,13 +167,13 @@ class OpenApiConfiguration {
         }
         // Antes dos 403 da segurança, abaixo: só o 403 declarado pelo controller é de regra de negócio.
         documentRefusals(operation);
-        operation.getResponses().addApiResponse("401", problem(HttpStatus.UNAUTHORIZED, "Sem credencial válida"));
+        operation.getResponses().addApiResponse("401", problem("Sem credencial válida"));
         if (ADMIN_ROUTES.matches(PathContainer.parsePath(path))) {
-            operation.getResponses().addApiResponse("403", problem(HttpStatus.FORBIDDEN, "Sem o papel ADMIN"));
+            operation.getResponses().addApiResponse("403", problem("Sem o papel ADMIN"));
         } else if (method != PathItem.HttpMethod.GET) {
             // Operação com um 403 próprio (regra de negócio) o declara já citando o CSRF; não o sobrescreva.
             operation.getResponses().putIfAbsent("403",
-                    problem(HttpStatus.FORBIDDEN, "Sessão web sem o token CSRF no header X-XSRF-TOKEN"));
+                    problem("Sessão web sem o token CSRF no header X-XSRF-TOKEN"));
         }
     }
 
@@ -224,8 +223,8 @@ class OpenApiConfiguration {
                                 .content(new Content().addMediaType(MediaType.APPLICATION_JSON_VALUE,
                                         new io.swagger.v3.oas.models.media.MediaType()
                                                 .schema(new Schema<>().$ref("#/components/schemas/" + LOGOUT_SCHEMA)))))
-                        .addApiResponse("403", problem(HttpStatus.FORBIDDEN,
-                                "Sem o token CSRF no header X-XSRF-TOKEN; a sessão continua ativa")));
+                        .addApiResponse("403",
+                                problem("Sem o token CSRF no header X-XSRF-TOKEN; a sessão continua ativa")));
     }
 
     private static Schema<?> logoutResponseSchema() {
@@ -240,7 +239,7 @@ class OpenApiConfiguration {
         return operation.getSecurity() != null && operation.getSecurity().isEmpty();
     }
 
-    private static ApiResponse problem(HttpStatus status, String description) {
+    private static ApiResponse problem(String description) {
         return new ApiResponse()
                 .description(description)
                 .content(problemContent(PROBLEM_REF));
