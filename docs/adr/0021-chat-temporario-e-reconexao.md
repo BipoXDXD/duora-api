@@ -1,6 +1,6 @@
 # 0021. Chat temporário da rodada, transporte de tempo real e reconexão
 
-- **Status:** Aceita em 2026-10-08 pelo usuário: transporte (d) polling e depois (b) SSE, e os defaults de produto da seção 1. Os demais itens de "Pendente com o usuário" seguem abertos.
+- **Status:** Aceita em 2026-10-08 pelo usuário: transporte (d) polling e depois (b) SSE, e os defaults de produto da seção 1. Os demais itens de "Pendente com o usuário" seguem abertos. Fatias 1 e 2 implementadas na API em 2026-10-08 (ver "Implementação"); o polling do `duora-web` e as fatias 3 a 7 seguem pendentes.
 - **Data:** 2026-10-08
 - **Relacionadas:** [ADR 0002](0002-front-web-com-bff.md) (BFF), [ADR 0005](0005-contrato-da-api.md),
   [ADR 0006](0006-rate-limit-no-postgresql.md), [ADR 0007](0007-estilo-por-modulo.md),
@@ -283,8 +283,9 @@ chave antes de incrementar é seguro (o lock cobre o chat inteiro), e o `UNIQUE`
 
 ## 6. STRIDE inicial
 
-Dado sensível: conteúdo de conversa íntima entre duas pessoas, e quem conversa com quem. Testes a escrever
-(nenhum existe):
+Dado sensível: conteúdo de conversa íntima entre duas pessoas, e quem conversa com quem. Os testes das
+linhas de envio e leitura existem desde as fatias 1 e 2 (lista em "Implementação"); os de stream, Web
+PubSub, denúncia, expurgo e avisos são das fatias 3 a 6:
 
 | Ameaça | Mitigação | Teste a escrever |
 |---|---|---|
@@ -348,6 +349,66 @@ Cada fatia é um PR, com testes primeiro.
   continua indefinido, porque o produto ainda não define sair de uma rodada.
 - **Transporte:** (d) polling e depois (b) SSE. O plano (§1, §3, §6) e a [ADR 0009](0009-outbox-e-eventos.md),
   que citam o Web PubSub, precisam ser atualizados para refletir isso.
+
+## Implementação
+
+### Fatias 1 e 2 (2026-10-08, API)
+
+Feitas na API: tabelas `chat` e `chat_message` (V12), o módulo `chat` (core) e as quatro rotas abaixo. Do
+"Pronto quando" da fatia 1 falta o lado do `duora-web` (polling a cada 2 s e o Playwright em homologação).
+
+| Rota | Operação | Resposta |
+|---|---|---|
+| `GET /api/events/{eventId}/rounds/{number}/chat` | `getMyRoundChat` | `{chatId, open, lastSeq}` |
+| `GET .../chat/messages?afterSeq=&maxPageSize=` | `listMyRoundChatMessages` | `{items: [{seq, fromMe, text, sentAt}], nextAfterSeq}` |
+| `GET .../chat/messages/{seq}` | `getMyRoundChatMessage` | `{seq, fromMe, text, sentAt}` |
+| `POST .../chat/messages` + `Idempotency-Key` | `sendRoundChatMessage` | `201` + `Location`, `200` na repetição, `409` com `reason` |
+
+Testes da seção 6 que existem e foram vistos falhando com a mitigação desligada (bloqueio, rodada atual,
+rate limit, escopo da chave por remetente, lock do chat e busca da chave anterior):
+`ChatIT.aWebSessionWithoutCsrfTokenCannotSend`, `ChatFieldErrorsIT.unknownFieldsAreRejectedWithoutWriting`,
+`ChatIT.aRetriedSendWithTheSameKeyRecordsOneMessage`, `sameKeyWithAnotherTextIsAConflict`,
+`concurrentSendsWithTheSameKeyRecordOne`, `anotherAccountWithTheSameKeyGetsItsOwnMessage`,
+`concurrentSendsGetConsecutiveSequenceNumbers` (mais `manyConcurrentSendsGetConsecutiveSequenceNumbers`: com
+dois envios, a disputa pelo lock nem sempre acontece, e o teste de dois passou sem o lock),
+`aReaderAfterEachCommitNeverSkipsAMessage`, `ChatSchemaIT.aSequenceNumberIsUniqueInTheChat`,
+`ChatIT.someoneOutsideThePairCannotReadNorSend`, `SensitiveDataLoggingIT.chatMessageNeverReachesTheLog`,
+`ChatMessageTextTest.doesNotExposeTheTextInToString`, `ChatIT.aBlockedChatLooksLikeARoundThatEnded`,
+`ChatRateLimitIT.sendsAboveTheLimitAreRejectedWithRetryAfterAndWithoutWriting`,
+`sendIsRefusedWhenTheLimitCannotBeCounted`, `ChatMessageTextTest`, `ChatIT.invalidTextIsRejectedWithoutWriting`,
+`aFullChatRefusesNewMessages`, `aBlockEitherWayStopsNewMessages`, `aChatClosesWhenTheNextRoundStarts`,
+`aChatClosesWhenTheEventEnds` e `DenyByDefaultIT` (rotas novas na enumeração).
+
+Decisões tomadas na implementação, sem mudar o que foi aceito:
+
+1. **Sem coluna de fingerprint.** A chave de idempotência mora na própria linha da mensagem, com o mesmo
+   expurgo, então o reenvio compara o texto gravado (normalizado, NFC e sem espaço nas pontas) com o pedido. Um
+   hash do mesmo texto na mesma linha não protegeria nada a mais. Mesmo efeito do fingerprint: mesmo texto →
+   `200` com a mesma mensagem; outro texto → `409` `IDEMPOTENCY_KEY_REUSED`.
+2. **Escopo da chave:** `(chat, remetente, chave)`, o `UNIQUE` da seção 3. A mesma chave vinda do par é outro
+   envio e nunca devolve a mensagem alheia.
+3. **A repetição vale depois do fechamento:** com a mesma chave e texto, a resposta é `200` com a mensagem
+   gravada mesmo com o chat já fechado; o cliente que perdeu a resposta descobre que a mensagem foi.
+4. **Chat cheio é chat fechado:** com 300 mensagens, `open` vira `false` e o envio recebe o mesmo `409`
+   `CHAT_CLOSED`, para a leitura e o envio não se contradizerem.
+5. **Motivos novos** no `RefusalReason` ([ADR 0020](0020-motivo-das-recusas-no-problem-detail.md)):
+   `CHAT_CLOSED` e `IDEMPOTENCY_KEY_REUSED`, ambos `409`. O oasdiff acusa a adição ao enum em todo `409`; está
+   registrada no changelog como compatível pela política da ADR 0020.
+6. **APIs publicadas:** o horário vem de `events.EventCalendar.periodOf` (nova), e não do `EventRoster`, que
+   carregaria a lista de inscritos a cada leitura do polling; a última rodada vem de `Pairings.latestRoundOf`
+   (nova). O chat continua sem ler tabela de outro módulo.
+7. **O `GET .../chat` cria o chat** na primeira leitura (`insert ... on conflict do nothing`), como a seção 3
+   pede, para devolver o `chatId`. É idempotente e não muda nada visível.
+8. **`GET .../chat/messages/{seq}`** existe para o `Location` do `201` apontar para algo legível.
+9. **Paginação:** `afterSeq` de 0 a 300 (padrão 0) e `maxPageSize` de 1 a 100 (padrão 50).
+10. **Ordem das recusas no envio:** caminho, `Idempotency-Key` e corpo inválidos dão `400` antes de gastar o
+    limite; depois o limite é gasto, inclusive por quem não está no par (`404`) e na repetição.
+11. **Espera pelo lock do chat:** teto de 2 s (`lock_timeout`), depois `503` com `Retry-After: 1`, como a
+    decisão da [ADR 0019](0019-decisao-privada-e-conexoes.md).
+12. **`purge_after`** já é gravado (fim agendado + 24 h), mas nada apaga ainda: o job é a fatia 4.
+13. **Quebra de linha** é aceita no texto, como na bio; os outros controles e invisíveis, não.
+14. A `Idempotency-Key` é convertida como os ids de caminho (`UUID.fromString`), que aceita formas não
+    canônicas curtas; a spec declara 36 caracteres.
 
 ## Pendente com o usuário (decisões críticas)
 
