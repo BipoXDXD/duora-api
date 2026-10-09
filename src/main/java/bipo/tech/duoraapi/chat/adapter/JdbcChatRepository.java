@@ -37,14 +37,14 @@ class JdbcChatRepository implements ChatRepository {
     /** lock_not_available, na tabela de códigos de erro do PostgreSQL: o lock_timeout estourou. */
     private static final String LOCK_NOT_AVAILABLE = "55P03";
 
-    private static final String CHAT_COLUMNS = """
+    private static final String SELECT_CHAT_BY_KEY = """
             select id, event_id, round_number, first_account_id, second_account_id, last_seq
               from chat
              where event_id = :eventId and round_number = :roundNumber
                and first_account_id = :first and second_account_id = :second
             """;
 
-    private static final String MESSAGE_COLUMNS = """
+    private static final String SELECT_MESSAGES = """
             select chat_id, seq, sender_account_id, body, idempotency_key, sent_at
               from chat_message
             """;
@@ -79,7 +79,7 @@ class JdbcChatRepository implements ChatRepository {
 
     @Override
     public Optional<Chat> find(ChatKey key) {
-        return jdbcClient.sql(CHAT_COLUMNS)
+        return jdbcClient.sql(SELECT_CHAT_BY_KEY)
                 .params(keyParams(key))
                 .query(chatMapper(key))
                 .optional();
@@ -87,7 +87,7 @@ class JdbcChatRepository implements ChatRepository {
 
     @Override
     public Optional<Chat> lock(ChatKey key) {
-        return translatingLockTimeout(() -> jdbcClient.sql(CHAT_COLUMNS + " for update")
+        return translatingLockTimeout(() -> jdbcClient.sql(SELECT_CHAT_BY_KEY + " for update")
                 .params(keyParams(key))
                 .query(chatMapper(key))
                 .optional());
@@ -95,7 +95,7 @@ class JdbcChatRepository implements ChatRepository {
 
     @Override
     public Optional<ChatMessage> findBySenderAndIdempotencyKey(UUID chatId, AccountId sender, UUID idempotencyKey) {
-        return jdbcClient.sql(MESSAGE_COLUMNS + """
+        return jdbcClient.sql(SELECT_MESSAGES + """
                          where chat_id = :chatId and sender_account_id = :sender
                            and idempotency_key = :idempotencyKey
                         """)
@@ -134,7 +134,7 @@ class JdbcChatRepository implements ChatRepository {
 
     @Override
     public List<ChatMessage> findAfter(UUID chatId, int afterSeq, int limit) {
-        return jdbcClient.sql(MESSAGE_COLUMNS + """
+        return jdbcClient.sql(SELECT_MESSAGES + """
                          where chat_id = :chatId and seq > :afterSeq
                          order by seq
                          limit :limit
@@ -148,7 +148,7 @@ class JdbcChatRepository implements ChatRepository {
 
     @Override
     public Optional<ChatMessage> findMessage(UUID chatId, int seq) {
-        return jdbcClient.sql(MESSAGE_COLUMNS + " where chat_id = :chatId and seq = :seq")
+        return jdbcClient.sql(SELECT_MESSAGES + " where chat_id = :chatId and seq = :seq")
                 .param("chatId", chatId)
                 .param("seq", seq)
                 .query(JdbcChatRepository::toMessage)
