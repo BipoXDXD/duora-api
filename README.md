@@ -129,6 +129,22 @@ ou um serviço de e-mail (e o Web PubSub, se um dia entrar; [ADR 0021](docs/adr/
 | Migrations Flyway | `FlywayMigrationIT` |
 | Regras de arquitetura (ArchUnit) | `ArchitectureTest`, `ArchitectureRulesTest` |
 
+### Mutation testing (PIT)
+
+O PIT muta o código de domínio (troca `<` por `<=`, remove chamadas, devolve `null`) e confere se algum teste
+rápido falha; mutante sobrevivente aponta teste que falta ou é fraco. Fica num profile e **não** roda no
+`./mvnw verify`. Usa só os `*Test`, sem Docker, e leva menos de 2 minutos sobre `matching`, `connections`,
+`profiles` e `chat` (só as classes de `domain`).
+
+```bash
+./mvnw -Pmutation test-compile org.pitest:pitest-maven:mutationCoverage
+# relatório: target/pit-reports/index.html (mutations.xml para script)
+```
+
+Um módulo de domínio novo entra na lista `targetClasses`/`targetTests` do profile `mutation` no `pom.xml`.
+Para uma classe só: `-DtargetClasses=bipo.tech.duoraapi.matching.domain.Pair -DtargetTests=bipo.tech.duoraapi.matching.domain.PairTest`.
+Roda só à mão, antes de mexer em domínio crítico (sorteio, conexões, chat, perfil). Resultado do spike e decisão: [ADR 0025](docs/adr/0025-mutation-testing-com-pit.md).
+
 ### Carga (k6)
 
 Três cenários manuais medem as disputas que as ADRs 0016, 0017 e 0019 deixaram para o k6: 100 contas
@@ -385,6 +401,7 @@ Uma ADR não se apaga: quando o código a ultrapassa, ela ganha uma nota datada.
 | [0022](docs/adr/0022-teste-de-carga-com-k6.md) | Teste de carga manual com k6 contra a imagem, com invariantes conferidas no banco |
 | [0023](docs/adr/0023-exclusao-de-conta-e-retencao.md) | Exclusão de conta com tombstone, direitos do titular e retenção por categoria (proposta, aguarda decisão) |
 | [0024](docs/adr/0024-primeiro-jogo-e-modulo-experiences.md) | Primeiro jogo e módulo `experiences`: catálogo versionado, jogada por etapa idempotente, revelação simultânea (proposta) |
+| [0025](docs/adr/0025-mutation-testing-com-pit.md) | Mutation testing com PIT em profile Maven, sobre o domínio puro, rodado à mão |
 
 ## Segurança
 
