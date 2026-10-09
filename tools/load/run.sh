@@ -4,6 +4,8 @@
 #   registration  100 contas se inscrevem ao mesmo tempo num evento de capacidade 50
 #   rounds        o ADMIN inicia a rodada em 50 eventos em paralelo (cada pedido em dobro)
 #   decisions     100 pares (200 contas) decidem ao mesmo tempo
+#   chat          50 pares (100 contas) conversam por polling a cada 2 s durante CHAT_SECONDS (docs/adr/0021);
+#                 fora do `all`, porque dura minutos
 #
 # Não roda no CI (custo de minutos): é manual, antes de mexer em lock, pool ou limite, e para atualizar o
 # tools/load/RESULTS.md. Precisa de docker, curl, openssl, xxd e jq.
@@ -11,16 +13,17 @@
 # A autenticação é a do contract-test.sh: um par de chaves RSA da execução, o JWKS num container local e
 # tokens Bearer assinados na hora, um por conta sintética (oid load-user-NNN) e um para o ADMIN.
 #
-# Uso: tools/load/run.sh <imagem> [registration|rounds|decisions|all]
+# Uso: tools/load/run.sh <imagem> [registration|rounds|decisions|chat|all]
 # Variáveis: ACCOUNTS (200 contas sintéticas), REGISTRATION_ACCOUNTS (100) e REGISTRATION_CAPACITY (50), do
-# cenário da inscrição; REPEAT (1), quantas vezes cada cenário roda na mesma subida (a segunda em diante
-# acha a JVM aquecida); API_CPUS (1) e API_MEMORY (2g), que são os da produção (ADR 0014);
+# cenário da inscrição; CHAT_SECONDS (300) e CHAT_POLL_MS (2000), a duração e o intervalo de polling do cenário
+# do chat; REPEAT (1), quantas vezes cada cenário roda na mesma subida (a segunda em diante acha a JVM
+# aquecida); API_CPUS (1) e API_MEMORY (2g), que são os da produção (ADR 0014);
 # DB_CPUS (2) e DB_MEMORY (4g), um B2s hipotético (plano §6); LOAD_RESULTS_DIR (tools/load/results/<data>);
 # API_ENV_FILE (nenhum), um arquivo do `docker run --env-file` com variáveis a mais para a API, para comparar
 # configurações (pool, timeouts) sem reconstruir a imagem.
 set -euo pipefail
 
-image="${1:?uso: $0 <imagem> [registration|rounds|decisions|all]}"
+image="${1:?uso: $0 <imagem> [registration|rounds|decisions|chat|all]}"
 selected="${2:-all}"
 here="$(cd "$(dirname "$0")" && pwd)"
 
@@ -30,6 +33,8 @@ jwks_image="busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532
 accounts="${ACCOUNTS:-200}"
 registration_accounts="${REGISTRATION_ACCOUNTS:-100}"
 registration_capacity="${REGISTRATION_CAPACITY:-50}"
+chat_seconds="${CHAT_SECONDS:-300}"
+chat_poll_ms="${CHAT_POLL_MS:-2000}"
 repeat="${REPEAT:-1}"
 api_cpus="${API_CPUS:-1}"
 api_memory="${API_MEMORY:-2g}"
@@ -38,6 +43,7 @@ db_memory="${DB_MEMORY:-4g}"
 api_env_file="${API_ENV_FILE:-}"
 rooms=50
 people_per_room=4
+chat_people_per_room=2 # um par por evento: 50 eventos = 50 pares = 100 participantes
 startup_timeout_seconds=90
 
 run_id="duora-load-$$"
@@ -122,7 +128,7 @@ echo "ok: $accounts tokens de conta e 1 de ADMIN assinados"
 docker network create "$network" >/dev/null
 docker run -d --name "$database" --network "$network" --cpus "$db_cpus" --memory "$db_memory" \
   -e POSTGRES_DB=duora -e POSTGRES_USER=duora -e POSTGRES_PASSWORD=load-test-only \
-  postgres:18-alpine >/dev/null
+  postgres:18-alpine -c shared_preload_libraries=pg_stat_statements >/dev/null
 
 docker create --name "$jwks" --network "$network" "$jwks_image" httpd -f -p 8000 -h /www >/dev/null
 docker cp "$workdir/www" "$jwks:/www"
@@ -131,8 +137,12 @@ docker start "$jwks" >/dev/null
 # Limites do rate limit (ADR 0006), elevados só onde o cenário gastaria o saldo real:
 # - rodadas: o limite é por conta ADMIN (30/h) e o cenário usa uma conta só para 200 pedidos de rodada.
 #   Um 429 aqui mediria o limite, que já tem teste próprio (RoundRateLimitIT), e não o sorteio.
-# - decisões: o limite por conta (ADR 0019, ramo do rate limit da decisão) ainda não está em main; a variável
-#   é inofensiva enquanto não existir e evita que o 429 apareça no dia em que existir.
+# - decisões: o limite por conta (120/h, ADR 0019) tem teste próprio (DecisionRateLimitIT); um 429 aqui mediria o
+#   limite, e não a disputa do lock.
+# Sem elevação: o limite de edição de perfil (120/h) só é gasto pelo PATCH do seed.js, um por conta, e o de
+# bloqueio (60/h) é de rotas que nenhum cenário chama.
+# - chat: o limite de envio é por conta (20/min, ADR 0021) e o cenário manda uma mensagem a cada 10 a 20 s mais as
+#   repetições; elevado para o 429 não mascarar a medição, e o limite já tem teste próprio (ChatRateLimitIT).
 # A inscrição fica com o limite de produção (60/h por conta): cada conta faz no máximo uns 10 pedidos.
 # CPU e memória da API são os da produção (1 vCPU, 2 GiB; ADR 0014), com o pool e o Tomcat no padrão.
 docker run -d --name "$api" --network "$network" -p 127.0.0.1::8080 \
@@ -149,6 +159,7 @@ docker run -d --name "$api" --network "$network" -p 127.0.0.1::8080 \
   -e DUORA_TRUSTED_PROXIES=192.0.2.0/24 \
   -e DUORA_MATCHING_ROUNDRATELIMIT_CAPACITY=1000000 \
   -e DUORA_CONNECTIONS_DECISIONRATELIMIT_CAPACITY=1000000 \
+  -e DUORA_CHAT_MESSAGERATELIMIT_CAPACITY=1000000 \
   ${api_env_file:+--env-file "$api_env_file"} \
   "$image" >/dev/null
 
@@ -160,6 +171,8 @@ until curl -fsS "http://127.0.0.1:$port/actuator/health" 2>/dev/null | grep -q '
   sleep 2
 done
 echo "ok: API no ar"
+# Contadores de comandos por cenário (sql/statements.sql). A extensão fica fora das migrations: só este banco.
+psql_db -c "create extension if not exists pg_stat_statements" >/dev/null
 
 # --- Execução do k6 ---------------------------------------------------------------------------------
 # run_k6 <nome> <script>: o k6 roda dentro da rede do teste, com scripts e dados copiados (docker cp, como no
@@ -167,7 +180,8 @@ echo "ok: API no ar"
 run_k6() {
   local name="$1" script="$2" container="$run_id-k6-$1" code=0
   docker create --name "$container" --network "$network" -e BASE_URL="http://$api:8080" \
-    -e REGISTRATION_ACCOUNTS="$registration_accounts" -e REGISTRATION_CAPACITY="$registration_capacity" "$k6_image" \
+    -e REGISTRATION_ACCOUNTS="$registration_accounts" -e REGISTRATION_CAPACITY="$registration_capacity" \
+    -e CHAT_SECONDS="$chat_seconds" -e CHAT_POLL_MS="$chat_poll_ms" "$k6_image" \
     run "/work/$script" --no-color \
     --summary-trend-stats "avg,min,med,p(90),p(95),p(99),max" \
     --summary-export /tmp/summary.json >/dev/null
@@ -183,7 +197,7 @@ export_data() {
 }
 
 # Amostras do banco e da API durante o cenário: o máximo de conexões e de esperas por lock do lado do
-# PostgreSQL, e CPU e memória do container da API.
+# PostgreSQL, e CPU e memória dos containers da API e do banco.
 start_samplers() {
   local name="$1"
   (while true; do
@@ -196,6 +210,33 @@ start_samplers() {
     sleep 0.5
   done) &
   sampler_pids+=($!)
+  (while true; do
+    docker stats --no-stream --format '{{.CPUPerc}},{{.MemUsage}}' "$database" >> "$results/$name-db-stats.csv" 2>/dev/null || true
+    sleep 0.5
+  done) &
+  sampler_pids+=($!)
+}
+
+# Transações confirmadas e desfeitas no banco da aplicação até agora (pg_stat_database).
+transactions() {
+  psql_db -c "select xact_commit + xact_rollback from pg_stat_database where datname = 'duora'"
+}
+
+# record_database_work <rótulo> <transações antes>: o trabalho que a API deu ao banco durante o k6, em arquivos
+# ao lado dos demais resultados: transações, comandos (sem BEGIN/COMMIT) e os comandos mais chamados.
+# As transações incluem as do amostrador (uma por 0,25 s), que a summarize.sh não desconta.
+record_database_work() {
+  local name="$1" before="$2" after
+  after="$(transactions)"
+  echo "$((after - before))" > "$results/$name-pg-transactions.txt"
+  psql_db -f - < "$here/sql/statement-totals.sql" > "$results/$name-pg-statement-totals.txt"
+  psql_db -F'|' -f - < "$here/sql/statements.sql" > "$results/$name-pg-statements.txt"
+}
+
+# collect_chat_reports <log do k6>: junta as linhas `chatvu|subject|maior seq|envios` num valor só,
+# `subject:maior seq:envios;...`, para o sql/invariants-chat.sql.
+collect_chat_reports() {
+  grep -o 'chatvu|[^"]*' "$1" | awk -F'|' '{ printf "%s%s:%s:%s", (NR > 1 ? ";" : ""), $2, $3, $4 }'
 }
 
 check_invariants() {
@@ -207,7 +248,7 @@ check_invariants() {
       echo "  QUEBRADA: $name (esperado $expected, encontrado $found)" >&2
       broken=1
     fi
-  done < <(psql_db -v capacity="$registration_capacity" -f - < "$here/sql/$file")
+  done < <(psql_db -v capacity="$registration_capacity" -v rooms="$rooms" -v seen="${chat_seen:-}" -f - < "$here/sql/$file")
   return "$broken"
 }
 
@@ -221,12 +262,20 @@ run_scenario() {
   echo "=== $name ==="
   psql_db -f - < "$here/sql/reset.sql"
   [[ "$prepare" == "in-progress" ]] && psql_db -v rooms="$rooms" -v people="$people_per_room" -f - < "$here/sql/in-progress-events.sql"
+  [[ "$prepare" == "in-progress-pairs" ]] && psql_db -v rooms="$rooms" -v people="$chat_people_per_room" -f - < "$here/sql/in-progress-events.sql"
   export_data
   : > "$results/$name-pg-activity.csv"
   : > "$results/$name-api-stats.csv"
+  : > "$results/$name-db-stats.csv"
+  psql_db -c "select pg_stat_statements_reset()" >/dev/null
+  local transactions_before
+  transactions_before="$(transactions)"
   start_samplers "$name"
   run_k6 "$name" "$scenario.js" || code=$?
   stop_samplers
+  record_database_work "$name" "$transactions_before"
+  chat_seen=""
+  [[ "$scenario" == chat ]] && chat_seen="$(collect_chat_reports "$results/$name.log")"
   echo "invariantes no banco:"
   check_invariants "$invariants" || code=1
   ((code == 0)) || failed+=("$name")
@@ -240,7 +289,7 @@ accounts_created="$(psql_db -c "select count(*) from account where subject like 
 echo "ok: $accounts contas com perfil completo"
 
 case "$selected" in
-  registration | rounds | decisions | all) ;;
+  registration | rounds | decisions | chat | all) ;;
   *) fail "cenário desconhecido: $selected" ;;
 esac
 for ((n = 1; n <= repeat; n++)); do
@@ -254,6 +303,9 @@ for ((n = 1; n <= repeat; n++)); do
   fi
   if [[ "$selected" == decisions || "$selected" == all ]]; then
     run_scenario decisions in-progress invariants-decisions.sql "decisions$suffix"
+  fi
+  if [[ "$selected" == chat ]]; then
+    run_scenario chat in-progress-pairs invariants-chat.sql "chat$suffix"
   fi
 done
 
