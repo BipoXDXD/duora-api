@@ -192,6 +192,48 @@ tokens da `main` (publicação) e do environment correspondente (deploy).
   mês, a moeda de cobrança da assinatura). Se a assinatura Azure for Students não aceitar orçamentos,
   o apply falha neste recurso: acompanhe o crédito em Cost Management e o e-mail de alertas.
 
+## Contratos entre o app e a infraestrutura
+
+Conferidos em 2026-10-08 contra o `application.properties` da `main`.
+
+| O app exige no boot | Onde o Bicep define |
+|---|---|
+| `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | `api-app.bicep`; a senha vem do Key Vault (`secretRef`) |
+| `DUORA_AUTH_ISSUER_URI`, `_JWK_SET_URI`, `_AUDIENCE`, `_AUTHORITY`, `_WEB_CLIENT_ID` | `api-app.bicep`, valores públicos de `auth` no `.bicepparam` |
+| `DUORA_AUTH_WEB_CLIENT_SECRET` | `api-app.bicep`; vem do Key Vault (`secretRef`) |
+| `DUORA_TRUSTED_PROXIES` (o perfil `behind-proxy` vem na imagem) | `api-app.bicep`, a faixa da subnet do Container Apps |
+| `DUORA_MIGRATION_*` e `DUORA_APP_DB_*` (só o job) | `migration-job.bicep`; senhas do Key Vault |
+
+Os limites de taxa (`duora.waitlist`, `events`, `matching`, `connections` e `trustsafety`) têm padrão no
+`application.properties` e não são definidos no Bicep. Para mudar um valor num ambiente, acrescente a
+variável no `env` do Container App (por exemplo `DUORA_EVENTS_REGISTRATION_RATE_LIMIT_CAPACITY`), com
+o motivo; hoje todos usam o padrão do código. A API só sobe se `DUORA_TRUSTED_PROXIES` e as variáveis do
+Entra estiverem presentes (o `TrustedProxyProperties` e os `${...}` falham a subida).
+
+### Conexões com o banco
+
+O PostgreSQL B1ms tem `max_connections = 50`, das quais 15 ficam reservadas pela Azure: **35 para
+usuários**
+([limites](https://learn.microsoft.com/azure/postgresql/configure-maintain/concepts-limits#maximum-connections)).
+Cada réplica da API abre até 10 conexões (pool Hikari padrão, que mantém todas abertas sob carga).
+
+| Ambiente | Réplicas (mín a máx) | Conexões em regime | Pico numa troca de revisão |
+|---|---|---|---|
+| Homologação | 0 a 1 | 10 | 20 (revisão nova sobe antes de a antiga sair) |
+| Produção | 1 a 3 | 10 a 30 | até 40 no pior caso (3 antigas + 1 nova), acima de 35 |
+
+O job de migração roda antes da troca e termina, então não soma ao pico. Uma sessão de `psql` do
+administrador também conta. Em homologação a conta fecha; **em produção o pior caso estoura**, e isso
+fica para decisão antes de aplicá-la (ADR 0014, atualização de 2026-10-08).
+
+## Front (Azure Static Web Apps)
+
+O front (`duora-web`) será servido pelo Static Web Apps, mas a forma de ligá-lo ao BFF (backend
+vinculado, proxy ou domínio próprio com o cookie `SameSite=Lax`) está pendente com o usuário. Por isso
+**este Bicep não cria o Static Web Apps**, nem nenhuma ligação com a API. Quando houver decisão, o
+recurso entra aqui, no `main.bicep`, atrás de parâmetro; o SWA tem lista própria de regiões, então confira
+se a do resource group (North Central US) serve antes de herdá-la.
+
 ## Deploy de cada commit
 
 Pelo workflow **Deploy** (Actions → Deploy → Run workflow), na `main`, com o CI verde no commit.
