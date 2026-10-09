@@ -2,6 +2,7 @@ package bipo.tech.duoraapi.config;
 
 import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
 import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
@@ -378,7 +379,7 @@ class SensitiveDataLoggingIT {
 
     private MockHttpServletResponse fileReport(String body) throws Exception {
         return mockMvc.perform(post(REPORTS_PATH)
-                        .with(jwt().jwt(token -> token.issuer(ISSUER).claim("oid", "oid-" + UUID.randomUUID())))
+                        .with(bearer("oid-" + UUID.randomUUID()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andReturn().getResponse();
@@ -391,7 +392,7 @@ class SensitiveDataLoggingIT {
 
     private MockHttpServletResponse editProfile(String body) throws Exception {
         return mockMvc.perform(patch(PROFILE_PATH)
-                        .with(jwt().jwt(token -> token.issuer(ISSUER).claim("oid", "oid-" + UUID.randomUUID())))
+                        .with(bearer("oid-" + UUID.randomUUID()))
                         .header(HttpHeaders.IF_MATCH, FIRST_VERSION)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
