@@ -6,6 +6,8 @@
   `config`, código e testes.
 - **Fora do escopo:** o módulo `chat`, os arquivos de denúncia do `trustsafety` (`Report*`, `NewReport`,
   `report_message_evidence`) e os testes que o PR #40 altera (`OpenApiContractIT`, `DenyByDefaultIT`).
+- **Seção 5:** o módulo `chat` e as APIs publicadas que ele usa (`EventCalendar`, `Pairings`, `Reports`,
+  `Blocking`), revisados depois, em 2026-10-09, na branch `refactor/chat-quality-pass`.
 
 Os módulos cresceram rápido, com vários agentes em paralelo. A revisão procurou conhecimento duplicado
 (Rule of Three; DRY só quando é a mesma regra), smells de função e de classe, desvios da ADR 0007 e da regra
@@ -190,3 +192,99 @@ Itens revisados e deixados como estão:
 | 2 | O `detail` em inglês faz parte do contrato? (item 3.21) | Não. Os testes assertam `reason`/`errors[].code`, e o texto fica livre para melhorar |
 | 3 | `RegistrationRepository` com JDBC no `domain` do events (item 3.12) | Emendar a ADR 0007 para "Spring Data ou JDBC" no domain do supporting |
 | 4 | Remover `EVENT_NOT_PUBLISHED` da spec (item 3.16) | Remover agora, na 0.1.0, ainda sem consumidor externo |
+
+## 5. Chat
+
+O módulo entrou nos PRs #34 e #40 e ficou fora da passada acima. A revisão seguiu os mesmos critérios e
+reaproveitou as unificações de `config`. O contrato não mudou: `docs/openapi.json` intacto, `OpenApiContractIT`
+verde.
+
+### 5.1 Refatorado nesta branch
+
+| Smell | Onde estava | Refactoring |
+|---|---|---|
+| Duplicate Code: as convenções da spec | `chat/api/ApiSchemas` repetia os cinco valores de `config.ApiSchemaConventions` | Apelidos curtos, como nos outros módulos; as anotações não mudaram |
+| Duplicate Code: o `maxPageSize` em mais uma cópia | `ChatParameters.integerWithin`, a quarta cópia da leitura de `config.MaxPageSize` | `MaxPageSize.parse`, com o 400 vindo de `MalformedRequestInputHandler`. O `afterSeq` era o único outro usuário do helper genérico, que foi incorporado nele (Inline Function) |
+| Duplicate Code: a ordem dos ids de conta | `ChatPair.comesBefore`, a cópia que a passada anterior contou como "4 com o chat" | `AccountId.compareTo`, como em `ConnectionPair` |
+| Mysterious Name | `JdbcChatRepository.CHAT_COLUMNS` e `MESSAGE_COLUMNS` guardavam consultas inteiras, uma delas com o `where` | `SELECT_CHAT_BY_KEY` e `SELECT_MESSAGES` |
+| Temporal Coupling e detalhe de infraestrutura na porta | `ChatRepository.limitLockWait`, `addIfAbsent`, `lock` e `find`: `ChatService.send` tinha de chamar os três primeiros nessa ordem, e `chatOf` os dois últimos | A porta oferece `findOrAdd` e `lockOrAdd`. O adapter define o `lock_timeout` dentro de `lockOrAdd`, como `JdbcRoundRepository` e `JdbcDecisionRepository` (pull complexity down). A leitura continua criando o chat sem teto de espera, como antes |
+| Regra de negócio no serviço, com valor mágico | `ChatService.conditionsOf`: `latestRoundOf(...).orElse(0) == roundNumber` | `ChatKey.isLatestRound(OptionalInt)`, regra pura com teste unitário. O estado aberto ou fechado agora é calculado só no domínio (`OpeningConditions`, `ChatKey`, `Chat`), e o serviço só junta o que os outros módulos dizem |
+| Duplicate Code e parâmetro que só atravessa | `partnerOf` + `new ChatKey(..., ChatPair.of(...))` nos cinco casos de uso, e o `partner` passado a `conditionsOf` | `ChatService.chatKeyOf`. O bloqueio lê o par da chave, e a denúncia nomeia o autor da mensagem como conta denunciada, que é o que `Reports` pede (mesmo valor de antes) |
+
+Teste de caracterização novo: `ChatIT.pageSizeOutsideTheLimitsNamesTheLimitOfThisList` fixa o ProblemDetail
+inteiro (STRICT) do 400 de `maxPageSize`. Rodou verde sobre o código antigo antes da troca. `ChatKeyTest` ganhou
+os casos de `isLatestRound`.
+
+### 5.2 Concorrência e transações (só leitura)
+
+Nenhum bug que justifique `fix` nesta branch. O que foi conferido:
+
+- **Envio:** `insert ... on conflict do nothing` seguido de `select ... for update`. Em READ COMMITTED, o insert
+  espera a transação que cria o mesmo chat, e o `select` seguinte, num snapshot novo, enxerga a linha
+  confirmada. A Idempotency-Key é procurada já com o chat travado e tem `unique` no banco. O `update` de
+  `last_seq` confere a sequência anterior. As leituras de rodada atual e de bloqueio acontecem depois do lock.
+- **Teto de espera:** `set_config('lock_timeout', ..., true)` vale até o fim da transação. O 55P03 vira
+  `CannotAcquireLockException` e 503 com `Retry-After: 1`, coberto por
+  `ChatIT.aSendIsRefusedWhenAnotherHoldsTheChatTooLong`.
+- **Expurgo:** um comando por lote, `for update skip locked` no subselect, índice em `purge_after` (V14). Duas
+  réplicas não apagam o mesmo chat, coberto pelos testes de concorrência do `ChatPurgeIT`.
+- **Denúncia sem transação:** a mensagem não muda depois de gravada, e a cota é contada em outra conexão.
+
+Registrado, sem correção:
+
+1. **Corrida rara entre uma requisição e o expurgo devolve 500.** O caso é um chat de evento acabado há mais de
+   24 h. O `insert ... on conflict do nothing` não trava a linha que já existe. Se o expurgo a apagar entre o
+   insert e a leitura, `findOrAdd` e `lockOrAdd` não acham o chat e lançam `IllegalStateException` (antes era
+   `NoSuchElementException`, também 500). Não há como reproduzir sem um gancho entre os dois comandos.
+   Saídas possíveis:
+   - em `lockOrAdd`, trocar os dois comandos por `insert ... on conflict do update set last_seq =
+     chat.last_seq returning ...`, que trava a linha no mesmo comando;
+   - nos dois métodos, tentar de novo uma vez.
+
+   O impacto é um 500 em vez de 409 ou 200, sem perda de dado. Isso se liga à decisão 6 pendente da ADR 0021
+   (o chat vazio que a leitura recria depois do expurgo).
+2. **O instante do envio é lido antes da espera pelo lock.** `now` e o horário do evento são lidos antes de
+   `lockOrAdd`, que pode esperar até 2 s. Uma mensagem pode ser aceita até 2 s depois do fim do evento, e o
+   `sentAt` de duas mensagens seguidas pode sair fora de ordem por até 2 s. A spec já diz que `sentAt` não
+   define a ordem. Fica como está.
+
+### 5.3 Registrado, não feito
+
+3. **Mais cópias dos itens 3.3 a 3.6 e 3.10, agora contando o chat.**
+   - Os handlers 503 de lock existem em 4 módulos (item 3.3).
+   - Os handlers `exceção → ProblemDetail(404/400)` (item 3.4) ganham `ChatNotFoundException`,
+     `MessageNotFoundException`, `OwnMessageNotReportableException` e o `InvalidRequestException` do chat, que
+     tem o mesmo nome do de `connections`.
+   - `lock_timeout` + 55P03 aparecem em 4 adapters, mais o `set_config` de `RegistrationRepository` (item 3.5).
+     O `PostgresLocks` proposto passa a ter quatro usuários e vale um PR próprio, porque toca matching,
+     connections e events.
+   - A paginação "limit + 1" tem 3 cópias (`ConnectionService`, `BlockService`, `ChatService` com
+     `MessagesPage`), mais o `ResultPage` do events (item 3.6). O cursor do chat é a posição, e não o keyset, então
+     o que se repete é só o corte da sobra.
+   - O texto livre Unicode tem 4 cópias com a mesma regex e a mesma normalização (item 3.10): `EventText`,
+     `ProfileText`, `ReportDescription` e `ChatMessageText`. O comentário de `ChatMessageText` admite a cópia.
+     Continua dependendo da revisão da ADR 0007.
+4. **A faixa da rodada (1..100) validada 3 vezes com a mesma mensagem.** Os lugares são
+   `ChatParameters.roundNumber`, `connections/api/RoundNumberParameter.validated` e a pré-condição de
+   `Pairings.partnerOf`. Cada fronteira lança a própria `InvalidRequestException`. A saída é `Pairings` publicar
+   um `isRoundNumber(int)` e cada módulo manter só a exceção. Junta-se ao item 3.7.
+5. **Os textos da spec do chat repetem números à mão:**
+   - "1 a 100", "0 a 300" e "500 caracteres" em `ChatController`;
+   - "20 por minuto" e "10 denúncias por dia", que viram mentira se `application.properties` mudar;
+   - os `@Parameter` de `eventId` e `number`, copiados nos 5 endpoints.
+
+   É o item 3.9, e precisa do `OpenApiContractIT` vigiando o diff.
+6. **O `Location` da denúncia é montado por concatenação** (`REPORTS_PATH + report.id()` em
+   `ChatController.report`), enquanto o envio usa `UriComponentsBuilder`. É o item 3.17.
+7. **`Reports` é `@Component`, e `Pairings` e `EventCalendar` são `@Service`.** As três são APIs publicadas com o
+   mesmo papel. A diferença é só de estereótipo e não muda nada em execução. Uniformizar junto com o item 3.8.
+
+Itens revisados e deixados como estão:
+
+- `ChatController` tem 269 linhas, quase todas de anotação OpenAPI. O corpo dos métodos tem de 1 a 10 linhas.
+- `ChatService` ficou com métodos de no máximo 11 linhas, e a única lógica dele é juntar o que matching, events e
+  trustsafety dizem.
+- `ChatPurge.purgeExpired`: o laço `do/while` termina no primeiro lote incompleto ou no teto de lotes, e o
+  instante de corte é lido uma vez.
+- `JitteredDelayTrigger` e `ChatPurgeScheduling` estão cobertos por teste unitário e pelo `ChatPurgeSchedulingIT`.
+- O `ChatExceptionHandler` local continua, como nos outros módulos (item 3.4).
