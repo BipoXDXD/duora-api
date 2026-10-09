@@ -111,6 +111,7 @@ ou um serviço de e-mail (e o Web PubSub, se um dia entrar; [ADR 0021](docs/adr/
 | `@SpringBootTest` + MockMvc, ponta a ponta | `waitlist/JoinWaitlistIT`, `profiles/ProfileIT` |
 | Concorrência (primeiro acesso, edições simultâneas) | `identity/AccountProvisioningIT`, `profiles/ProfileIT` |
 | Concorrência no chat (sequência sem lacunas, mesma `Idempotency-Key` em paralelo) | `chat/ChatIT` |
+| Job entre réplicas com relógio fixo (expurgo do chat, `skip locked`) | `chat/ChatPurgeIT` |
 | Spring Security (401/403) | `waitlist/WaitlistSecurityIT` |
 | Validação de JWT (tokens reais, JWKS local) | `config/BearerTokenValidationIT` |
 | Login web (BFF): sessão, cookie, CSRF, logout | `config/WebLoginIT` |
@@ -153,10 +154,10 @@ Pacotes por módulo, cada um dividido em camadas:
 ```
 bipo.tech.duoraapi
 ├── chat/                # chat temporário do par de cada rodada
-│   ├── adapter/         # repositório JDBC; o chat travado define a sequência das mensagens
-│   ├── api/             # chat como sub-recurso singular da rodada, mensagens com cursor afterSeq
-│   ├── application/     # ChatService (par, horário do evento e bloqueio pelas APIs publicadas)
-│   └── domain/          # chat aberto ou fechado, sequência, texto validado, Idempotency-Key, port
+│   ├── adapter/         # repositórios JDBC (o chat travado define a sequência); agendamento do expurgo
+│   ├── api/             # chat como sub-recurso singular da rodada, cursor afterSeq, denúncia de mensagem
+│   ├── application/     # ChatService (par, horário, bloqueio e denúncia pelas APIs publicadas), ChatPurge
+│   └── domain/          # chat aberto ou fechado, sequência, texto validado, Idempotency-Key, ports
 ├── config/              # segurança, sessão, relógio, rate limit compartilhado
 ├── connections/         # decisão privada depois da rodada e conexões por interesse mútuo
 │   ├── adapter/         # repositórios JDBC; advisory lock por par e rodada
@@ -181,11 +182,11 @@ bipo.tech.duoraapi
 │   ├── api/
 │   ├── application/
 │   └── domain/          # regras 18+, value objects, repositório
-├── trustsafety/         # bloqueio e denúncia; Blocking é a API publicada
+├── trustsafety/         # bloqueio e denúncia; Blocking e Reports (denúncia com evidência) são a API publicada
 │   ├── adapter/         # repositórios JDBC, bean do limite de denúncias
 │   ├── api/
 │   ├── application/     # BlockService, ReportService (cota via config.AccountRateLimit)
-│   └── domain/          # bloqueio, denúncia, motivos, ports dos repositórios
+│   └── domain/          # bloqueio, denúncia, ports dos repositórios
 └── waitlist/
     ├── api/             # controller, DTOs, rate limit
     ├── application/     # casos de uso (WaitlistService)
@@ -237,6 +238,7 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 | `GET` | `/api/events/{eventId}/rounds/{number}/chat/messages` | Autenticado | As mensagens depois de `afterSeq` (0 a 300, padrão 0), em ordem de posição: `{items: [{seq, fromMe, text, sentAt}], nextAfterSeq}`, `maxPageSize` de 1 a 100 (padrão 50). O front faz polling com a maior posição vista |
 | `GET` | `/api/events/{eventId}/rounds/{number}/chat/messages/{seq}` | Autenticado | Uma mensagem, ou `404` |
 | `POST` | `/api/events/{eventId}/rounds/{number}/chat/messages` | Autenticado | Envia `{"text": "..."}` (1 a 500 caracteres, sem invisíveis) com o header `Idempotency-Key` (UUID). `201` com `Location`; `200` com a mesma mensagem ao repetir chave e texto; `409` com `reason` `IDEMPOTENCY_KEY_REUSED` (chave com outro texto) ou `CHAT_CLOSED`; `429` acima de 20 por minuto |
+| `POST` | `/api/events/{eventId}/rounds/{number}/chat/messages/{seq}:report` | Autenticado | Denuncia a mensagem do par nessa posição: `{"reason": "...", "description": "..."}`, com os motivos e as regras de `POST /api/reports`. `201` com `Location` em `/api/reports/{id}` e a denúncia; a moderação recebe uma cópia da mensagem, que fica depois do expurgo do chat. Vale com o chat fechado e depois de bloquear, até o expurgo. A própria mensagem é `400`; posição vazia ou quem não formou par, `404`. Soma na cota de 10 denúncias por dia |
 | `GET` | `/actuator/health` | Público | Estado da aplicação |
 
 ### Contrato (OpenAPI)
@@ -419,4 +421,13 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
   chat travado, sem lacunas; o reenvio com a mesma `Idempotency-Key` (escopada por quem envia) grava uma vez
   só. Texto de 1 a 500 caracteres, sem invisíveis, nunca no log; cada conta envia até 20 mensagens por minuto
   (`duora.chat.message-rate-limit.*`), repetições incluídas ([ADR 0021](docs/adr/0021-chat-temporario-e-reconexao.md)).
+- **Denúncia de mensagem e expurgo do chat:** só quem está no par denuncia, e só a mensagem do outro; a denúncia
+  guarda uma cópia da mensagem (texto, posição, horário, ids do chat e do evento) no `trustsafety`, que nunca vai
+  para o log e soma na mesma cota de denúncias. 24 h depois do fim agendado do evento, um job em cada réplica
+  apaga de fato o chat e as mensagens (`delete`, não marcação), em lotes com `for update skip locked`; a cópia
+  denunciada fica, com a retenção das denúncias, ainda pendente ([ADR 0015](docs/adr/0015-bloqueio-e-denuncia.md)).
+  Agendamento e lotes em `duora.chat.purge.*` (a cada 10 min mais até 2 min sorteados; até 50 lotes de 100 chats
+  por execução); a métrica `duora.chat.purge.backlog` conta os chats vencidos que ainda não saíram, e o log só
+  traz contagens. Mensagem apagada continua nos backups do PostgreSQL até o fim da retenção deles
+  ([ADR 0021](docs/adr/0021-chat-temporario-e-reconexao.md)).
 - **CI:** o gitleaks varre o histórico em busca de segredos a cada push e pull request.

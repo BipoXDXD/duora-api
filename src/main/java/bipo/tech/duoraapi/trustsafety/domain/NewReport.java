@@ -6,6 +6,7 @@ import java.util.Optional;
 
 import bipo.tech.duoraapi.FieldErrorCode;
 import bipo.tech.duoraapi.identity.AccountId;
+import bipo.tech.duoraapi.trustsafety.ReportReason;
 
 /**
  * Uma denúncia ainda não registrada: o que quem denuncia informa. Ganha id e estado inicial ao ser

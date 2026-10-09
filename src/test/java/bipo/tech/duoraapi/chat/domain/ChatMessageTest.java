@@ -1,6 +1,7 @@
 package bipo.tech.duoraapi.chat.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import bipo.tech.duoraapi.RefusalReason;
 import bipo.tech.duoraapi.identity.AccountId;
+import bipo.tech.duoraapi.trustsafety.ChatMessageEvidence;
 
 class ChatMessageTest {
 
@@ -45,6 +47,25 @@ class ChatMessageTest {
     void tellsWhoSentIt() {
         assertThat(sent.sentBy(ANA)).isTrue();
         assertThat(sent.sentBy(BIA)).isFalse();
+    }
+
+    @Test
+    void thePartnerCanReportTheMessage() {
+        assertThatCode(() -> sent.ensureReportableBy(BIA)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void whoSentTheMessageCannotReportIt() {
+        assertThatThrownBy(() -> sent.ensureReportableBy(ANA))
+                .isInstanceOf(OwnMessageNotReportableException.class)
+                .hasMessage("a message of your own cannot be reported");
+    }
+
+    /** A cópia da denúncia (docs/adr/0021) aceita qualquer mensagem que o chat aceite. */
+    @Test
+    void everyMessageFitsInTheReportEvidence() {
+        assertThat(ChatMessageEvidence.MAX_TEXT_LENGTH).isGreaterThanOrEqualTo(ChatMessageText.MAX_LENGTH);
+        assertThat(ChatMessageEvidence.MAX_SEQ).isGreaterThanOrEqualTo(Chat.MAX_MESSAGES);
     }
 
     @Test

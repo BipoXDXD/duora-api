@@ -256,6 +256,28 @@ class OpenApiContractIT {
         assertThat(spec.at("/components/schemas/EventResponse/properties").has("capacity")).isFalse();
     }
 
+    /**
+     * Denúncia de mensagem do chat (docs/adr/0021): a mesma lista de motivos e o mesmo teto de relato de
+     * fileReport, a cota em 429 com Retry-After, e nenhum campo de mensagem, conta ou estado no corpo.
+     */
+    @Test
+    void chatMessageReportDocumentsItsContract() throws Exception {
+        JsonNode spec = jsonMapper.readTree(generatedSpec());
+        JsonNode report = spec.at("/paths/~1api~1events~1{eventId}~1rounds~1{number}~1chat~1messages~1{seq}:report/post");
+        JsonNode request = spec.at("/components/schemas/ReportChatMessageRequest");
+
+        assertThat(report.at("/responses/201/headers/Location/required").asBoolean()).isTrue();
+        assertThat(report.at("/responses/429/headers/Retry-After/required").asBoolean()).isTrue();
+        for (int status : new int[] {400, 404, 429, 503}) {
+            assertThat(documentsProblem(report, status)).as("denúncia de mensagem documenta o %d", status).isTrue();
+        }
+        assertThat(request.at("/additionalProperties").asBoolean(true)).isFalse();
+        assertThat(request.at("/properties").propertyNames()).containsExactlyInAnyOrder("reason", "description");
+        assertThat(request.at("/properties/reason/enum"))
+                .isEqualTo(spec.at("/components/schemas/FileReportRequest/properties/reason/enum"));
+        assertThat(request.at("/properties/description/maxLength").asInt()).isEqualTo(1000);
+    }
+
     /** Rodadas (docs/adr/0017): o limite por conta ADMIN aparece como 429 com Retry-After e 503. */
     @Test
     void startRoundDocumentsItsRateLimit() throws Exception {

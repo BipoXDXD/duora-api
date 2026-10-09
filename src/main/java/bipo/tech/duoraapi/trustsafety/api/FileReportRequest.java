@@ -4,8 +4,8 @@ import java.util.UUID;
 
 import jakarta.validation.constraints.NotNull;
 
+import bipo.tech.duoraapi.trustsafety.ReportReason;
 import bipo.tech.duoraapi.trustsafety.domain.ReportDescription;
-import bipo.tech.duoraapi.trustsafety.domain.ReportReason;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**

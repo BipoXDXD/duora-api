@@ -7,8 +7,8 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
-import bipo.tech.duoraapi.trustsafety.domain.ReportReason;
-import bipo.tech.duoraapi.trustsafety.domain.ReportStatus;
+import bipo.tech.duoraapi.trustsafety.ReportReason;
+import bipo.tech.duoraapi.trustsafety.ReportStatus;
 
 /** Como em {@link FileReportRequestTest}: o MVC registra a resposta escrita pelo toString em DEBUG. */
 class ReportResponseTest {

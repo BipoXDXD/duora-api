@@ -45,7 +45,16 @@ class ChatController {
     static final String CHAT_PATH = "/api/events/{eventId}/rounds/{number}/chat";
     static final String MESSAGES_PATH = CHAT_PATH + "/messages";
     static final String MESSAGE_PATH = MESSAGES_PATH + "/{seq}";
+    static final String REPORT_PATH = MESSAGE_PATH + ":report";
     static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
+
+    /**
+     * A leitura sem ":": sem o filtro, GET em {@code {seq}:report} cairia na leitura com a posição "1:report" (400),
+     * e não no 405 de método não aceito pela ação.
+     */
+    private static final String MESSAGE_ROUTE = MESSAGES_PATH + "/{seq:[^:]+}";
+
+    private static final String REPORTS_PATH = "/api/reports/";
 
     private static final String NOT_IN_THE_PAIR = "Quem chama não formou par nessa rodada: ficou de fora, não "
             + "estava no sorteio, ou a rodada ou o evento não existem";
@@ -116,7 +125,7 @@ class ChatController {
                 account);
     }
 
-    @GetMapping(MESSAGE_PATH)
+    @GetMapping(MESSAGE_ROUTE)
     @Operation(operationId = "getMyRoundChatMessage", summary = "Lê uma mensagem do chat da rodada",
             description = "A mensagem numa posição do chat de quem chama.")
     @ApiResponse(responseCode = "200", description = "A mensagem")
@@ -202,6 +211,59 @@ class ChatController {
             return ResponseEntity.created(location).body(body);
         }
         return ResponseEntity.ok(body);
+    }
+
+    /**
+     * Ação sobre a mensagem que cria uma denúncia no trustsafety (docs/adr/0005, 0021): 201 com Location na
+     * denúncia, legível depois por getMyReport. Quem não está no par, a posição vazia e a própria mensagem são
+     * recusadas antes de gastar a cota de denúncias.
+     */
+    @PostMapping(REPORT_PATH)
+    @Operation(operationId = "reportRoundChatMessage", summary = "Denuncia uma mensagem do par da rodada",
+            description = "Cria uma denúncia contra o par, com uma cópia da mensagem guardada para a moderação: a "
+                    + "cópia continua depois que o chat é apagado, 24 h após o fim do evento. Vale com o chat "
+                    + "fechado e depois de bloquear o par. Só a mensagem do outro pode ser denunciada. A cota é a "
+                    + "mesma de fileReport: 10 denúncias por dia, somando as duas rotas. Denunciar não bloqueia: "
+                    + "para isso, chame blockAccount.")
+    @ApiResponse(responseCode = "201", description = "A denúncia criada",
+            headers = @Header(name = "Location", required = true, description = "Endereço da denúncia criada",
+                    schema = @Schema(type = "string", format = "uri", maxLength = ApiSchemas.LOCATION_MAX_LENGTH)))
+    @ApiResponse(responseCode = "400",
+            description = BAD_PATH + ", posição fora de 1 a 300, mensagem enviada por quem chama, motivo OTHER sem "
+                    + "descrição, descrição inválida, JSON malformado ou campo desconhecido",
+            content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
+    @ApiResponse(responseCode = "404", description = "Não há mensagem nessa posição, ou quem chama não formou par "
+            + "nessa rodada",
+            content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
+    @ApiResponse(responseCode = "429", description = "Cota diária de denúncias desta conta esgotada; nada foi gravado",
+            headers = @Header(name = "Retry-After", required = true,
+                    description = "Segundos até a próxima denúncia ficar disponível",
+                    schema = @Schema(type = "integer", format = "int64", minimum = "0",
+                            maximum = AccountRateLimit.MAX_RETRY_AFTER_SECONDS)),
+            content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
+    @ApiResponse(responseCode = "503", description = "Cota indisponível; a denúncia é recusada",
+            headers = @Header(name = "Retry-After", required = true, description = "Segundos até tentar de novo",
+                    schema = @Schema(type = "integer", format = "int32",
+                            minimum = AccountRateLimit.UNAVAILABLE_RETRY_AFTER_SECONDS,
+                            maximum = AccountRateLimit.UNAVAILABLE_RETRY_AFTER_SECONDS)),
+            content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
+    ResponseEntity<ChatMessageReportResponse> report(
+            @Parameter(description = ApiSchemas.EVENT_ID_DESCRIPTION, schema = @Schema(type = "string",
+                    format = "uuid", minLength = ApiSchemas.UUID_LENGTH, maxLength = ApiSchemas.UUID_LENGTH))
+            @PathVariable UUID eventId,
+            @Parameter(description = ApiSchemas.ROUND_NUMBER_DESCRIPTION, schema = @Schema(type = "integer",
+                    format = "int32", minimum = ApiSchemas.FIRST_ROUND, maximum = ApiSchemas.LAST_ROUND))
+            @PathVariable int number,
+            @Parameter(description = "A posição da mensagem do par no chat", schema = @Schema(type = "integer",
+                    format = "int32", minimum = "1", maximum = ApiSchemas.MAX_MESSAGES))
+            @PathVariable int seq,
+            AccountId account,
+            @Valid @RequestBody ReportChatMessageRequest request) {
+        int roundNumber = ChatParameters.roundNumber(number);
+        var report = chats.reportMessage(eventId, roundNumber, account, ChatParameters.seq(seq), request.reason(),
+                request.description());
+        return ResponseEntity.created(URI.create(REPORTS_PATH + report.id()))
+                .body(ChatMessageReportResponse.of(report));
     }
 
 }

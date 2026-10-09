@@ -4,6 +4,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import bipo.tech.duoraapi.identity.AccountId;
+import bipo.tech.duoraapi.trustsafety.ChatMessageEvidence;
+import bipo.tech.duoraapi.trustsafety.ReportStatus;
 
 /** As denúncias gravadas. */
 public interface ReportRepository {
@@ -14,6 +16,13 @@ public interface ReportRepository {
      * @throws UnknownAccountException se a conta denunciada não existe
      */
     Report add(NewReport report);
+
+    /**
+     * Como {@link #add}, gravando junto a cópia da mensagem denunciada: as duas linhas ou nenhuma.
+     *
+     * @throws UnknownAccountException se a conta denunciada não existe
+     */
+    Report addWithEvidence(NewReport report, ChatMessageEvidence evidence);
 
     /** A denúncia, só se foi {@code reporter} quem a fez: a de outra pessoa não existe para ele. */
     Optional<Report> findFiledBy(AccountId reporter, UUID id);
