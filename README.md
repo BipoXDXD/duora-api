@@ -439,8 +439,7 @@ Uma ADR não se apaga: quando o código a ultrapassa, ela ganha uma nota datada.
   por execução); a métrica `duora.chat.purge.backlog` conta os chats vencidos que ainda não saíram, e o log só
   traz contagens. Mensagem apagada continua nos backups do PostgreSQL até o fim da retenção deles
   ([ADR 0021](docs/adr/0021-chat-temporario-e-reconexao.md)).
-- **Sem limite por conta, por decisão ainda aberta:** `PATCH /api/me/profile`, `:block` e `:unblock`
-  (o `:block` responde `404` para conta inexistente). Está na pendência 1 da
-  [auditoria de 2026-10](docs/security-audit-2026-10.md), que também registra as varreduras de segurança, os dois
-  bugs de log achados e as demais pendências. O módulo `chat` ficou fora dessa auditoria.
+- **Auditoria de 2026-10:** a [auditoria](docs/security-audit-2026-10.md) registra as varreduras de segurança,
+  os dois bugs de log achados e as pendências; as pendências 1 (limite em `:block`, `:unblock` e no `PATCH` do
+  perfil) e 2 (ids de terceiros no log) foram resolvidas no #39. O módulo `chat` ficou fora dessa auditoria.
 - **CI:** o gitleaks varre o histórico em busca de segredos a cada push e pull request.

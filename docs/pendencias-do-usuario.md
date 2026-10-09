@@ -14,7 +14,9 @@ Ordem sugerida, porque cada item destrava os seguintes:
 2. **ADR 0023, exclusão de conta e retenção** (Segurança e LGPD, 1): oito ADRs deixaram essa pendência, e a ADR 0023 as fecha
    com 10 decisões suas e 8 perguntas para o apoio jurídico.
 3. **ADR 0024, primeiro jogo** (Produto, 27): 11 decisões; é o que falta para fechar a etapa 2 do plano.
-4. **Auditoria, pendência 1** (Segurança e LGPD, 5): limite por conta em `:block`, `:unblock` e `PATCH` do perfil.
+4. **Valores dos limites por conta** (Segurança e LGPD, 5): `:block`/`:unblock` 60/h e `PATCH` do perfil 120/h
+   entraram no #39 como decisão autônoma; revise junto com os demais limites (inscrição 60/h, rodada 30/h,
+   decisão 120/h, chat 20/min).
 
 ## Produto
 
@@ -56,7 +58,7 @@ Ordem sugerida, porque cada item destrava os seguintes:
 | 2 | Suspeita de menor: fluxo de proteção, o que guardar de quem tentou com data de menor, base legal | [0011](adr/0011-conta-e-perfil.md) (3), [0015](adr/0015-bloqueio-e-denuncia.md) (3) | aberta |
 | 3 | Retenção de denúncias e evidências, e de bloqueios (desbloquear apaga o histórico) | [0015](adr/0015-bloqueio-e-denuncia.md) (2, 4) | aberta |
 | 4 | Retenção das decisões privadas (dado sensível sem uso depois da conexão) | [0019](adr/0019-decisao-privada-e-conexoes.md) (7) | aberta |
-| 5 | Rate limit em `PATCH /api/me/profile`, `:block` e `:unblock` (recomendação: só `:block` e `:unblock`, cerca de 60 por hora) | [auditoria](security-audit-2026-10.md) (1) | aberta |
+| 5 | Rate limit em `PATCH /api/me/profile`, `:block` e `:unblock` | [auditoria](security-audit-2026-10.md) (1) | resolvida no #39 (60/h e 120/h, decisão autônoma: revisar valores) |
 | 6 | Ids de outra pessoa nos logs de DEBUG (`ConnectionsResponse`, `PairingResponse`, `BlockedAccountsResponse`) e a regra "relação entre pessoas não vai para o log" na ADR 0013 | [auditoria](security-audit-2026-10.md) (2) | aberta |
 | 7 | `404` de conta inexistente em `:block` e `POST /api/reports` (oráculo de existência): aceitar ou responder igual | [auditoria](security-audit-2026-10.md) (4) | aberta |
 | 8 | Expiração absoluta da sessão web (hoje só 30 min de inatividade) | [auditoria](security-audit-2026-10.md) (5) | aberta |
