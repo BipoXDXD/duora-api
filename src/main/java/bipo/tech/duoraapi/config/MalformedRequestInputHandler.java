@@ -22,9 +22,6 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @Order(Ordered.HIGHEST_PRECEDENCE)
 class MalformedRequestInputHandler {
 
-    /** O teto de texto do ProblemDetail na spec (OpenApiConfiguration). */
-    private static final int PROBLEM_TEXT_MAX_LENGTH = 1_000;
-
     /** O Tomcat recusa a query string ({@code ?=null}, chave vazia) quando o handler lê um parâmetro. */
     @ExceptionHandler(InvalidParameterException.class)
     ProblemDetail handleMalformedQuery(HttpServletRequest request) {
@@ -50,7 +47,7 @@ class MalformedRequestInputHandler {
     private static ProblemDetail badRequest(String detail, HttpServletRequest request) {
         var problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
         String path = request.getRequestURI();
-        problem.setInstance(URI.create(path.length() <= PROBLEM_TEXT_MAX_LENGTH ? path : firstSegmentsOf(path)));
+        problem.setInstance(URI.create(path.length() <= OpenApiConfiguration.PROBLEM_TEXT_MAX_LENGTH ? path : firstSegmentsOf(path)));
         return problem;
     }
 

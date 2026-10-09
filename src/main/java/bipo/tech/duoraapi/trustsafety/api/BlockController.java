@@ -1,5 +1,8 @@
 package bipo.tech.duoraapi.trustsafety.api;
 
+import static bipo.tech.duoraapi.config.ApiSchemaConventions.PROBLEM_JSON;
+import static bipo.tech.duoraapi.config.ApiSchemaConventions.PROBLEM_SCHEMA;
+
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -40,8 +43,6 @@ class BlockController {
     static final int DEFAULT_PAGE_SIZE = 20;
     static final int MAX_PAGE_SIZE = 100;
 
-    private static final String PROBLEM_JSON = "application/problem+json";
-    private static final String PROBLEM_SCHEMA = "#/components/schemas/ProblemDetail";
     private static final String RATE_LIMIT_DESCRIPTION = "Cada chamada, repetida ou não, gasta o limite da conta, "
             + "somado com o do outro: 60 por hora, repostas aos poucos.";
     private static final String ACCOUNT_ID_DESCRIPTION = "Id da outra conta, como o app o recebe ao mostrar a pessoa";

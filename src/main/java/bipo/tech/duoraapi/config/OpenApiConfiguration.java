@@ -53,8 +53,8 @@ class OpenApiConfiguration {
 
     private static final String BEARER_SCHEME = "bearer";
     private static final String SESSION_SCHEME = "session";
-    private static final String PROBLEM_SCHEMA = "ProblemDetail";
-    private static final String PROBLEM_REF = "#/components/schemas/" + PROBLEM_SCHEMA;
+    static final String PROBLEM_SCHEMA = "ProblemDetail";
+    private static final String PROBLEM_REF = ApiSchemaConventions.PROBLEM_SCHEMA;
     private static final String VALIDATION_PROBLEM_SCHEMA = "ValidationProblemDetail";
     private static final String VALIDATION_PROBLEM_REF = "#/components/schemas/" + VALIDATION_PROBLEM_SCHEMA;
     private static final String FIELD_ERROR_SCHEMA = "FieldError";
@@ -76,7 +76,7 @@ class OpenApiConfiguration {
             PathPatternParser.defaultInstance.parse(SecurityConfiguration.ADMIN_ROUTES);
 
     /** Teto dos textos do ProblemDetail: só título e detalhe curtos, nunca stack trace. */
-    private static final int PROBLEM_TEXT_MAX_LENGTH = 1_000;
+    static final int PROBLEM_TEXT_MAX_LENGTH = 1_000;
     private static final int MIN_HTTP_STATUS = 100;
     private static final int MAX_HTTP_STATUS = 599;
 
