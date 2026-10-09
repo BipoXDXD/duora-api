@@ -7,6 +7,7 @@ import static bipo.tech.duoraapi.events.EventFixtures.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Duration;
@@ -108,6 +109,11 @@ class ChatPurgeIT {
         mockMvc.perform(get(messagesPath(eventId, 1)).with(user("ana")))
                 .andExpect(status().isOk())
                 .andExpect(content().json("{\"items\": [], \"nextAfterSeq\": null}", JsonCompareMode.STRICT));
+        mockMvc.perform(get(ChatFixtures.chatPath(eventId, 1)).with(user("ana")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.open").value(false))
+                .andExpect(jsonPath("$.lastSeq").value(0));
+        assertThat(ChatFixtures.messageRows(jdbcClient)).isZero();
     }
 
     @Test
