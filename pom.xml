@@ -32,6 +32,7 @@
         <archunit.version>1.5.1</archunit.version>
         <bucket4j.version>8.21.0</bucket4j.version>
         <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
+        <jqwik.version>1.10.1</jqwik.version>
         <pitest-maven.version>1.30.0</pitest-maven.version>
         <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
         <springdoc-openapi.version>3.1.1</springdoc-openapi.version>
@@ -179,6 +180,15 @@
             <groupId>com.tngtech.archunit</groupId>
             <artifactId>archunit-junit5</artifactId>
             <version>${archunit.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Property-based testing: engine própria da JUnit Platform, roda no Surefire junto com o Jupiter.
+             Configuração (tries, database de falhas em target/) em src/test/resources/junit-platform.properties. -->
+        <dependency>
+            <groupId>net.jqwik</groupId>
+            <artifactId>jqwik</artifactId>
+            <version>${jqwik.version}</version>
             <scope>test</scope>
         </dependency>
 

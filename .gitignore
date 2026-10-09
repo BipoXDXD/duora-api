@@ -44,3 +44,6 @@ livros/
 
 ### Teste de carga (tools/load) ###
 tools/load/results/
+
+### jqwik: a base de falhas vai para target/ (junit-platform.properties); esta linha cobre execução fora do Maven ###
+.jqwik-database
