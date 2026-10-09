@@ -131,8 +131,10 @@ docker start "$jwks" >/dev/null
 # Limites do rate limit (ADR 0006), elevados só onde o cenário gastaria o saldo real:
 # - rodadas: o limite é por conta ADMIN (30/h) e o cenário usa uma conta só para 200 pedidos de rodada.
 #   Um 429 aqui mediria o limite, que já tem teste próprio (RoundRateLimitIT), e não o sorteio.
-# - decisões: o limite por conta (ADR 0019, ramo do rate limit da decisão) ainda não está em main; a variável
-#   é inofensiva enquanto não existir e evita que o 429 apareça no dia em que existir.
+# - decisões: o limite por conta (120/h, ADR 0019) tem teste próprio (DecisionRateLimitIT); um 429 aqui mediria o
+#   limite, e não a disputa do lock.
+# Sem elevação: o limite de edição de perfil (120/h) só é gasto pelo PATCH do seed.js, um por conta, e o de
+# bloqueio (60/h) é de rotas que nenhum cenário chama.
 # A inscrição fica com o limite de produção (60/h por conta): cada conta faz no máximo uns 10 pedidos.
 # CPU e memória da API são os da produção (1 vCPU, 2 GiB; ADR 0014), com o pool e o Tomcat no padrão.
 docker run -d --name "$api" --network "$network" -p 127.0.0.1::8080 \

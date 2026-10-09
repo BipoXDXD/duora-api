@@ -70,8 +70,12 @@ medir no ambiente de homologação, e registre a mudança no RESULTS.md.
 
 - `DUORA_MATCHING_ROUNDRATELIMIT_CAPACITY`: o limite da rodada é por conta ADMIN (30 por hora), e o cenário usa uma
   conta só para 200 pedidos. Um `429` mediria o limite, que já tem teste próprio (`RoundRateLimitIT`).
-- `DUORA_CONNECTIONS_DECISIONRATELIMIT_CAPACITY`: o limite por conta da decisão ainda não está em `main`; a variável é
-  inofensiva enquanto não existir e evita o `429` quando existir.
+- `DUORA_CONNECTIONS_DECISIONRATELIMIT_CAPACITY`: o limite por conta da decisão (120 por hora, PR #25) já está em `main`
+  e tem teste próprio (`DecisionRateLimitIT`). Cada conta faz uns 3 pedidos de decisão, mas o `429` mediria o limite, e
+  não a disputa do lock.
+- **Não precisam de elevação:** o limite de edição de perfil (`DUORA_PROFILES_EDITRATELIMIT_CAPACITY`, 120 por hora por
+  conta) só é gasto pelo `PATCH` do `seed.js`, um por conta; e o de bloqueio (`DUORA_TRUSTSAFETY_BLOCKRATELIMIT_CAPACITY`,
+  60 por hora) pertence a rotas que nenhum cenário chama. Se um cenário passar a usá-los, eleve-os no `run.sh`.
 - A inscrição **mantém** o limite de produção (60 por hora por conta): cada conta faz uns 10 pedidos no máximo.
 
 ## Arquivos
