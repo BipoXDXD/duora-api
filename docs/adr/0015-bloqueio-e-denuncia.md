@@ -93,8 +93,8 @@ NFC e `strip`), com as mesmas proibições da bio (controle, NUL, invisíveis, c
 tabela `rate_limit_bucket` (ADR 0006), chave `report:<conta>`. Por conta, e não por IP: a denúncia exige
 login, e trocar de rede não renova a cota. Acima dela, `429` com `Retry-After`; com o banco fora ou o
 lock preso, `503` (falha fechada). Só a denúncia válida gasta a cota; a que aponta para conta inexistente
-também gasta, o que limita quem tenta adivinhar ids. O bloqueio **não** tem cota: protege quem bloqueia e
-não cria trabalho para ninguém. Valores em `duora.trustsafety.report-rate-limit`.
+também gasta, o que limita quem tenta adivinhar ids. O bloqueio não tinha cota na versão inicial; passou a ter
+em 2026-10-08 (seção "Rate limit de bloqueio e desbloqueio"). Valores em `duora.trustsafety.report-rate-limit`.
 
 **Implementação:** o `config.AccountRateLimit` compartilhado com as inscrições, as rodadas e as decisões
 ([ADR 0016](0016-eventos-e-inscricoes.md), [ADR 0017](0017-pareamento.md), [ADR 0019](0019-decisao-privada-e-conexoes.md)),
@@ -117,6 +117,44 @@ aplicação não importar o adapter). O custo é que um teste do serviço sem ba
 
 Efeitos visíveis, ambos compatíveis: o `detail` do `429` passa de "report quota exceeded; try again later"
 para "rate limit exceeded; try again later" (o mesmo das outras operações), e o `503` ganha `Retry-After: 1`.
+
+### Rate limit de bloqueio e desbloqueio (2026-10-08)
+
+A versão inicial dizia que o bloqueio não precisava de cota: protege quem bloqueia e não cria trabalho para
+ninguém. A auditoria de segurança de outubro de 2026 (`docs/security-audit-2026-10.md`, pendência 1) mostrou
+que o argumento deixa de fora o oráculo: `POST /api/accounts/{accountId}:block` responde `404` para conta
+inexistente e `204` para existente, então um script com um token válido testa ids em série sem custo, e o
+`:block` tem efeito sobre outra pessoa. A denúncia já fechava esse buraco com a cota; o bloqueio ficou sem.
+
+| Opção | Prós | Contras |
+|---|---|---|
+| Sem limite (como estava) | Nada a mudar | Oráculo de existência de conta sem freio, protegido só pelos 74 bits aleatórios do UUIDv7; ninguém sinaliza o abuso |
+| Responder igual para conta existente e inexistente | Acaba com o oráculo | Muda o contrato (o `404` documentado) e esconde do cliente o erro de id errado; contraria o "id inexistente = 404" das outras rotas |
+| Limite só em `:block` | Cobre o oráculo | `:unblock` é igual no custo (uma escrita) e o limite só em um permitiria alternar a operação contra o outro; dois buckets para um mesmo comportamento |
+| **Um bucket por conta para `:block` e `:unblock`** | Cobre o oráculo e o efeito em outra pessoa; um saldo só, como inscrever e cancelar (ADR 0016); mesmo mecanismo das denúncias | Uma ida ao banco por chamada, fora da transação |
+
+**Decisão:** um bucket por conta, chave `block:<conta>` na tabela `rate_limit_bucket` ([ADR
+0006](0006-rate-limit-no-postgresql.md)), consumido no controller antes de qualquer consulta (a ida ao bucket
+acontece fora da transação do serviço). Gastam a repetição idempotente, o `404` de conta inexistente e o
+auto-bloqueio (`400` do domínio); não gastam id que não é UUID (`400` antes do controller), falta de
+credencial (`401`), sessão sem CSRF (`403`) e a listagem `GET /api/me/blocked-accounts`. Acima do limite,
+`429` com `Retry-After` (teto de 86400 s); com o bucket impossível de contar, `503` com `Retry-After: 1`,
+sem gravar nada (falha fechada). O `429` não revela nada além de quantas chamadas a própria conta fez.
+
+**Valor: 60 por hora**, repostas aos poucos (uma por minuto), em `duora.trustsafety.block-rate-limit.capacity`
+e `.period`. O uso humano é bloquear de vez em quando, uma ou poucas pessoas por evento; o caso mais pesado
+que o produto prevê é limpar a lista de uma vez (dezenas de bloqueios e desbloqueios), que cabe no saldo, e o
+clique duplo gasta duas. O valor é o recomendado pela auditoria e igual ao das inscrições, pelo mesmo motivo
+(ação ocasional, por evento). Como defesa contra enumeração, o limite não é a barreira: ela continua sendo os
+74 bits aleatórios do UUIDv7, e a conta com 60 por hora faz 1440 tentativas por dia; o que o limite faz é
+tornar a varredura lenta e visível por conta, e quem tem muitas contas multiplica o teto. A capacidade é
+positiva e o período vai até um dia: qualquer outro valor derruba a subida (`RequiredRateLimitSettingsIT`).
+
+Implementação: `BlockRateLimitProperties` (validada no boot) e `BlockRateLimitConfiguration` (bean
+`blockRateLimit`, qualificado) em `trustsafety.api`, sobre o `config.AccountRateLimit` compartilhado; os
+`429` e `503` saem do `RateLimitProblemHandler` global. Aqui o consumo fica no controller, como em `events`,
+`matching` e `connections`, porque o bloqueio não tem validação de domínio que deva anteceder o gasto, ao
+contrário da denúncia. Testes: `BlockRateLimitIT`.
 
 ### Sem `Idempotency-Key` na denúncia
 
@@ -181,16 +219,17 @@ STRIDE do fluxo (dado sensível: quem bloqueou quem e o relato da denúncia):
 | Information disclosure: B lê a denúncia de A (BOLA) | Consulta por id **e** autor; alheia = mesmo 404 do inexistente, sem dado no corpo | `ReportIT.nobodyReadsSomeoneElsesReport` |
 | Information disclosure: B vê quem A bloqueou | Lista filtrada por quem pede; token só marca posição | `BlockIT.listShowsOnlyTheCallersOwnBlocks`, `pageTokenFromAnotherAccountOnlyPagesTheCallersOwnList` |
 | Information disclosure: quem foi bloqueado descobre o bloqueio | Bloquear e denunciar respondem igual com ou sem bloqueio do outro lado; nenhuma rota diz quem bloqueou você | `BlockIT.blockingSomeoneWhoBlockedYouLooksLikeAnyOtherBlock`, `ReportIT.reportingSomeoneWhoBlockedYouLooksLikeAnyOtherReport` |
-| Information disclosure: enumeração de contas pelo 404 | Ids UUIDv7 não adivinháveis; 404 sem eco; tentativas de denúncia gastam a cota | `BlockIT.blockingAnUnknownAccountIsNotFoundWithoutWriting`, `ReportIT.reportingAnUnknownAccountIsNotFoundWithoutWriting` |
+| Information disclosure: enumeração de contas pelo 404 | Ids UUIDv7 não adivinháveis; 404 sem eco; tentativas de denúncia gastam a cota e as de `:block` gastam o limite de 60/h | `BlockIT.blockingAnUnknownAccountIsNotFoundWithoutWriting`, `ReportIT.reportingAnUnknownAccountIsNotFoundWithoutWriting`, `BlockRateLimitIT.callsOnAnUnknownAccountSpendTheLimitToo` |
 | Information disclosure: relato da denúncia no log (inclusive no DEBUG do Spring MVC, que imprime o corpo lido e escrito) ou ecoado no erro | `toString` redigido no VO e nos DTOs de entrada e saída; mensagens de erro sem o valor | `ReportIT.reportTextNeverReachesTheLog`, `rejectedDescriptionIsNotEchoedInTheResponse`, `SensitiveDataLoggingIT.acceptedReportDescriptionNeverReachesTheLog`, `rejectedReportDescriptionNeverReachesTheLog`, `ReportDescriptionTest`, `FileReportRequestTest`, `ReportResponseTest` (`doesNotExpose...InToString`) |
 | Denial of service: denúncias em massa contra uma pessoa ou para afogar a moderação | Cota de 10/dia por conta, entre réplicas; 429 + `Retry-After`; falha fechada | `ReportIT.reportingAboveTheDailyQuotaIsRejectedWithRetryAfterAndWithoutWriting`, `quotaIsCountedForEachAccountSeparately`, `ReportIT.reportIsRefusedWithoutWritingWhenTheQuotaCannotBeCounted`, `quotaIsKeptUnderTheReportKeyOfTheReporter`, `AccountRateLimitIT` |
+| Denial of service: bloquear e desbloquear em laço (escrita sem freio, oráculo de conta) | Limite de 60/h por conta para `:block` e `:unblock` juntos, entre réplicas; 429 + `Retry-After`; falha fechada | `BlockRateLimitIT.callsAboveTheLimitAreRejectedWithRetryAfterAndBlockNothing`, `blockingAndUnblockingShareOneLimit`, `theLimitIsCountedForEachAccountSeparately`, `blockIsRefusedWithoutWritingWhenTheLimitCannotBeCounted`, `unblockIsRefusedWithoutWritingWhenTheLimitCannotBeCounted` |
 | Denial of service: entrada grande ou inválida vira 500 | Limites na descrição e no `maxPageSize`; 400 sem gravar | `ReportIT.invalidInputIsRejectedWithoutWriting`, `descriptionOfAThousandCharactersIsAccepted`, `BlockIT.pageSizeOutsideTheLimitsIsRejected`, `malformedPageTokenIsRejected`, `ReportDescriptionTest` |
 | Elevation of privilege: rota nova pública por engano | Negar por padrão | `DenyByDefaultIT` (inclui as cinco rotas), `BlockIT.anonymousCannotBlock`, `ReportIT.anonymousCannotReportNorRead` |
 
 Contrato ([ADR 0012](0012-contrato-openapi.md)): `OpenApiContractIT.blockAndReportDocumentTheirContract`
 confere na spec os erros, a cota (429 + `Retry-After`), o `Location`, a paginação e a lista de motivos.
 No Spectral, a regra `owasp:api2:2023-no-credentials-in-url` fica desligada só para `pageToken`, que é
-cursor e não credencial. No Schemathesis, a cota de denúncias sobe em `infra/docker/contract-test.sh`
+cursor e não credencial. No Schemathesis, a cota de denúncias e o limite de bloqueios sobem em `infra/docker/contract-test.sh`
 (senão o fuzzing pararia no 429), e o 400 entra entre as respostas esperadas para corpo válido em
 `POST /api/reports` (motivo `OTHER` sem descrição, caracteres invisíveis) e em
 `GET /api/me/blocked-accounts` (pageToken que a API não gerou). O fuzzing achou dois defeitos, corrigidos

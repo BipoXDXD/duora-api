@@ -389,11 +389,14 @@ de admin a alguém, atribua o app role `ADMIN` da `duora-api` ao usuário em *En
   rejeitados com `400`.
 - **Perfil:** cada usuário só alcança o próprio (`/api/me/profile`, sem id na rota). Região só como
   UF (`BR-SP`), nunca localização precisa; data de nascimento só de maior de idade, informada uma vez,
-  e a elegibilidade é calculada na hora, nunca guardada ([ADR 0011](docs/adr/0011-conta-e-perfil.md)).
+  e a elegibilidade é calculada na hora, nunca guardada. Cada conta pode enviar 120 edições por hora
+  (`duora.profiles.edit-rate-limit.*`), com `429` e `Retry-After` ([ADR 0011](docs/adr/0011-conta-e-perfil.md)).
 - **Bloqueio e denúncia:** a lista de bloqueios e as denúncias só aparecem para quem as fez; a
   denúncia de outra pessoa responde `404`, igual a um id inexistente. A resposta de `:block` não
   revela se a outra pessoa bloqueou você. Cada conta faz até 10 denúncias por dia
-  (`duora.trustsafety.report-rate-limit.*`), contadas no PostgreSQL, e o relato nunca vai para o log
+  (`duora.trustsafety.report-rate-limit.*`) e até 60 bloqueios ou desbloqueios por hora, somados
+  (`duora.trustsafety.block-rate-limit.*`; o `404` de conta inexistente também gasta, o que freia a
+  enumeração de ids), contados no PostgreSQL, com `429` e `Retry-After`; o relato nunca vai para o log
   ([ADR 0015](docs/adr/0015-bloqueio-e-denuncia.md)).
 - **Eventos:** ninguém vê quem se inscreveu: cada pessoa só alcança a própria inscrição (sem id na rota), e
   o ADMIN só vê a contagem. Rascunho responde como evento inexistente. A capacidade vale sob concorrência.
