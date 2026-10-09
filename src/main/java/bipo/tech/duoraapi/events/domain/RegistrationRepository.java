@@ -5,9 +5,12 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -65,6 +68,22 @@ public class RegistrationRepository {
                 .param("eventId", eventId)
                 .query(Long.class)
                 .single();
+    }
+
+    /**
+     * Quantas inscrições cada evento tem, numa consulta só. Evento sem inscrição não aparece no mapa, e uma lista
+     * vazia nem chega ao banco.
+     */
+    public Map<UUID, Long> countByEvents(Collection<UUID> eventIds) {
+        if (eventIds.isEmpty()) {
+            return Map.of();
+        }
+        return jdbcClient.sql("select event_id, count(*) as total from registration where event_id in (:eventIds) group by event_id")
+                .param("eventIds", eventIds)
+                .query((row, rowNumber) -> Map.entry(row.getObject("event_id", UUID.class), row.getLong("total")))
+                .list()
+                .stream()
+                .collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     /** Quem está inscrito no evento, na ordem dos ids. A PK (evento, conta) atende a consulta. */

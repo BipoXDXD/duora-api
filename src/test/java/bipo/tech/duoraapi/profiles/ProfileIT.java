@@ -384,7 +384,7 @@ class ProfileIT {
         mockMvc.perform(get(CURRENT_USER_PATH).with(ana()))
                 .andExpect(status().isOk())
                 .andExpect(content().json("""
-                        {"displayName": "Ana do Entra", "profileComplete": false}
+                        {"displayName": "Ana do Entra", "profileComplete": false, "roles": []}
                         """, JsonCompareMode.STRICT));
     }
 
@@ -395,7 +395,18 @@ class ProfileIT {
         mockMvc.perform(get(CURRENT_USER_PATH).with(ana()))
                 .andExpect(status().isOk())
                 .andExpect(content().json("""
-                        {"displayName": "Ana do Entra", "profileComplete": true}
+                        {"displayName": "Ana do Entra", "profileComplete": true, "roles": []}
+                        """, JsonCompareMode.STRICT));
+    }
+
+    /** Os papéis vêm do servidor: nada que o cliente mande na query ou nos headers os concede. */
+    @Test
+    void currentUserRolesIgnoreWhatTheClientSends() throws Exception {
+        mockMvc.perform(get(CURRENT_USER_PATH).param("roles", "ADMIN").header("X-Roles", "ADMIN")
+                        .header("X-Forwarded-Roles", "ADMIN").with(ana()))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {"displayName": "Ana do Entra", "profileComplete": false, "roles": []}
                         """, JsonCompareMode.STRICT));
     }
 

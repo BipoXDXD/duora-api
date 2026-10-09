@@ -178,18 +178,45 @@ class WebLoginIT {
     }
 
     /**
-     * O front só precisa do nome para exibir e de saber se falta completar o perfil; e-mail, oid, id da
-     * conta e papéis ficam no servidor.
+     * O front só precisa do nome para exibir, de saber se falta completar o perfil e dos papéis para escolher
+     * as telas; e-mail, oid e id da conta ficam no servidor. O login do teste concede o papel ADMIN.
      */
     @Test
-    void currentUserExposesOnlyDisplayNameAndProfileStatus() throws Exception {
+    void currentUserExposesOnlyDisplayNameProfileStatusAndRoles() throws Exception {
         var session = logIn();
 
         mockMvc.perform(get(CURRENT_USER_PATH).cookie(session))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(content().json("""
-                        {"displayName": "Ana Souza", "profileComplete": false}
+                        {"displayName": "Ana Souza", "profileComplete": false, "roles": ["ADMIN"]}
+                        """, JsonCompareMode.STRICT));
+    }
+
+    /** Sem a claim roles no access token da API, a sessão não tem papel nenhum: a lista vem vazia, não ausente. */
+    @Test
+    void currentUserWithoutRolesInTheAccessTokenHasNone() throws Exception {
+        var session = sessionCookieOf(completeLogin(startLogin(), UnaryOperator.identity(),
+                claims -> claims.claim("roles", null)));
+
+        mockMvc.perform(get(CURRENT_USER_PATH).cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {"displayName": "Ana Souza", "profileComplete": false, "roles": []}
+                        """, JsonCompareMode.STRICT));
+        mockMvc.perform(get(ADMIN_ONLY_PATH).cookie(session)).andExpect(status().isForbidden());
+    }
+
+    /** Um papel que o Entra emita e a API não conheça não aparece, e o conhecido continua aparecendo. */
+    @Test
+    void currentUserDoesNotExposeRolesTheApiDoesNotKnow() throws Exception {
+        var session = sessionCookieOf(completeLogin(startLogin(), UnaryOperator.identity(),
+                claims -> claims.claim("roles", List.of("Moderator", "ADMIN"))));
+
+        mockMvc.perform(get(CURRENT_USER_PATH).cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {"displayName": "Ana Souza", "profileComplete": false, "roles": ["ADMIN"]}
                         """, JsonCompareMode.STRICT));
     }
 
@@ -202,7 +229,7 @@ class WebLoginIT {
         mockMvc.perform(get(CURRENT_USER_PATH).cookie(session))
                 .andExpect(status().isOk())
                 .andExpect(content().json("""
-                        {"displayName": null, "profileComplete": false}
+                        {"displayName": null, "profileComplete": false, "roles": ["ADMIN"]}
                         """, JsonCompareMode.STRICT));
     }
 

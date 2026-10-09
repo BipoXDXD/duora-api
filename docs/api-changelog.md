@@ -34,6 +34,23 @@ Chat temporário da rodada ([ADR 0021](adr/0021-chat-temporario-e-reconexao.md),
   com `Retry-After`); `503` com `Retry-After: 1` se outro envio segurar o chat além do teto ou se o limite não
   puder ser contado. O `duora-web` gera a chave ao criar o rascunho e a reutiliza em todo reenvio.
 
+Mudança compatível ([ADR 0002](adr/0002-front-web-com-bff.md)):
+
+- `GET /api/me` (`getCurrentUser`): a resposta ganha `roles`, lista dos papéis de quem está logado, sempre presente
+  (`[]` para o usuário comum, `["ADMIN"]` para o administrador; hoje o único valor possível é `ADMIN`). Vem das
+  mesmas authorities que a segurança aplica nas rotas, pela sessão web e pelo bearer; papel que o Entra emita e a
+  API não conheça não aparece. O `duora-web` pode usar `roles` para mostrar ou esconder a área administrativa, sem
+  deixar de tratar o `403` das rotas, e deve ignorar valor de papel que não conheça.
+
+Mudança compatível ([ADR 0016](adr/0016-eventos-e-inscricoes.md)):
+
+- `GET /api/admin/events` (`listAdminEvents`, tag `admin-events`, só ADMIN): a lista de todos os eventos, rascunhos
+  incluídos, do início mais distante ao mais antigo, no envelope `{items, nextPageToken}` com itens no formato do
+  `AdminEventResponse` (`status` e `registrationCount`, nunca quem se inscreveu). Parâmetros opcionais: `maxPageSize`
+  de 1 a 50 (padrão 20), `pageToken` e `status` (`DRAFT`, `PUBLISHED` ou `CANCELLED`; sem ele, todos). Valor fora
+  disso, ou token que a API não gerou, é `400`; sem o papel, `403`. Evento encerrado continua na lista. O `duora-web`
+  pode trocar a leitura de evento a evento por esta rota na área administrativa.
+
 Mudança compatível ([ADR 0015](adr/0015-bloqueio-e-denuncia.md)):
 
 - `POST /api/reports` (`fileReport`): a cota de denúncias passa a usar o mesmo limite por conta das outras

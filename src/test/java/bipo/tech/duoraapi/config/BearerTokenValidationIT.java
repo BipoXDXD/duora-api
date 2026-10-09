@@ -125,13 +125,36 @@ class BearerTokenValidationIT {
 
     /** A porta bearer responde o mesmo contrato da sessão web, com o nome vindo do access token. */
     @Test
-    void currentUserFromBearerTokenExposesOnlyDisplayNameAndProfileStatus() throws Exception {
+    void currentUserFromBearerTokenExposesOnlyDisplayNameProfileStatusAndRoles() throws Exception {
         var token = signed(userClaims().claim("name", "Ana Souza").claim("email", "ana@example.com").build());
 
         mockMvc.perform(get("/api/me").header(HttpHeaders.AUTHORIZATION, bearer(token)))
                 .andExpect(status().isOk())
                 .andExpect(content().json("""
-                        {"displayName": "Ana Souza", "profileComplete": false}
+                        {"displayName": "Ana Souza", "profileComplete": false, "roles": []}
+                        """, JsonCompareMode.STRICT));
+    }
+
+    @Test
+    void currentUserFromBearerTokenWithTheAdminRoleListsIt() throws Exception {
+        var token = signed(adminClaims().claim("name", "Ana Souza").build());
+
+        mockMvc.perform(get("/api/me").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {"displayName": "Ana Souza", "profileComplete": false, "roles": ["ADMIN"]}
+                        """, JsonCompareMode.STRICT));
+    }
+
+    /** Um papel que o Entra emita e a API não conheça não aparece; o usuário fica como comum. */
+    @Test
+    void currentUserFromBearerTokenDoesNotExposeRolesTheApiDoesNotKnow() throws Exception {
+        var token = signed(userClaims().claim("name", "Ana Souza").claim("roles", List.of("Moderator", "admin")).build());
+
+        mockMvc.perform(get("/api/me").header(HttpHeaders.AUTHORIZATION, bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {"displayName": "Ana Souza", "profileComplete": false, "roles": []}
                         """, JsonCompareMode.STRICT));
     }
 

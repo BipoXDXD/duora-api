@@ -16,4 +16,9 @@ public record AdminEventView(UUID id, String title, String description, Instant 
                 registrationCount);
     }
 
+    /** Onde a lista do ADMIN recomeça depois deste evento. */
+    PageCursor cursor() {
+        return new PageCursor(startsAt, id);
+    }
+
 }
