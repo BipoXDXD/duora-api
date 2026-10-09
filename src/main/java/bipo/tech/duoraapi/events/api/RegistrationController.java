@@ -62,7 +62,8 @@ class RegistrationController {
             description = "Sem corpo. Idempotente pela chave evento + conta: repetir devolve a mesma inscrição, com "
                     + "a mesma data, por isso dispensa If-Match e Idempotency-Key (docs/adr/0016). Exige perfil "
                     + "completo e 18 anos. Cada chamada, repetida ou não, gasta o limite da conta, compartilhado "
-                    + "com cancelMyRegistration: 60 por hora, repostas aos poucos.")
+                    + "com cancelMyRegistration: " + RegistrationRateLimitProperties.DEFAULT_CAPACITY + " por hora, "
+                    + "repostas aos poucos.")
     @ApiResponse(responseCode = "201", description = "A inscrição criada",
             headers = @Header(name = "Location", required = true, description = "Endereço da inscrição",
                     schema = @Schema(type = "string", format = "uri", maxLength = ApiSchemas.LOCATION_MAX_LENGTH)))
@@ -124,7 +125,8 @@ class RegistrationController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(operationId = "cancelMyRegistration", summary = "Cancela a própria inscrição no evento",
             description = "Idempotente: sem inscrição, também responde 204. Só até o evento começar. Cada chamada "
-                    + "gasta o limite da conta, compartilhado com registerForEvent: 60 por hora, repostas aos poucos.")
+                    + "gasta o limite da conta, compartilhado com registerForEvent: " + RegistrationRateLimitProperties.DEFAULT_CAPACITY
+                    + " por hora, repostas aos poucos.")
     @ApiResponse(responseCode = "204", description = "Quem chama não está inscrito no evento")
     @ApiResponse(responseCode = "400", description = "Id que não é UUID",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
@@ -158,7 +160,7 @@ class RegistrationController {
             description = "Em eventos que ainda não acabaram, inclusive cancelados e em andamento, do início mais "
                     + "próximo ao mais distante, paginadas por cursor. A última página vem com nextPageToken null.")
     @ApiResponse(responseCode = "200", description = "Uma página das inscrições")
-    @ApiResponse(responseCode = "400", description = "maxPageSize fora de 1 a 50, ou pageToken que a API não gerou",
+    @ApiResponse(responseCode = "400", description = "maxPageSize fora de 1 a " + PageSize.MAX + ", ou pageToken que a API não gerou",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     PageResponse<MyRegistrationResponse> mine(AccountId account,
             @Parameter(description = "Quantas inscrições no máximo nesta página",

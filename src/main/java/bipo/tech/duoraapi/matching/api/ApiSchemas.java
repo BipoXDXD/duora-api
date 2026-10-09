@@ -1,6 +1,7 @@
 package bipo.tech.duoraapi.matching.api;
 
 import bipo.tech.duoraapi.config.ApiSchemaConventions;
+import bipo.tech.duoraapi.matching.Pairings;
 
 /** Tetos e textos repetidos da spec das rotas de pareamento; o lint OWASP exige limite em todo texto (docs/adr/0012). */
 final class ApiSchemas {
@@ -15,6 +16,9 @@ final class ApiSchemas {
     /** A capacidade máxima de um evento (docs/adr/0016): ninguém além dos inscritos entra no sorteio. */
     static final int MAX_PEOPLE = 200;
     static final int MAX_PAIRS = MAX_PEOPLE / 2;
+
+    static final String FIRST_ROUND = "" + Pairings.FIRST_ROUND;
+    static final String LAST_ROUND = "" + Pairings.LAST_ROUND;
 
     static final String EVENT_ID_DESCRIPTION = "Id do evento";
     static final String ROUND_NUMBER_DESCRIPTION = "Número da rodada no evento, a partir de 1";

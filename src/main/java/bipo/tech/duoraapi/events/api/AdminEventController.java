@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 import bipo.tech.duoraapi.events.application.AdminEventView;
 import bipo.tech.duoraapi.events.application.EventAdministrationService;
 import bipo.tech.duoraapi.events.application.ResultPage;
+import bipo.tech.duoraapi.events.domain.Capacity;
 import bipo.tech.duoraapi.events.domain.EventStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -60,7 +61,8 @@ class AdminEventController {
                     + "inscreveram, nunca quem. A última página vem com nextPageToken null.")
     @ApiResponse(responseCode = "200", description = "Uma página dos eventos")
     @ApiResponse(responseCode = "400",
-            description = "maxPageSize fora de 1 a 50, status que não é DRAFT, PUBLISHED nem CANCELLED, ou "
+            description = "maxPageSize fora de 1 a " + PageSize.MAX + ", status que não é DRAFT, PUBLISHED nem "
+                    + "CANCELLED, ou "
                     + "pageToken que a API não gerou",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     PageResponse<AdminEventResponse> list(
@@ -91,7 +93,8 @@ class AdminEventController {
                     schema = @Schema(type = "string", format = "uri", maxLength = ApiSchemas.LOCATION_MAX_LENGTH)))
     @ApiResponse(responseCode = "400",
             description = "Campo ausente ou inválido (texto, horário sem fuso, início no passado ou além de um ano, "
-                    + "duração acima de 12 horas, capacidade fora de 2 a 200), JSON malformado ou campo desconhecido",
+                    + "duração acima de 12 horas, capacidade fora de " + Capacity.MIN_PLACES + " a " + Capacity.MAX_PLACES
+                    + "), JSON malformado ou campo desconhecido",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     ResponseEntity<AdminEventResponse> create(@RequestBody CreateEventRequest request) {
         AdminEventView event = administration.createDraft(request.eventTitle(), request.eventDescription(),

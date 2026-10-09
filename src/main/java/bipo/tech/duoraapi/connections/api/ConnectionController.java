@@ -37,7 +37,7 @@ class ConnectionController {
             description = "Pessoas com quem houve interesse mútuo depois de uma rodada, da conexão mais recente "
                     + "para a mais antiga, paginadas por cursor. A última página vem com nextPageToken null.")
     @ApiResponse(responseCode = "200", description = "Uma página das conexões")
-    @ApiResponse(responseCode = "400", description = "maxPageSize fora de 1 a 100, ou pageToken que a API não gerou",
+    @ApiResponse(responseCode = "400", description = "maxPageSize fora de 1 a " + MAX_PAGE_SIZE + ", ou pageToken que a API não gerou",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     ConnectionsResponse mine(AccountId account,
             @Parameter(description = "Quantas conexões no máximo nesta página",

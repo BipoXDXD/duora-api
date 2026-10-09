@@ -24,6 +24,7 @@ import bipo.tech.duoraapi.chat.application.SendOutcome;
 import bipo.tech.duoraapi.chat.domain.ChatMessageText;
 import bipo.tech.duoraapi.config.AccountRateLimit;
 import bipo.tech.duoraapi.identity.AccountId;
+import bipo.tech.duoraapi.trustsafety.Reports;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.headers.Header;
@@ -58,7 +59,8 @@ class ChatController {
 
     private static final String NOT_IN_THE_PAIR = "Quem chama não formou par nessa rodada: ficou de fora, não "
             + "estava no sorteio, ou a rodada ou o evento não existem";
-    private static final String BAD_PATH = "Id que não é UUID, ou número fora de 1 a 100";
+    private static final String BAD_PATH = "Id que não é UUID, ou número fora de " + ApiSchemas.FIRST_ROUND + " a "
+            + ApiSchemas.LAST_ROUND;
 
     private final ChatService chats;
     private final AccountRateLimit rateLimit;
@@ -80,12 +82,8 @@ class ChatController {
     @ApiResponse(responseCode = "404", description = NOT_IN_THE_PAIR,
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     ChatResponse chat(
-            @Parameter(description = ApiSchemas.EVENT_ID_DESCRIPTION, schema = @Schema(type = "string",
-                    format = "uuid", minLength = ApiSchemas.UUID_LENGTH, maxLength = ApiSchemas.UUID_LENGTH))
-            @PathVariable UUID eventId,
-            @Parameter(description = ApiSchemas.ROUND_NUMBER_DESCRIPTION, schema = @Schema(type = "integer",
-                    format = "int32", minimum = ApiSchemas.FIRST_ROUND, maximum = ApiSchemas.LAST_ROUND))
-            @PathVariable int number,
+            @EventIdPathParameter @PathVariable UUID eventId,
+            @RoundNumberPathParameter @PathVariable int number,
             AccountId account) {
         return ChatResponse.of(chats.chatOf(eventId, ChatParameters.roundNumber(number), account));
     }
@@ -96,18 +94,14 @@ class ChatController {
                     + "nextAfterSeq até ele vir null; depois, faça polling com afterSeq igual à maior posição "
                     + "já vista. Uma lacuna nas posições quer dizer mensagem perdida: peça de novo.")
     @ApiResponse(responseCode = "200", description = "Uma página das mensagens")
-    @ApiResponse(responseCode = "400", description = BAD_PATH + ", afterSeq fora de 0 a 300 ou maxPageSize fora "
-            + "de 1 a 100",
+    @ApiResponse(responseCode = "400", description = BAD_PATH + ", afterSeq fora de 0 a " + ApiSchemas.MAX_MESSAGES
+            + " ou maxPageSize fora de 1 a " + ChatParameters.MAX_PAGE_SIZE,
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     @ApiResponse(responseCode = "404", description = NOT_IN_THE_PAIR,
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     ChatMessagesResponse messages(
-            @Parameter(description = ApiSchemas.EVENT_ID_DESCRIPTION, schema = @Schema(type = "string",
-                    format = "uuid", minLength = ApiSchemas.UUID_LENGTH, maxLength = ApiSchemas.UUID_LENGTH))
-            @PathVariable UUID eventId,
-            @Parameter(description = ApiSchemas.ROUND_NUMBER_DESCRIPTION, schema = @Schema(type = "integer",
-                    format = "int32", minimum = ApiSchemas.FIRST_ROUND, maximum = ApiSchemas.LAST_ROUND))
-            @PathVariable int number,
+            @EventIdPathParameter @PathVariable UUID eventId,
+            @RoundNumberPathParameter @PathVariable int number,
             AccountId account,
             @Parameter(description = "Só mensagens com posição maior que esta; ausente na primeira leitura",
                     schema = @Schema(type = "integer", format = "int32", minimum = "0",
@@ -129,18 +123,14 @@ class ChatController {
     @Operation(operationId = "getMyRoundChatMessage", summary = "Lê uma mensagem do chat da rodada",
             description = "A mensagem numa posição do chat de quem chama.")
     @ApiResponse(responseCode = "200", description = "A mensagem")
-    @ApiResponse(responseCode = "400", description = BAD_PATH + ", ou posição fora de 1 a 300",
+    @ApiResponse(responseCode = "400", description = BAD_PATH + ", ou posição fora de 1 a " + ApiSchemas.MAX_MESSAGES,
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     @ApiResponse(responseCode = "404", description = "Não há mensagem nessa posição, ou quem chama não formou par "
             + "nessa rodada",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     ChatMessageResponse message(
-            @Parameter(description = ApiSchemas.EVENT_ID_DESCRIPTION, schema = @Schema(type = "string",
-                    format = "uuid", minLength = ApiSchemas.UUID_LENGTH, maxLength = ApiSchemas.UUID_LENGTH))
-            @PathVariable UUID eventId,
-            @Parameter(description = ApiSchemas.ROUND_NUMBER_DESCRIPTION, schema = @Schema(type = "integer",
-                    format = "int32", minimum = ApiSchemas.FIRST_ROUND, maximum = ApiSchemas.LAST_ROUND))
-            @PathVariable int number,
+            @EventIdPathParameter @PathVariable UUID eventId,
+            @RoundNumberPathParameter @PathVariable int number,
             @Parameter(description = "A posição da mensagem no chat", schema = @Schema(type = "integer",
                     format = "int32", minimum = "1", maximum = ApiSchemas.MAX_MESSAGES))
             @PathVariable int seq,
@@ -157,15 +147,16 @@ class ChatController {
                     + "timeout, aba recarregada): a mesma chave com o mesmo texto devolve a mesma mensagem "
                     + "(200), mesmo depois de o chat fechar. Com o chat fechado, pelo motivo que for, a resposta "
                     + "é 409 com reason CHAT_CLOSED; leia o chat de novo. Cada chamada, repetida ou não, gasta "
-                    + "o limite da conta: 20 por minuto, repostas aos poucos.")
+                    + "o limite da conta: " + ChatRateLimitProperties.DEFAULT_CAPACITY + " por minuto, repostas aos "
+                    + "poucos.")
     @ApiResponse(responseCode = "201", description = "A mensagem gravada",
             headers = @Header(name = "Location", required = true, description = "Endereço da mensagem",
                     schema = @Schema(type = "string", format = "uri", maxLength = ApiSchemas.LOCATION_MAX_LENGTH)))
     @ApiResponse(responseCode = "200",
             description = "A mensagem que a mesma Idempotency-Key já tinha gravado, com o mesmo texto")
     @ApiResponse(responseCode = "400",
-            description = BAD_PATH + ", Idempotency-Key ausente ou que não é UUID, texto vazio, com mais de 500 "
-                    + "caracteres ou com caractere proibido, JSON malformado ou campo desconhecido",
+            description = BAD_PATH + ", Idempotency-Key ausente ou que não é UUID, texto vazio, com mais de " + ChatMessageText.MAX_LENGTH
+                    + " caracteres ou com caractere proibido, JSON malformado ou campo desconhecido",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     @ApiResponse(responseCode = "404", description = NOT_IN_THE_PAIR,
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
@@ -188,12 +179,8 @@ class ChatController {
                             maximum = ChatExceptionHandler.RETRY_AFTER_SECONDS)),
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     ResponseEntity<ChatMessageResponse> send(
-            @Parameter(description = ApiSchemas.EVENT_ID_DESCRIPTION, schema = @Schema(type = "string",
-                    format = "uuid", minLength = ApiSchemas.UUID_LENGTH, maxLength = ApiSchemas.UUID_LENGTH))
-            @PathVariable UUID eventId,
-            @Parameter(description = ApiSchemas.ROUND_NUMBER_DESCRIPTION, schema = @Schema(type = "integer",
-                    format = "int32", minimum = ApiSchemas.FIRST_ROUND, maximum = ApiSchemas.LAST_ROUND))
-            @PathVariable int number,
+            @EventIdPathParameter @PathVariable UUID eventId,
+            @RoundNumberPathParameter @PathVariable int number,
             @Parameter(description = "Gerada pelo cliente para o rascunho e repetida em todo reenvio dele",
                     schema = @Schema(type = "string", format = "uuid", minLength = ApiSchemas.UUID_LENGTH,
                             maxLength = ApiSchemas.UUID_LENGTH))
@@ -223,13 +210,15 @@ class ChatController {
             description = "Cria uma denúncia contra o par, com uma cópia da mensagem guardada para a moderação: a "
                     + "cópia continua depois que o chat é apagado, 24 h após o fim do evento. Vale com o chat "
                     + "fechado e depois de bloquear o par. Só a mensagem do outro pode ser denunciada. A cota é a "
-                    + "mesma de fileReport: 10 denúncias por dia, somando as duas rotas. Denunciar não bloqueia: "
+                    + "mesma de fileReport: " + Reports.DEFAULT_DAILY_LIMIT + " denúncias por dia, somando as duas rotas. "
+                    + "Denunciar não bloqueia: "
                     + "para isso, chame blockAccount.")
     @ApiResponse(responseCode = "201", description = "A denúncia criada",
             headers = @Header(name = "Location", required = true, description = "Endereço da denúncia criada",
                     schema = @Schema(type = "string", format = "uri", maxLength = ApiSchemas.LOCATION_MAX_LENGTH)))
     @ApiResponse(responseCode = "400",
-            description = BAD_PATH + ", posição fora de 1 a 300, mensagem enviada por quem chama, motivo OTHER sem "
+            description = BAD_PATH + ", posição fora de 1 a " + ApiSchemas.MAX_MESSAGES + ", mensagem enviada por quem chama, "
+                    + "motivo OTHER sem "
                     + "descrição, descrição inválida, JSON malformado ou campo desconhecido",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     @ApiResponse(responseCode = "404", description = "Não há mensagem nessa posição, ou quem chama não formou par "
@@ -248,12 +237,8 @@ class ChatController {
                             maximum = AccountRateLimit.UNAVAILABLE_RETRY_AFTER_SECONDS)),
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     ResponseEntity<ChatMessageReportResponse> report(
-            @Parameter(description = ApiSchemas.EVENT_ID_DESCRIPTION, schema = @Schema(type = "string",
-                    format = "uuid", minLength = ApiSchemas.UUID_LENGTH, maxLength = ApiSchemas.UUID_LENGTH))
-            @PathVariable UUID eventId,
-            @Parameter(description = ApiSchemas.ROUND_NUMBER_DESCRIPTION, schema = @Schema(type = "integer",
-                    format = "int32", minimum = ApiSchemas.FIRST_ROUND, maximum = ApiSchemas.LAST_ROUND))
-            @PathVariable int number,
+            @EventIdPathParameter @PathVariable UUID eventId,
+            @RoundNumberPathParameter @PathVariable int number,
             @Parameter(description = "A posição da mensagem do par no chat", schema = @Schema(type = "integer",
                     format = "int32", minimum = "1", maximum = ApiSchemas.MAX_MESSAGES))
             @PathVariable int seq,

@@ -56,13 +56,15 @@ class DecisionController {
             description = "Uma decisão por pessoa e rodada, e final: repetir a mesma escolha devolve a mesma "
                     + "decisão (200); a outra escolha é recusada (409). A resposta é a mesma qualquer que seja a "
                     + "decisão do par; se os dois disserem sim, a conexão aparece em listMyConnections. Cada "
-                    + "chamada, repetida ou não, gasta o limite da conta: 120 por hora, repostas aos poucos.")
+                    + "chamada, repetida ou não, gasta o limite da conta: " + DecisionRateLimitProperties.DEFAULT_CAPACITY + " por hora, repostas "
+                    + "aos poucos.")
     @ApiResponse(responseCode = "201", description = "A decisão gravada",
             headers = @Header(name = "Location", required = true, description = "Endereço da decisão",
                     schema = @Schema(type = "string", format = "uri", maxLength = ApiSchemas.LOCATION_MAX_LENGTH)))
     @ApiResponse(responseCode = "200", description = "A decisão que já existia, com a mesma escolha")
     @ApiResponse(responseCode = "400",
-            description = "Id que não é UUID, número fora de 1 a 100, interested ausente ou que não é booleano, "
+            description = "Id que não é UUID, número fora de " + ApiSchemas.FIRST_ROUND + " a " + ApiSchemas.LAST_ROUND
+                    + ", interested ausente ou que não é booleano, "
                     + "JSON malformado ou campo desconhecido",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     @ApiResponse(responseCode = "404",
@@ -109,7 +111,8 @@ class DecisionController {
     @Operation(operationId = "getMyDecision", summary = "Lê a própria decisão sobre o par da rodada",
             description = "Só a de quem chama. Sem decisão gravada, 404, tenha a pessoa formado par ou não.")
     @ApiResponse(responseCode = "200", description = "A decisão de quem chama")
-    @ApiResponse(responseCode = "400", description = "Id que não é UUID, ou número fora de 1 a 100",
+    @ApiResponse(responseCode = "400", description = "Id que não é UUID, ou número fora de " + ApiSchemas.FIRST_ROUND + " a "
+                    + ApiSchemas.LAST_ROUND,
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     @ApiResponse(responseCode = "404", description = "Quem chama não decidiu nessa rodada",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))

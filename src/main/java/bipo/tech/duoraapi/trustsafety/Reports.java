@@ -18,6 +18,13 @@ public class Reports {
     /** Teto do relato, em caracteres: quem documenta o campo na própria rota repete o mesmo limite. */
     public static final int DESCRIPTION_MAX_LENGTH = ReportDescription.MAX_LENGTH;
 
+    /**
+     * A capacidade do limite de denúncias em application.properties (por dia). As descrições da spec, aqui e na
+     * rota do chat, citam este número, porque uma anotação só aceita constante; o RateLimitDescriptionsTest falha
+     * se ele divergir.
+     */
+    public static final int DEFAULT_DAILY_LIMIT = 10;
+
     private final ReportService reports;
 
     Reports(ReportService reports) {

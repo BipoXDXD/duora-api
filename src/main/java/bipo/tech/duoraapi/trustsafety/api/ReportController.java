@@ -18,6 +18,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import bipo.tech.duoraapi.config.AccountRateLimit;
 import bipo.tech.duoraapi.identity.AccountId;
+import bipo.tech.duoraapi.trustsafety.Reports;
 import bipo.tech.duoraapi.trustsafety.application.ReportService;
 import bipo.tech.duoraapi.trustsafety.domain.UnknownAccountException;
 import io.swagger.v3.oas.annotations.Operation;
@@ -51,7 +52,8 @@ class ReportController {
     @PostMapping(PATH)
     @Operation(operationId = "fileReport", summary = "Denuncia outra conta",
             description = "Cria a denúncia no estado OPEN, para a moderação. Denunciar não bloqueia: para isso, "
-                    + "chame blockAccount. Cada conta pode fazer 10 denúncias por dia, repostas aos poucos.")
+                    + "chame blockAccount. Cada conta pode fazer " + Reports.DEFAULT_DAILY_LIMIT + " denúncias por dia, repostas aos "
+                    + "poucos.")
     @ApiResponse(responseCode = "201", description = "A denúncia criada",
             headers = @Header(name = "Location", required = true, description = "Endereço da denúncia criada",
                     schema = @Schema(type = "string", format = "uri", maxLength = 2048)))
