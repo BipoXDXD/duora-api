@@ -363,6 +363,8 @@ class ChatIT {
                 start.await();
                 long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
                 while (seen.size() < total && System.nanoTime() < deadline) {
+                    // Lido antes do GET: só uma página vazia pedida depois do último commit prova um pulo.
+                    boolean writersDoneBeforeRead = !writing.get();
                     int afterSeq = seen.isEmpty() ? 0 : seen.getLast();
                     String page = mockMvc.perform(get(messagesPath(eventId, 1))
                                     .param("afterSeq", Integer.toString(afterSeq)).with(user("bruno")))
@@ -373,7 +375,7 @@ class ChatIT {
                             .containsExactlyElementsOf(IntStream.rangeClosed(afterSeq + 1, afterSeq + seqs.size())
                                     .boxed().toList());
                     seen.addAll(seqs);
-                    if (!writing.get() && seqs.isEmpty() && seen.size() < total) {
+                    if (writersDoneBeforeRead && seqs.isEmpty() && seen.size() < total) {
                         throw new AssertionError("o leitor parou em " + seen.size() + " de " + total);
                     }
                 }
