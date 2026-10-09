@@ -6,3 +6,5 @@ aa29fafcbf8e4469e3f9cf7e4d2f0eb8a302ddf1:src/test/java/bipo/tech/duoraapi/migrat
 # Ids públicos do Microsoft Graph e do scope da API no script de configuração do tenant, não são segredos.
 ed1d42cf6c1c6537bb03330903701bddc922d877:infra/entra/configure-tenant.sh:generic-api-key:24
 ed1d42cf6c1c6537bb03330903701bddc922d877:infra/entra/configure-tenant.sh:generic-api-key:26
+# Token de página fictício (Base64 de um cursor) num teste de paginação, não é segredo.
+904261f689ca6435c5db1afbd556150d16eb379b:src/test/java/bipo/tech/duoraapi/connections/ConnectionIT.java:generic-api-key:506
