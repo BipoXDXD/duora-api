@@ -7,11 +7,10 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.springframework.dao.CannotAcquireLockException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import bipo.tech.duoraapi.config.PostgresLocks;
 import bipo.tech.duoraapi.connections.domain.ConnectionPair;
 import bipo.tech.duoraapi.connections.domain.Decision;
 import bipo.tech.duoraapi.connections.domain.DecisionRepository;
@@ -26,9 +25,6 @@ class JdbcDecisionRepository implements DecisionRepository {
      * passar do teto indica algo preso, e a resposta é 503.
      */
     static final String LOCK_TIMEOUT = "2s";
-
-    /** lock_not_available, na tabela de códigos de erro do PostgreSQL: o lock_timeout estourou. */
-    private static final String LOCK_NOT_AVAILABLE = "55P03";
 
     /** Prefixo da chave do advisory lock, para não colidir com outro uso de advisory lock no banco. */
     private static final String LOCK_NAMESPACE = "connections.decision";
@@ -48,26 +44,13 @@ class JdbcDecisionRepository implements DecisionRepository {
     public void lockPair(UUID eventId, int roundNumber, ConnectionPair pair) {
         String key = String.join(":", LOCK_NAMESPACE, eventId.toString(), Integer.toString(roundNumber),
                 pair.first().value().toString(), pair.second().value().toString());
-        limitLockWait();
-        try {
-            jdbcClient.sql("select 1 from (select pg_advisory_xact_lock(hashtextextended(:key, 0))) as locked")
-                    .param("key", key)
-                    .query(Integer.class)
-                    .single();
-        } catch (UncategorizedSQLException e) {
-            // O JdbcClient não traduz o lock_timeout (55P03); o resto da aplicação o trata como lock não obtido.
-            if (LOCK_NOT_AVAILABLE.equals(e.getSQLException().getSQLState())) {
-                throw new CannotAcquireLockException("timed out waiting for the partner's decision", e);
-            }
-            throw e;
-        }
-    }
-
-    private void limitLockWait() {
-        jdbcClient.sql("select set_config('lock_timeout', :timeout, true)")
-                .param("timeout", LOCK_TIMEOUT)
-                .query(String.class)
-                .single();
+        PostgresLocks.limitWait(jdbcClient, LOCK_TIMEOUT);
+        PostgresLocks.translatingTimeout(
+                () -> jdbcClient.sql("select 1 from (select pg_advisory_xact_lock(hashtextextended(:key, 0))) as locked")
+                        .param("key", key)
+                        .query(Integer.class)
+                        .single(),
+                "timed out waiting for the partner's decision");
     }
 
     @Override

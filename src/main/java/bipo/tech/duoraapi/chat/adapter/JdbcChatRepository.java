@@ -9,10 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.function.Supplier;
 
-import org.springframework.dao.CannotAcquireLockException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -22,6 +19,7 @@ import bipo.tech.duoraapi.chat.domain.ChatKey;
 import bipo.tech.duoraapi.chat.domain.ChatMessage;
 import bipo.tech.duoraapi.chat.domain.ChatMessageText;
 import bipo.tech.duoraapi.chat.domain.ChatRepository;
+import bipo.tech.duoraapi.config.PostgresLocks;
 import bipo.tech.duoraapi.identity.AccountId;
 
 /** Chats e mensagens nas tabelas chat e chat_message, por SQL (docs/adr/0021). */
@@ -34,8 +32,7 @@ class JdbcChatRepository implements ChatRepository {
      */
     static final String LOCK_TIMEOUT = "2s";
 
-    /** lock_not_available, na tabela de códigos de erro do PostgreSQL: o lock_timeout estourou. */
-    private static final String LOCK_NOT_AVAILABLE = "55P03";
+    private static final String LOCK_TIMEOUT_MESSAGE = "timed out waiting for another message in the same chat";
 
     private static final String SELECT_CHAT_BY_KEY = """
             select id, event_id, round_number, first_account_id, second_account_id, last_seq
@@ -66,7 +63,7 @@ class JdbcChatRepository implements ChatRepository {
 
     @Override
     public Chat lockOrAdd(ChatKey key, Instant purgeAfter, Instant createdAt) {
-        limitLockWait();
+        PostgresLocks.limitWait(jdbcClient, LOCK_TIMEOUT);
         return addOrLock(key, purgeAfter, createdAt);
     }
 
@@ -78,14 +75,6 @@ class JdbcChatRepository implements ChatRepository {
                 .optional();
     }
 
-    /** Até o fim da transação: o teto vale também para o que ela grava depois de travar o chat. */
-    private void limitLockWait() {
-        jdbcClient.sql("select set_config('lock_timeout', :timeout, true)")
-                .param("timeout", LOCK_TIMEOUT)
-                .query(String.class)
-                .single();
-    }
-
     /**
      * Cria o chat ou trava o que existe, e devolve a linha, num comando só. O {@code do update} que não muda nada
      * existe pelo lock: com a linha travada, o expurgo a pula ({@code skip locked}). Se o expurgo já a travou, o
@@ -93,7 +82,7 @@ class JdbcChatRepository implements ChatRepository {
      * outra transação, espera ela terminar e devolve a última versão confirmada.
      */
     private Chat addOrLock(ChatKey key, Instant purgeAfter, Instant createdAt) {
-        return translatingLockTimeout(() -> jdbcClient.sql("""
+        return PostgresLocks.translatingTimeout(() -> jdbcClient.sql("""
                         insert into chat (event_id, round_number, first_account_id, second_account_id, purge_after,
                                           created_at)
                         values (:eventId, :roundNumber, :first, :second, :purgeAfter, :createdAt)
@@ -105,7 +94,7 @@ class JdbcChatRepository implements ChatRepository {
                 .param("purgeAfter", OffsetDateTime.ofInstant(purgeAfter, ZoneOffset.UTC))
                 .param("createdAt", OffsetDateTime.ofInstant(createdAt, ZoneOffset.UTC))
                 .query(chatMapper(key))
-                .single());
+                .single(), LOCK_TIMEOUT_MESSAGE);
     }
 
     @Override
@@ -191,18 +180,6 @@ class JdbcChatRepository implements ChatRepository {
                 new ChatMessageText(row.getString("body")),
                 row.getObject("idempotency_key", UUID.class),
                 row.getObject("sent_at", OffsetDateTime.class).toInstant());
-    }
-
-    /** O JdbcClient não traduz o lock_timeout (55P03); o resto da aplicação o trata como lock não obtido. */
-    private static <T> T translatingLockTimeout(Supplier<T> statement) {
-        try {
-            return statement.get();
-        } catch (UncategorizedSQLException e) {
-            if (LOCK_NOT_AVAILABLE.equals(e.getSQLException().getSQLState())) {
-                throw new CannotAcquireLockException("timed out waiting for another message in the same chat", e);
-            }
-            throw e;
-        }
     }
 
 }
