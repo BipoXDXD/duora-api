@@ -13,11 +13,11 @@ import java.util.UUID;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import bipo.tech.duoraapi.AccountTables;
+import bipo.tech.duoraapi.TestIdentities;
 
 /**
  * Object Mother dos testes de eventos: quem chama, o corpo de um evento válido e os passos que os
@@ -48,8 +48,7 @@ public final class EventFixtures {
     }
 
     public static RequestPostProcessor admin() {
-        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", "oid-admin"))
-                .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        return TestIdentities.adminBearer("oid-admin");
     }
 
     public static RequestPostProcessor user(String name) {

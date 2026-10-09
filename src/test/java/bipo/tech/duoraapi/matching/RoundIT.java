@@ -5,7 +5,7 @@ import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
 import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
 import static bipo.tech.duoraapi.ConcurrentCalls.together;
 import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
-import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.adminWebSession;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.adminEventPath;
 import static bipo.tech.duoraapi.events.EventFixtures.createDraft;
@@ -16,7 +16,6 @@ import static bipo.tech.duoraapi.events.EventFixtures.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -47,7 +46,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -337,7 +335,7 @@ class RoundIT {
     void anAdminWebSessionWithoutCsrfTokenCannotStartARound() throws Exception {
         String eventId = underwayEventWith("ana", "bruno");
 
-        startRound(eventId, 1, adminWebSession()).andExpect(status().isForbidden());
+        startRound(eventId, 1, adminWebSession("oid-admin")).andExpect(status().isForbidden());
 
         assertThat(roundRows(eventId)).isZero();
     }
@@ -346,7 +344,7 @@ class RoundIT {
     void anAdminWebSessionWithCsrfTokenStartsARound() throws Exception {
         String eventId = underwayEventWith("ana", "bruno");
 
-        mockMvc.perform(put(roundPath(eventId, 1)).with(adminWebSession()).with(csrf()))
+        mockMvc.perform(put(roundPath(eventId, 1)).with(adminWebSession("oid-admin")).with(csrf()))
                 .andExpect(status().isCreated());
     }
 
@@ -557,11 +555,6 @@ class RoundIT {
         return jdbcClient.sql("select subject from account where id = cast(:id as uuid)")
                 .param("id", accountId)
                 .query(String.class).single().substring("oid-".length());
-    }
-
-    private static RequestPostProcessor adminWebSession() {
-        return oidcLogin().idToken(token -> token.issuer(ISSUER).claim("oid", "oid-admin"))
-                .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
     }
 
     private static String notUnderway(String eventId) {

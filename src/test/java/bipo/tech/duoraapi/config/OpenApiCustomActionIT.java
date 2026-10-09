@@ -1,6 +1,6 @@
 package bipo.tech.duoraapi.config;
 
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static bipo.tech.duoraapi.TestIdentities.adminWithoutIdentity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -11,7 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -36,7 +35,7 @@ class OpenApiCustomActionIT {
     void actionKeepsTheColonAndTypesTheId(String verb) throws Exception {
         String operation = "$.paths['/things/{id}:" + verb + "'].post";
 
-        mockMvc.perform(get(ApiDocsAccessIT.SPEC_PATH).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+        mockMvc.perform(get(ApiDocsAccessIT.SPEC_PATH).with(adminWithoutIdentity()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath(operation + ".parameters[0].name").value("id"))
                 .andExpect(jsonPath(operation + ".parameters[0].in").value("path"))

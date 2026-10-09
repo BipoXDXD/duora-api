@@ -3,8 +3,8 @@ package bipo.tech.duoraapi.waitlist;
 import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
 import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
 import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
+import static bipo.tech.duoraapi.TestIdentities.adminWithoutIdentity;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -27,7 +27,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -147,7 +146,7 @@ class JoinWaitlistIT {
         join("ana@example.com", CLIENT_B).andExpect(status().isAccepted());
         join("bruno@example.com", CLIENT_B).andExpect(status().isAccepted());
 
-        mockMvc.perform(get("/api/admin/waitlist/stats").with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+        mockMvc.perform(get("/api/admin/waitlist/stats").with(adminWithoutIdentity()))
                 .andExpect(status().isOk())
                 .andExpect(content().json("""
                         {"total": 2}

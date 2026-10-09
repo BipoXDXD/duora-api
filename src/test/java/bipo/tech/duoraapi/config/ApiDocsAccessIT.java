@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.TestIdentities.adminWithoutIdentity;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -17,11 +18,9 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
@@ -67,7 +66,7 @@ class ApiDocsAccessIT {
 
     @Test
     void adminReadsTheSpec() throws Exception {
-        mockMvc.perform(get(SPEC_PATH).with(admin()))
+        mockMvc.perform(get(SPEC_PATH).with(adminWithoutIdentity()))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.openapi").value("3.1.0"))
@@ -76,7 +75,7 @@ class ApiDocsAccessIT {
 
     @Test
     void adminOpensTheSwaggerUi() throws Exception {
-        mockMvc.perform(get(SWAGGER_UI_PATH).with(admin()))
+        mockMvc.perform(get(SWAGGER_UI_PATH).with(adminWithoutIdentity()))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(header().string(HttpHeaders.LOCATION, startsWith(SWAGGER_UI_RESOURCES)));
     }
@@ -86,12 +85,8 @@ class ApiDocsAccessIT {
     void swaggerUiResourcesAreAdminOnly() throws Exception {
         mockMvc.perform(get(SWAGGER_UI_RESOURCES + "index.html").with(jwt()))
                 .andExpect(status().isForbidden());
-        mockMvc.perform(get(SWAGGER_UI_RESOURCES + "index.html").with(admin()))
+        mockMvc.perform(get(SWAGGER_UI_RESOURCES + "index.html").with(adminWithoutIdentity()))
                 .andExpect(status().isOk());
-    }
-
-    private static RequestPostProcessor admin() {
-        return jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
     }
 
 }

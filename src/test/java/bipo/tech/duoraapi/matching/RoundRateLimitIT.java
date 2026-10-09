@@ -5,12 +5,11 @@ import static bipo.tech.duoraapi.RateLimitTestSupport.bucketKeysOf;
 import static bipo.tech.duoraapi.RateLimitTestSupport.expectRejectedByTheLimit;
 import static bipo.tech.duoraapi.RateLimitTestSupport.expectUnavailableBecauseTheLimitCannotBeCounted;
 import static bipo.tech.duoraapi.RateLimitTestSupport.whileTheLimitCannotBeCounted;
-import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.adminBearer;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.randomId;
 import static bipo.tech.duoraapi.events.EventFixtures.user;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -24,7 +23,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -109,7 +107,7 @@ class RoundRateLimitIT {
         }
         startRound(unknown, 1, admin()).andExpect(status().isTooManyRequests());
 
-        startRound(unknown, 1, anotherAdmin()).andExpect(status().isNotFound());
+        startRound(unknown, 1, adminBearer("oid-admin-2")).andExpect(status().isNotFound());
     }
 
     /** Quem não é ADMIN é barrado antes do controller: não gasta limite nem abre bucket. */
@@ -177,11 +175,6 @@ class RoundRateLimitIT {
 
     private List<String> keysOfTheLimit() {
         return bucketKeysOf(jdbcClient, "round");
-    }
-
-    private static RequestPostProcessor anotherAdmin() {
-        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", "oid-admin-2"))
-                .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
     }
 
 }

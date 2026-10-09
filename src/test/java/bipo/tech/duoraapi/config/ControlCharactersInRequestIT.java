@@ -1,9 +1,8 @@
 package bipo.tech.duoraapi.config;
 
 import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
-import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.adminBearer;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 
@@ -23,9 +22,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfoHandlerMapping;
 
 import bipo.tech.duoraapi.AccountTables;
@@ -68,7 +65,8 @@ class ControlCharactersInRequestIT {
                                     .replaceAll("\\{[^}]*}", "a" + character + "b");
                             var response = mockMvc.perform(request(
                                             HttpMethod.valueOf(RegisteredRoutes.methodOf(route)), URI.create(path))
-                                            .with(admin()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                                            .with(adminBearer("oid-control-admin"))
+                                            .contentType(MediaType.APPLICATION_JSON).content("{}"))
                                     .andReturn().getResponse();
 
                             assertThat(response.getStatus()).isBetween(400, 499);
@@ -83,16 +81,12 @@ class ControlCharactersInRequestIT {
             "/api/me/blocked-accounts, maxPageSize", "/api/me/blocked-accounts, pageToken"})
     void controlCharacterInAPagingParameterIsABadRequest(String path, String parameter) throws Exception {
         for (String character : List.of("\u0000", "\u0001", "\u001b", "\u007f")) {
-            var response = mockMvc.perform(get(path).param(parameter, "1" + character).with(admin()))
+            var response = mockMvc.perform(get(path).param(parameter, "1" + character)
+                            .with(adminBearer("oid-control-admin")))
                     .andReturn().getResponse();
 
             assertThat(response.getStatus()).as(path + "?" + parameter).isEqualTo(400);
         }
-    }
-
-    private static RequestPostProcessor admin() {
-        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", "oid-control-admin"))
-                .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
     }
 
 }

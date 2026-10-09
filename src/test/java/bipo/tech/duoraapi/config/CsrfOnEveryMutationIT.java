@@ -1,10 +1,9 @@
 package bipo.tech.duoraapi.config;
 
 import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
-import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.adminWebSession;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 
 import java.util.List;
 import java.util.Set;
@@ -20,9 +19,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfoHandlerMapping;
 
 import bipo.tech.duoraapi.AccountTables;
@@ -79,7 +76,8 @@ class CsrfOnEveryMutationIT {
     Stream<DynamicTest> everyMutationOfTheWebSessionRequiresTheCsrfToken() {
         return mutatingRoutes().stream().flatMap(route -> Stream.of(
                 DynamicTest.dynamicTest(route + " without CSRF token", () -> {
-                    var response = mockMvc.perform(RegisteredRoutes.requestFor(route).with(adminWebSession())
+                    var response = mockMvc.perform(RegisteredRoutes.requestFor(route)
+                                    .with(adminWebSession("oid-csrf-admin"))
                                     .contentType(MediaType.APPLICATION_JSON).content("{}"))
                             .andReturn().getResponse();
 
@@ -87,8 +85,9 @@ class CsrfOnEveryMutationIT {
                     assertThat(response.getContentAsString()).isEqualTo(SECURITY_FORBIDDEN);
                 }),
                 DynamicTest.dynamicTest(route + " with CSRF token", () -> {
-                    var response = mockMvc.perform(RegisteredRoutes.requestFor(route).with(adminWebSession())
-                                    .with(csrf()).contentType(MediaType.APPLICATION_JSON).content("{}"))
+                    var response = mockMvc.perform(RegisteredRoutes.requestFor(route)
+                                    .with(adminWebSession("oid-csrf-admin")).with(csrf())
+                                    .contentType(MediaType.APPLICATION_JSON).content("{}"))
                             .andReturn().getResponse();
 
                     assertThat(response.getContentAsString()).isNotEqualTo(SECURITY_FORBIDDEN);
@@ -100,11 +99,6 @@ class CsrfOnEveryMutationIT {
                 .filter(route -> MUTATING_METHODS.contains(RegisteredRoutes.methodOf(route)))
                 .filter(route -> !CSRF_EXEMPT_ROUTES.contains(route))
                 .toList();
-    }
-
-    private static RequestPostProcessor adminWebSession() {
-        return oidcLogin().idToken(token -> token.issuer(ISSUER).claim("oid", "oid-csrf-admin"))
-                .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
     }
 
 }
