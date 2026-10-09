@@ -57,7 +57,8 @@ precisa ser igual ao do access token.
   para entrar e faz `POST /logout`, com o token CSRF, para sair. Como o `fetch` não segue um 302
   para outra origem, o logout responde `200` com `{"logoutUrl": "..."}` (o logout do Entra, com
   `client_id` e `post_logout_redirect_uri`, sem `id_token_hint`; ver "Logout sem ID token"), e o
-  front navega até essa URL. `GET /api/me` diz se há sessão e devolve só o nome de exibição.
+  front navega até essa URL. `GET /api/me` diz se há sessão e devolve só o nome de exibição, se o perfil está completo e os papéis (lista
+  fechada, vinda das authorities que o servidor já concedeu).
 
 ## Compliance
 
@@ -69,7 +70,8 @@ precisa ser igual ao do access token.
 | Spoofing: ID token de outro tenant, de outro app ou reaproveitado (nonce) | Validação de `iss`, `aud` e `nonce` | `WebLoginIT.rejectsLoginWithInvalidTokens` |
 | Spoofing: access token de outra API, de outro usuário ou com chave forjada | Mesmo `JwtDecoder` da porta bearer e `oid` igual nos dois tokens | `WebLoginIT.rejectsLoginWithInvalidTokens` |
 | Repudiation/elevation: sessão continua válida após sair | Logout invalida a sessão aqui e no Entra | `WebLoginIT.sessionCookieIsUselessAfterLogout`, `logoutEndsSessionHereAndAnswersTheEntraLogoutUrl` |
-| Information disclosure: `/api/me` vaza e-mail, `oid`, id da conta ou papéis | DTO com allowlist (`displayName` e, desde a [ADR 0011](0011-conta-e-perfil.md), `profileComplete`) | `WebLoginIT.currentUserExposesOnlyDisplayNameAndProfileStatus`, `BearerTokenValidationIT.currentUserFromBearerTokenExposesOnlyDisplayNameAndProfileStatus` |
+| Information disclosure: `/api/me` vaza e-mail, `oid`, id da conta ou papéis que a API não conhece | DTO com allowlist (`displayName`, desde a [ADR 0011](0011-conta-e-perfil.md) `profileComplete`, e `roles`, só os papéis do enum `UserRole`, lidos das authorities do servidor) | `WebLoginIT.currentUserExposesOnlyDisplayNameProfileStatusAndRoles`, `WebLoginIT.currentUserDoesNotExposeRolesTheApiDoesNotKnow`, `BearerTokenValidationIT.currentUserFromBearerTokenExposesOnlyDisplayNameProfileStatusAndRoles`, `BearerTokenValidationIT.currentUserFromBearerTokenDoesNotExposeRolesTheApiDoesNotKnow` |
+| Elevation: o cliente se atribui um papel em `/api/me` ou nas rotas | Os papéis saem das authorities concedidas pelo servidor; query e headers do cliente não entram | `ProfileIT.currentUserRolesIgnoreWhatTheClientSends`, `BearerTokenValidationIT.forbidsValidTokenWithoutAdminRole` |
 | Configuração ausente | A subida falha sem as variáveis novas ou com elas em branco | `RequiredAuthenticationSettingsIT` |
 
 ### Logout sem ID token

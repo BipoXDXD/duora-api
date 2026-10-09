@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.profiles.api;
 
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.core.ClaimAccessor;
 import org.springframework.security.oauth2.core.oidc.StandardClaimNames;
@@ -30,12 +31,12 @@ class CurrentUserController {
     /** errorOnInvalidType: outro tipo de principal falha aqui, com a causa, em vez de chegar como null. */
     @GetMapping("/api/me")
     @Operation(operationId = "getCurrentUser", summary = "Quem está logado",
-            description = "O front usa para saber se há sessão: 200 com o nome de exibição e se o perfil está "
-                    + "completo, ou 401 sem sessão.")
+            description = "O front usa para saber se há sessão: 200 com o nome de exibição, se o perfil está "
+                    + "completo e os papéis (vazio para o usuário comum), ou 401 sem sessão.")
     CurrentUserResponse currentUser(@AuthenticationPrincipal(errorOnInvalidType = true) ClaimAccessor user,
-            AccountId account) {
+            Authentication authentication, AccountId account) {
         return new CurrentUserResponse(user.getClaimAsString(StandardClaimNames.NAME),
-                profiles.profileOf(account.value()).complete());
+                profiles.profileOf(account.value()).complete(), UserRole.grantedTo(authentication));
     }
 
 }

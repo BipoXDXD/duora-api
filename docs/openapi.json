@@ -2974,7 +2974,7 @@
     },
     "/api/me" : {
       "get" : {
-        "description" : "O front usa para saber se há sessão: 200 com o nome de exibição e se o perfil está completo, ou 401 sem sessão.",
+        "description" : "O front usa para saber se há sessão: 200 com o nome de exibição, se o perfil está completo e os papéis (vazio para o usuário comum), ou 401 sem sessão.",
         "operationId" : "getCurrentUser",
         "responses" : {
           "200" : {
@@ -4310,9 +4310,19 @@
           "profileComplete" : {
             "type" : "boolean",
             "description" : "Se o perfil já tem o necessário para usar o Duora; se não, o front leva ao cadastro"
+          },
+          "roles" : {
+            "type" : "array",
+            "description" : "Papéis do usuário, vazio para o usuário comum. O front só decide o que mostrar; cada rota confere o papel no servidor",
+            "items" : {
+              "type" : "string",
+              "enum" : [ "ADMIN" ]
+            },
+            "maxItems" : 10,
+            "uniqueItems" : true
           }
         },
-        "required" : [ "displayName", "profileComplete" ]
+        "required" : [ "displayName", "profileComplete", "roles" ]
       },
       "DecideRequest" : {
         "type" : "object",

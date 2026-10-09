@@ -208,7 +208,7 @@ As migrations ficam em `src/main/resources/db/migration`. O Hibernate só valida
 |---|---|---|---|
 | `POST` | `/api/waitlist` | Público | `202`, para e-mail novo ou repetido |
 | `GET` | `/api/admin/waitlist/stats` | `ADMIN` | `200` com `{"total": n}` |
-| `GET` | `/api/me` | Autenticado | `200` com `{"displayName": "...", "profileComplete": false}` (`displayName` é o nome do Entra, `null` se não houver); `401` sem sessão. Abre a conta interna no primeiro acesso |
+| `GET` | `/api/me` | Autenticado | `200` com `{"displayName": "...", "profileComplete": false, "roles": []}` (`displayName` é o nome do Entra, `null` se não houver; `roles` é `["ADMIN"]` para o administrador e `[]` para os demais, vindo das mesmas authorities das rotas); `401` sem sessão. Abre a conta interna no primeiro acesso |
 | `GET` | `/api/me/profile` | Autenticado | `200` com `{displayName, birthDate, bio, region, complete}` e `ETag` com a versão (`"0"` antes da primeira edição) |
 | `PATCH` | `/api/me/profile` | Autenticado | Edição parcial: campo ausente não muda, `null` apaga. Exige `If-Match` com o `ETag` lido: sem ele `428`, desatualizado `412`. `200` com o perfil e o `ETag` novo; `400` para valor inválido ou campo desconhecido; `409` ao trocar a data de nascimento (`reason` `BIRTH_DATE_ALREADY_SET`) |
 | `POST` | `/api/accounts/{accountId}:block` | Autenticado | Bloqueia outra conta: `204`, também se já bloqueada (mantém a data do primeiro bloqueio); `400` para si mesmo ou id que não é UUID; `404` sem conta com esse id |
@@ -311,7 +311,7 @@ Para o front (repositório `duora-web`):
 |---|---|
 | Entrar | Navegar para `/oauth2/authorization/entra`; após o login, volta para `/` |
 | Sair | `POST /logout` com o header `X-XSRF-TOKEN`; a resposta é `200` com `{"logoutUrl": "..."}`, e o front navega até essa URL para sair também do Entra |
-| Saber se está logado | `GET /api/me`: `200` com o nome de exibição e `profileComplete`, ou `401` sem sessão |
+| Saber se está logado | `GET /api/me`: `200` com o nome de exibição, `profileComplete` e `roles` (para mostrar a área de administração), ou `401` sem sessão |
 | Completar ou editar o perfil | `GET /api/me/profile` e `PATCH /api/me/profile` com `If-Match` (o `ETag` do `GET`) e `X-XSRF-TOKEN`; em `412`, ler de novo e reaplicar |
 | Ver e se inscrever em eventos | `GET /api/events`; `PUT /api/events/{id}/registration` com `X-XSRF-TOKEN` (repetir é seguro); em `403` com `PROFILE_INCOMPLETE`, levar ao cadastro do perfil |
 | Explicar uma recusa | Ler `reason` no `ProblemDetail` do `409` e do `403` de regra; motivo desconhecido ou ausente é recusa genérica do status ([ADR 0020](docs/adr/0020-motivo-das-recusas-no-problem-detail.md)) |

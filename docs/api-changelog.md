@@ -34,6 +34,14 @@ Chat temporário da rodada ([ADR 0021](adr/0021-chat-temporario-e-reconexao.md),
   com `Retry-After`); `503` com `Retry-After: 1` se outro envio segurar o chat além do teto ou se o limite não
   puder ser contado. O `duora-web` gera a chave ao criar o rascunho e a reutiliza em todo reenvio.
 
+Mudança compatível ([ADR 0002](adr/0002-front-web-com-bff.md)):
+
+- `GET /api/me` (`getCurrentUser`): a resposta ganha `roles`, lista dos papéis de quem está logado, sempre presente
+  (`[]` para o usuário comum, `["ADMIN"]` para o administrador; hoje o único valor possível é `ADMIN`). Vem das
+  mesmas authorities que a segurança aplica nas rotas, pela sessão web e pelo bearer; papel que o Entra emita e a
+  API não conheça não aparece. O `duora-web` pode usar `roles` para mostrar ou esconder a área administrativa, sem
+  deixar de tratar o `403` das rotas, e deve ignorar valor de papel que não conheça.
+
 Mudança compatível ([ADR 0016](adr/0016-eventos-e-inscricoes.md)):
 
 - `GET /api/admin/events` (`listAdminEvents`, tag `admin-events`, só ADMIN): a lista de todos os eventos, rascunhos
