@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.events;
 
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -108,7 +109,7 @@ public final class EventFixtures {
     /** Rodadas, inscrições, eventos e as contas com tudo o que é delas (bloqueios, denúncias, perfis). */
     public static void cleanDatabase(JdbcClient jdbcClient) {
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
     }
 
     public static String randomId() {

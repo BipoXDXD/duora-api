@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.trustsafety;
 
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -43,7 +44,7 @@ class ReportsWithEvidenceIT {
     @BeforeEach
     void setUp() {
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
         ana = insertAccount("oid-ana");
         bruno = insertAccount("oid-bruno");
     }

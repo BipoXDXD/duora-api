@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
@@ -114,7 +115,7 @@ class ForwardedClientAddressIT {
 
     private static void clean(JdbcClient jdbcClient) {
         jdbcClient.sql("delete from waitlist_entry").update();
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
     }
 
     private int join(int port, String forwardedFor, String email) throws IOException, InterruptedException {

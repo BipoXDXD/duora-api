@@ -2,6 +2,7 @@ package bipo.tech.duoraapi.waitlist;
 
 import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
 import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -63,7 +64,7 @@ class JoinWaitlistIT {
     @BeforeEach
     void cleanDatabase() {
         jdbcClient.sql("delete from waitlist_entry").update();
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
     }
 
     @Test

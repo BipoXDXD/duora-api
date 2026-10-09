@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
@@ -48,7 +49,7 @@ class UnexpectedErrorIT {
 
     @BeforeEach
     void cleanRateLimit() {
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
     }
 
     @AfterEach

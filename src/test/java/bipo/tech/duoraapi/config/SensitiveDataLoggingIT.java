@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
@@ -107,7 +108,7 @@ class SensitiveDataLoggingIT {
     void cleanDatabase() {
         clock.setTo(TestClockConfiguration.NOW);
         jdbcClient.sql("delete from waitlist_entry").update();
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
     }
 

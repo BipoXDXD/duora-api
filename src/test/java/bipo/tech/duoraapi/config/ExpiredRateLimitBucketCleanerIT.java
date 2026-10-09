@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
@@ -17,6 +18,11 @@ import io.micrometer.core.instrument.MeterRegistry;
 
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
+/**
+ * Este teste usa o relógio do sistema de propósito. O Bucket4j grava {@code expires_at} com
+ * {@code System.currentTimeMillis()}, que o TestClock (o bean {@code Clock} da API) não alcança. Por isso os
+ * instantes esperados vêm de uma janela medida em volta da chamada, e não de um valor fixo.
+ */
 @SpringBootTest
 @Import(TestcontainersConfiguration.class)
 class ExpiredRateLimitBucketCleanerIT {
@@ -41,7 +47,7 @@ class ExpiredRateLimitBucketCleanerIT {
 
     @BeforeEach
     void cleanTable() {
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
     }
 
     @Test
