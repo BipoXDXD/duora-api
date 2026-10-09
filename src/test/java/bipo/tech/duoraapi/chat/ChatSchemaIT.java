@@ -1,7 +1,8 @@
 package bipo.tech.duoraapi.chat;
 
+import static bipo.tech.duoraapi.SchemaSupport.assertViolates;
+import static bipo.tech.duoraapi.SchemaSupport.insertAccount;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.UUID;
 
@@ -12,7 +13,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import bipo.tech.duoraapi.AccountTables;
@@ -37,8 +37,8 @@ class ChatSchemaIT {
     @BeforeEach
     void setUp() {
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
-        UUID one = insertAccount("oid-ana");
-        UUID other = insertAccount("oid-bruno");
+        UUID one = insertAccount(jdbcClient, "oid-ana");
+        UUID other = insertAccount(jdbcClient, "oid-bruno");
         boolean oneFirst = one.toString().compareTo(other.toString()) < 0;
         first = oneFirst ? one : other;
         second = oneFirst ? other : one;
@@ -49,9 +49,7 @@ class ChatSchemaIT {
         UUID chat = insertChat(1, first, second);
         insertMessage(chat, 1, first, UUID.randomUUID());
 
-        assertThatThrownBy(() -> insertMessage(chat, 1, second, UUID.randomUUID()))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("chat_message_pkey");
+        assertViolates("chat_message_pkey", () -> insertMessage(chat, 1, second, UUID.randomUUID()));
     }
 
     @Test
@@ -61,9 +59,7 @@ class ChatSchemaIT {
         insertMessage(chat, 1, first, key);
         insertMessage(chat, 2, second, key);
 
-        assertThatThrownBy(() -> insertMessage(chat, 3, first, key))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("chat_message_idempotency_key_once");
+        assertViolates("chat_message_idempotency_key_once", () -> insertMessage(chat, 3, first, key));
     }
 
     @Test
@@ -71,19 +67,13 @@ class ChatSchemaIT {
         insertChat(1, first, second);
         insertChat(2, first, second);
 
-        assertThatThrownBy(() -> insertChat(1, first, second))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("chat_one_per_pair_and_round");
+        assertViolates("chat_one_per_pair_and_round", () -> insertChat(1, first, second));
     }
 
     @Test
     void thePairIsStoredInTheOrderOfTheUuidType() {
-        assertThatThrownBy(() -> insertChat(1, second, first))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("chat_normalized_pair");
-        assertThatThrownBy(() -> insertChat(1, first, first))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("chat_normalized_pair");
+        assertViolates("chat_normalized_pair", () -> insertChat(1, second, first));
+        assertViolates("chat_normalized_pair", () -> insertChat(1, first, first));
     }
 
     @ParameterizedTest
@@ -91,9 +81,7 @@ class ChatSchemaIT {
     void aSequenceNumberGoesFromOneToThreeHundred(int seq) {
         UUID chat = insertChat(1, first, second);
 
-        assertThatThrownBy(() -> insertMessage(chat, seq, first, UUID.randomUUID()))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("chat_message_seq_check");
+        assertViolates("chat_message_seq_check", () -> insertMessage(chat, seq, first, UUID.randomUUID()));
     }
 
     @ParameterizedTest
@@ -101,10 +89,8 @@ class ChatSchemaIT {
     void theLastSequenceGoesFromZeroToThreeHundred(int lastSeq) {
         UUID chat = insertChat(1, first, second);
 
-        assertThatThrownBy(() -> jdbcClient.sql("update chat set last_seq = :lastSeq where id = :id")
-                        .param("lastSeq", lastSeq).param("id", chat).update())
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("chat_last_seq_check");
+        assertViolates("chat_last_seq_check", () -> jdbcClient.sql("update chat set last_seq = :lastSeq where id = :id")
+                        .param("lastSeq", lastSeq).param("id", chat).update());
     }
 
     @Test
@@ -112,12 +98,9 @@ class ChatSchemaIT {
         UUID chat = insertChat(1, first, second);
         insertMessage(chat, 1, first, UUID.randomUUID(), "😀".repeat(500));
 
-        assertThatThrownBy(() -> insertMessage(chat, 2, first, UUID.randomUUID(), ""))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("chat_message_body_check");
-        assertThatThrownBy(() -> insertMessage(chat, 2, first, UUID.randomUUID(), "a".repeat(501)))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("chat_message_body_check");
+        assertViolates("chat_message_body_check", () -> insertMessage(chat, 2, first, UUID.randomUUID(), ""));
+        assertViolates("chat_message_body_check",
+                () -> insertMessage(chat, 2, first, UUID.randomUUID(), "a".repeat(501)));
     }
 
     /** O expurgo apaga o chat; as mensagens vão junto, de verdade (plano, seção 4). */
@@ -129,16 +112,6 @@ class ChatSchemaIT {
         jdbcClient.sql("delete from chat where id = :id").param("id", chat).update();
 
         assertThat(jdbcClient.sql("select count(*) from chat_message").query(Long.class).single()).isZero();
-    }
-
-    private UUID insertAccount(String subject) {
-        return jdbcClient.sql("""
-                        insert into account (issuer, subject, created_at)
-                        values ('https://issuer.example', :subject, now())
-                        returning id
-                        """)
-                .param("subject", subject)
-                .query(UUID.class).single();
     }
 
     private UUID insertChat(int roundNumber, UUID firstAccount, UUID secondAccount) {

@@ -1,5 +1,7 @@
 package bipo.tech.duoraapi.matching;
 
+import static bipo.tech.duoraapi.SchemaSupport.assertViolates;
+import static bipo.tech.duoraapi.SchemaSupport.insertAccount;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -42,43 +44,35 @@ class MatchingSchemaIT {
     void setUp() {
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
         event = insertEvent();
-        ana = insertAccount("oid-ana");
-        bruno = insertAccount("oid-bruno");
-        carla = insertAccount("oid-carla");
+        ana = insertAccount(jdbcClient, "oid-ana");
+        bruno = insertAccount(jdbcClient, "oid-bruno");
+        carla = insertAccount(jdbcClient, "oid-carla");
     }
 
     @Test
     void anEventHasOneRoundPerNumber() {
         insertRound(1, null);
 
-        assertThatThrownBy(() -> insertRound(1, null))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("round_pkey");
+        assertViolates("round_pkey", () -> insertRound(1, null));
     }
 
     @Test
     void aRoundNeedsThePreviousOne() {
-        assertThatThrownBy(() -> insertRound(2, 1))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("round_previous_fk");
+        assertViolates("round_previous_fk", () -> insertRound(2, 1));
     }
 
     @Test
     void aRoundAfterTheFirstMustPointToThePreviousOne() {
         insertRound(1, null);
 
-        assertThatThrownBy(() -> insertRound(2, null))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("round_sequence_check");
+        assertViolates("round_sequence_check", () -> insertRound(2, null));
     }
 
     @Test
     void aRoundCannotSkipNumbers() {
         insertRound(1, null);
 
-        assertThatThrownBy(() -> insertRound(3, 1))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("round_sequence_check");
+        assertViolates("round_sequence_check", () -> insertRound(3, 1));
     }
 
     @Test
@@ -114,9 +108,7 @@ class MatchingSchemaIT {
     void aOneSidedPairIsRejected() {
         insertRound(1, null);
 
-        assertThatThrownBy(() -> insertSeat(1, ana, bruno))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("round_seat_reciprocal_fk");
+        assertViolates("round_seat_reciprocal_fk", () -> insertSeat(1, ana, bruno));
     }
 
     @Test
@@ -134,9 +126,7 @@ class MatchingSchemaIT {
     void nobodyIsPairedWithThemselves() {
         insertRound(1, null);
 
-        assertThatThrownBy(() -> insertSeat(1, ana, ana))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("round_seat_not_self");
+        assertViolates("round_seat_not_self", () -> insertSeat(1, ana, ana));
     }
 
     @Test
@@ -144,9 +134,7 @@ class MatchingSchemaIT {
         insertRound(1, null);
         insertPair(1, ana, bruno);
 
-        assertThatThrownBy(() -> insertSeat(1, ana, null))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("round_seat_pkey");
+        assertViolates("round_seat_pkey", () -> insertSeat(1, ana, null));
     }
 
     @Test
@@ -155,9 +143,7 @@ class MatchingSchemaIT {
         insertRound(2, 1);
         insertPair(1, ana, bruno);
 
-        assertThatThrownBy(() -> insertPair(2, bruno, ana))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("round_seat_pair_once_per_event");
+        assertViolates("round_seat_pair_once_per_event", () -> insertPair(2, bruno, ana));
     }
 
     @Test
@@ -171,9 +157,7 @@ class MatchingSchemaIT {
 
     @Test
     void aSeatNeedsItsRound() {
-        assertThatThrownBy(() -> insertSeat(1, carla, null))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("round_seat_round_fk");
+        assertViolates("round_seat_round_fk", () -> insertSeat(1, carla, null));
     }
 
     /** on delete restrict: apagar evento ou conta exige decidir antes o destino das rodadas. */
@@ -225,15 +209,6 @@ class MatchingSchemaIT {
                                 'PUBLISHED', now())
                         returning id
                         """)
-                .query(UUID.class).single();
-    }
-
-    private UUID insertAccount(String subject) {
-        return jdbcClient.sql("""
-                        insert into account (issuer, subject, created_at) values ('https://issuer.example', :subject, now())
-                        returning id
-                        """)
-                .param("subject", subject)
                 .query(UUID.class).single();
     }
 

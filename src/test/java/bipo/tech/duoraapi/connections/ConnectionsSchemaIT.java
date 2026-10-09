@@ -1,5 +1,7 @@
 package bipo.tech.duoraapi.connections;
 
+import static bipo.tech.duoraapi.SchemaSupport.assertViolates;
+import static bipo.tech.duoraapi.SchemaSupport.insertAccount;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -35,8 +37,8 @@ class ConnectionsSchemaIT {
     @BeforeEach
     void setUp() {
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
-        ana = insertAccount("oid-ana");
-        bruno = insertAccount("oid-bruno");
+        ana = insertAccount(jdbcClient, "oid-ana");
+        bruno = insertAccount(jdbcClient, "oid-bruno");
     }
 
     @Test
@@ -44,48 +46,34 @@ class ConnectionsSchemaIT {
         insertDecision(1, ana, bruno, true);
         insertDecision(2, ana, bruno, true);
 
-        assertThatThrownBy(() -> insertDecision(1, ana, bruno, false))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("round_decision_pkey");
+        assertViolates("round_decision_pkey", () -> insertDecision(1, ana, bruno, false));
     }
 
     @Test
     void nobodyDecidesAboutThemselves() {
-        assertThatThrownBy(() -> insertDecision(1, ana, ana, true))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("round_decision_not_self");
+        assertViolates("round_decision_not_self", () -> insertDecision(1, ana, ana, true));
     }
 
     @Test
     void theRoundNumberGoesFromOneToOneHundred() {
         insertDecision(100, ana, bruno, true);
 
-        assertThatThrownBy(() -> insertDecision(0, ana, bruno, true))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("round_decision_round_number_check");
-        assertThatThrownBy(() -> insertDecision(101, ana, bruno, true))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("round_decision_round_number_check");
+        assertViolates("round_decision_round_number_check", () -> insertDecision(0, ana, bruno, true));
+        assertViolates("round_decision_round_number_check", () -> insertDecision(101, ana, bruno, true));
     }
 
     @Test
     void aPairHasASingleConnection() {
         insertConnection(lower(), higher());
 
-        assertThatThrownBy(() -> insertConnection(lower(), higher()))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("connection_pkey");
+        assertViolates("connection_pkey", () -> insertConnection(lower(), higher()));
     }
 
     /** O par fica sempre na mesma ordem: a linha invertida seria uma segunda conexão do mesmo par. */
     @Test
     void theConnectionPairIsNormalized() {
-        assertThatThrownBy(() -> insertConnection(higher(), lower()))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("connection_normalized_pair");
-        assertThatThrownBy(() -> insertConnection(ana, ana))
-                .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("connection_normalized_pair");
+        assertViolates("connection_normalized_pair", () -> insertConnection(higher(), lower()));
+        assertViolates("connection_normalized_pair", () -> insertConnection(ana, ana));
     }
 
     @Test
@@ -130,15 +118,6 @@ class ConnectionsSchemaIT {
                 .param("first", first)
                 .param("second", second)
                 .update();
-    }
-
-    private UUID insertAccount(String subject) {
-        return jdbcClient.sql("""
-                        insert into account (issuer, subject, created_at) values ('https://issuer.example', :subject, now())
-                        returning id
-                        """)
-                .param("subject", subject)
-                .query(UUID.class).single();
     }
 
 }
