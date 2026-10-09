@@ -37,6 +37,12 @@ class MalformedRequestInputHandler {
         return badRequest(exception.getName() + " has an invalid value", request);
     }
 
+    /** maxPageSize ou pageToken de uma lista paginada ({@link MaxPageSize}, {@link KeysetPageToken}). */
+    @ExceptionHandler(InvalidPageParameterException.class)
+    ProblemDetail handleInvalidPageParameter(InvalidPageParameterException exception, HttpServletRequest request) {
+        return badRequest(exception.getMessage(), request);
+    }
+
     /**
      * O instance é o path pedido, que traz o valor recusado: acima do teto, vai o path sem a parte
      * variável, que ainda identifica a rota sem repetir o valor.

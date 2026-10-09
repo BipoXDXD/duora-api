@@ -488,6 +488,28 @@ class ConnectionIT {
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
     }
 
+    @Test
+    void anInvalidPageSizeNamesTheLimitOfThisList() throws Exception {
+        createAccount("ana");
+
+        mockMvc.perform(get(CONNECTIONS_PATH).param("maxPageSize", "101").with(user("ana")))
+                .andExpect(content().json("""
+                        {"title": "Bad Request", "status": 400,
+                         "detail": "maxPageSize must be between 1 and 100", "instance": "/api/me/connections"}
+                        """, JsonCompareMode.STRICT));
+    }
+
+    @Test
+    void aPageTokenTheApiDidNotIssueIsReportedWithoutEchoingIt() throws Exception {
+        createAccount("ana");
+
+        mockMvc.perform(get(CONNECTIONS_PATH).param("pageToken", "bm90LWEtdG9rZW4").with(user("ana")))
+                .andExpect(content().json("""
+                        {"title": "Bad Request", "status": 400,
+                         "detail": "pageToken is invalid", "instance": "/api/me/connections"}
+                        """, JsonCompareMode.STRICT));
+    }
+
     /** Publica um evento, inscreve as pessoas, leva o relógio ao início e sorteia a rodada 1. */
     private String pairedInRoundOne(String... names) throws Exception {
         clock.setTo(TestClockConfiguration.NOW);
