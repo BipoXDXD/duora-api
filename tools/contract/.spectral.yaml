@@ -33,6 +33,7 @@ overrides:
   - files:
       - "../../docs/openapi.json#/paths/~1api~1me~1blocked-accounts/get"
       - "../../docs/openapi.json#/paths/~1api~1events/get"
+      - "../../docs/openapi.json#/paths/~1api~1admin~1events/get"
       - "../../docs/openapi.json#/paths/~1api~1me~1registrations/get"
       - "../../docs/openapi.json#/paths/~1api~1me~1connections/get"
     rules:
