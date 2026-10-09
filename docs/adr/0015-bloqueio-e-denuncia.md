@@ -178,6 +178,15 @@ de outro módulo, participa dela. O pareamento ([ADR 0017](0017-pareamento.md)) 
 `Blocking.blockedPairsAmong(Collection<AccountId>)`: os pares de um grupo separados por bloqueio, numa
 consulta só, como `BlockedPair` sem direção (quem bloqueou continua escondido).
 
+O chat ([ADR 0021](0021-chat-temporario-e-reconexao.md), fatia 3) acrescentou
+`trustsafety.Reports.fileWithEvidence(reporter, reported, reason, description, ChatMessageEvidence)`: a denúncia
+de uma mensagem do chat, com as mesmas regras e a mesma cota de `POST /api/reports`, mais uma **cópia** da
+mensagem (ids do chat e do evento, rodada, posição, texto e horário) na tabela `report_message_evidence`, uma linha
+por denúncia, gravada no mesmo comando da denúncia e sem FK para o chat, para sobreviver ao expurgo dele. O texto
+copiado nunca vai para log (`toString` redigido). Para o chat usar a mesma lista de motivos, `ReportReason` e
+`ReportStatus` passaram de `trustsafety.domain` para a raiz do pacote (API publicada); a spec não muda. A cópia não
+aparece em `GET /api/reports/{id}`: ela é da moderação.
+
 ## Pendente com o usuário (decisões críticas, só o mínimo implementado)
 
 1. **Quem modera e como.** Moderação humana própria, terceirizada ou ferramenta; papéis, MFA e os
@@ -185,7 +194,10 @@ consulta só, como `BlockedPair` sem direção (quem bloqueou continua escondido
    banimento). Hoje só existe `OPEN`, e nada lê a fila.
 2. **Retenção de denúncias e evidências (LGPD).** Por quanto tempo guardar a denúncia e o relato, o que
    fazer quando denunciante ou denunciado excluir a conta (as FKs `restrict` obrigam essa decisão), e se
-   a denúncia guarda evidência além do texto (captura de mensagens, fotos). Hoje nada é apagado.
+   a denúncia guarda evidência além do texto (fotos, perfil). A denúncia de mensagem do chat já guarda a cópia
+   da mensagem ([ADR 0021](0021-chat-temporario-e-reconexao.md)), que segue a retenção da denúncia: sai junto com
+   ela (`on delete cascade`). Hoje nada é apagado; a [ADR 0023](0023-exclusao-de-conta-e-retencao.md) propõe guardar
+   até a resolução e 2 anos depois de encerrada.
 3. **Suspeita de menor.** O motivo `SUSPECTED_MINOR` existe e é gravado como qualquer outro. Falta o
    fluxo de proteção do plano §7: prioridade na fila, suspensão preventiva, a quem comunicar e com que
    base legal. Ligado à pendência 3 da ADR 0011.

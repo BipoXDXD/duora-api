@@ -9,6 +9,26 @@ Toda **breaking change** entra aqui no mesmo PR que a introduz: sem a entrada, o
 
 ## Não publicado
 
+Denúncia de mensagem do chat ([ADR 0021](adr/0021-chat-temporario-e-reconexao.md), fatia 3). Mudança compatível,
+só acréscimos:
+
+- `POST /api/events/{eventId}/rounds/{number}/chat/messages/{seq}:report` (`reportRoundChatMessage`) com
+  `{"reason": "...", "description": "..."}`: os mesmos motivos e regras do relato de `fileReport` (`OTHER` exige
+  descrição; até 1000 caracteres, sem invisíveis). Cria uma denúncia contra o par da rodada e guarda, para a
+  moderação, uma cópia da mensagem que sobrevive ao expurgo do chat. `201` com `Location` em `/api/reports/{id}`
+  (legível por `getMyReport`) e o corpo `ChatMessageReport`, com os mesmos campos de `getMyReport`
+  (`{id, reportedAccountId, reason, description, status, createdAt}`), sem o texto da mensagem. `400` para a
+  própria mensagem, posição fora de 1 a 300 ou corpo inválido; `404` para posição sem mensagem ou para quem não
+  formou par na rodada (o mesmo `detail` das rotas do chat); `429` e `503` da cota de denúncias, que é a mesma de
+  `fileReport` (10 por dia, somando as duas rotas). Vale com o chat fechado e depois de bloquear o par, até o
+  expurgo, 24 h depois do fim do evento; depois dele, a posição responde `404`.
+- `GET .../chat/messages/{seq}:report` e outros métodos na ação respondem `405`; a leitura da mensagem continua em
+  `GET .../chat/messages/{seq}`.
+
+Expurgo do chat (fatia 4): sem mudança no contrato. 24 h depois do fim agendado do evento, o chat e as mensagens
+são apagados; daí em diante a lista de mensagens volta vazia, a mensagem e a denúncia de mensagem respondem
+`404`, e `getMyRoundChat` mostra um chat vazio e fechado, com outro `chatId`.
+
 Chat temporário da rodada ([ADR 0021](adr/0021-chat-temporario-e-reconexao.md), fatias 1 e 2):
 
 - **Quebra apontada pelo oasdiff, compatível pela [ADR 0020](adr/0020-motivo-das-recusas-no-problem-detail.md):**

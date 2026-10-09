@@ -1,6 +1,6 @@
 # 0021. Chat temporário da rodada, transporte de tempo real e reconexão
 
-- **Status:** Aceita em 2026-10-08 pelo usuário: transporte (d) polling e depois (b) SSE, e os defaults de produto da seção 1. Os demais itens de "Pendente com o usuário" seguem abertos. Fatias 1 e 2 implementadas na API em 2026-10-08 (ver "Implementação"); o polling do `duora-web` e as fatias 3 a 7 seguem pendentes.
+- **Status:** Aceita em 2026-10-08 pelo usuário: transporte (d) polling e depois (b) SSE, e os defaults de produto da seção 1. Os demais itens de "Pendente com o usuário" seguem abertos. Fatias 1 a 4 implementadas na API em 2026-10-08 (ver "Implementação"); o polling do `duora-web` e as fatias 5 a 7 seguem pendentes.
 - **Data:** 2026-10-08
 - **Relacionadas:** [ADR 0002](0002-front-web-com-bff.md) (BFF), [ADR 0005](0005-contrato-da-api.md),
   [ADR 0006](0006-rate-limit-no-postgresql.md), [ADR 0007](0007-estilo-por-modulo.md),
@@ -284,8 +284,8 @@ chave antes de incrementar é seguro (o lock cobre o chat inteiro), e o `UNIQUE`
 ## 6. STRIDE inicial
 
 Dado sensível: conteúdo de conversa íntima entre duas pessoas, e quem conversa com quem. Os testes das
-linhas de envio e leitura existem desde as fatias 1 e 2 (lista em "Implementação"); os de stream, Web
-PubSub, denúncia, expurgo e avisos são das fatias 3 a 6:
+linhas de envio e leitura existem desde as fatias 1 e 2, e os de denúncia e expurgo desde as fatias 3 e 4 (lista
+em "Implementação"); os de stream, Web PubSub e avisos são das fatias 5 e 6:
 
 | Ameaça | Mitigação | Teste a escrever |
 |---|---|---|
@@ -295,15 +295,19 @@ PubSub, denúncia, expurgo e avisos são das fatias 3 a 6:
 | Tampering: corpo com `seq`, `sentAt`, remetente ou chat | DTO estrito; servidor define tudo | `ChatFieldErrorsIT.unknownFieldsAreRejectedWithoutWriting` |
 | Tampering: reenvio duplica a mensagem | `Idempotency-Key` por (remetente, chave) + fingerprint | `ChatIT.aRetriedSendWithTheSameKeyRecordsOneMessage`, `sameKeyWithAnotherTextIsAConflict`, `concurrentSendsWithTheSameKeyRecordOne`, `anotherAccountWithTheSameKeyGetsItsOwnMessage` |
 | Tampering: envios simultâneos perdem mensagem no cursor | `last_seq` sob lock do chat | `ChatIT.concurrentSendsGetConsecutiveSequenceNumbers`, `aReaderAfterEachCommitNeverSkipsAMessage`; `ChatSchemaIT.aSequenceNumberIsUniqueInTheChat` |
-| Repudiation: quem disse o quê, depois do expurgo | Remetente e hora gravados pelo servidor; cópia na denúncia | `ChatReportIT.theReportKeepsTheMessageAfterThePurge` |
+| Repudiation: quem disse o quê, depois do expurgo | Remetente e hora gravados pelo servidor; cópia na denúncia, sem FK para o chat | `ChatReportIT.theReportKeepsTheMessageAfterThePurge` |
 | Information disclosure: terceiro lê ou escreve no chat (BOLA) | Rota sem id de pessoa; par por `Pairings.partnerOf`; `404` igual | `ChatIT.someoneOutsideThePairCannotReadNorSend` (corpo sem texto) |
 | Tampering: denunciar a própria mensagem ou a de outro chat | Só mensagem do outro, no chat de quem denuncia | `ChatReportIT.onlyThePartnersMessageCanBeReported` |
-| Information disclosure: texto no log | `toString` redigido; canário | `SensitiveDataLoggingIT.chatMessageNeverReachesTheLog`, `ChatMessageTextTest.doesNotExposeTheTextInToString` |
+| Spoofing: CSRF denuncia pela sessão web | Token CSRF em todo `POST` | `ChatReportIT.aWebSessionWithoutCsrfTokenCannotReport` |
+| Tampering: corpo da denúncia com conta, mensagem ou estado | DTO estrito (`reason`, `description`); o resto vem da rota e do servidor | `ChatReportIT.invalidReportIsRejectedWithoutWriting` |
+| Denial of service: denúncias em massa pela rota do chat | Mesma cota de `POST /api/reports` (10/dia por conta), entre réplicas; `429` + `Retry-After` | `ChatReportIT.theReportQuotaIsSharedWithAccountReports` |
+| Denial of service: expurgo segura locks ou cresce sem limite | Um comando por lote, `batchSize × maxBatchesPerRun` por execução, configuração validada na subida; métrica do que falta | `ChatPurgeIT.aRunStopsAtItsBatchLimit`, `theBacklogMetricCountsExpiredChats`, `RequiredChatPurgeSettingsIT` |
+| Information disclosure: texto no log | `toString` redigido; canário | `SensitiveDataLoggingIT.chatMessageNeverReachesTheLog`, `ChatMessageTextTest.doesNotExposeTheTextInToString`, `ChatReportIT.theReportedMessageNeverReachesTheLog`, `ChatMessageEvidenceTest.doesNotExposeTheTextInToString` |
 | Information disclosure: canal de tempo real leva conteúdo | Aviso só por chave, conjunto de chaves exato | `ChatHintTest.aHintCarriesOnlyIdTypeSessionIdAndVersion` |
 | Information disclosure: aviso entregue a quem não é do chat (fan-out) | Stream autorizado na abertura; filtro por chat de quem chama | `ChatStreamIT.aStreamReceivesOnlyHintsOfTheCallersChats` |
 | Information disclosure: aviso revela decisão alheia | `connection.formed` só quando a conexão existe | `ConnectionHintIT.aYesWithoutConnectionSendsNoHint` |
 | Information disclosure: o bloqueado descobre o bloqueio | Chat fechado responde igual por qualquer motivo | `ChatIT.aBlockedChatLooksLikeARoundThatEnded` |
-| Information disclosure: conversa guardada além do prazo | Expurgo com `delete` real | `ChatPurgeIT.messagesArePurgedAfterTheRetention`, `twoReplicasPurgeWithoutConflict` |
+| Information disclosure: conversa guardada além do prazo | Expurgo com `delete` real, em lotes com `skip locked` em todas as réplicas | `ChatPurgeIT.messagesArePurgedAfterTheRetention`, `twoReplicasPurgeWithoutConflict`, `aChatLockedByAnotherReplicaIsSkippedWithoutWaiting`, `aRunStopsAtItsBatchLimit` |
 | Denial of service: rajada de mensagens | 20/min por conta entre réplicas; `429` + `Retry-After`; falha fechada | `ChatRateLimitIT.sendsAboveTheLimitAreRejectedWithRetryAfterAndWithoutWriting`, `sendIsRefusedWhenTheLimitCannotBeCounted` |
 | Denial of service: texto grande ou inválido vira `500` | 1 a 500 code points, NFC, caracteres proibidos → `400` | `ChatMessageTextTest`, `ChatIT.invalidTextIsRejectedWithoutWriting` (borda 500/501, `\u0000`, invisíveis) |
 | Denial of service: chat cresce sem limite | 300 mensagens por chat | `ChatIT.aFullChatRefusesNewMessages` |
@@ -405,10 +409,94 @@ Decisões tomadas na implementação, sem mudar o que foi aceito:
     limite; depois o limite é gasto, inclusive por quem não está no par (`404`) e na repetição.
 11. **Espera pelo lock do chat:** teto de 2 s (`lock_timeout`), depois `503` com `Retry-After: 1`, como a
     decisão da [ADR 0019](0019-decisao-privada-e-conexoes.md).
-12. **`purge_after`** já é gravado (fim agendado + 24 h), mas nada apaga ainda: o job é a fatia 4.
+12. **`purge_after`** já é gravado (fim agendado + 24 h); o job que apaga é a fatia 4, abaixo.
 13. **Quebra de linha** é aceita no texto, como na bio; os outros controles e invisíveis, não.
 14. A `Idempotency-Key` é convertida como os ids de caminho (`UUID.fromString`), que aceita formas não
     canônicas curtas; a spec declara 36 caracteres.
+
+### Fatias 3 e 4 (2026-10-08, API)
+
+Feitas na API: a denúncia de mensagem com evidência (tabela `report_message_evidence`, V13, do `trustsafety`) e
+o expurgo agendado (índice `chat_purge_after_idx`, V14). Do "Pronto quando" da fatia 4, a métrica é
+`duora.chat.purge.backlog` (gauge, em chats) e o README traz o prazo.
+
+| Rota | Operação | Resposta |
+|---|---|---|
+| `POST .../chat/messages/{seq}:report` + `{reason, description}` | `reportRoundChatMessage` | `201` + `Location: /api/reports/{id}` e a denúncia (`ChatMessageReport`); `400` para a própria mensagem; `404` sem mensagem na posição ou fora do par; `429`/`503` da cota de denúncias |
+
+| Configuração (`duora.chat.purge.*`) | Padrão | Validação na subida |
+|---|---|---|
+| `interval`: espera depois do fim da execução anterior | `PT10M` | pelo menos 1 s |
+| `jitter`: desvio sorteado a cada execução, de zero até ele | `PT2M` | não negativo |
+| `batch-size`: chats por comando | `100` | de 1 a 10.000 |
+| `max-batches-per-run`: lotes por execução | `50` | positivo |
+
+Testes da seção 6 destas fatias vistos falhando com a mitigação desligada (checagem do autor, `toString`
+redigido do DTO, `skip locked`, comparação estrita com `purge_after` e teto de lotes):
+`ChatReportIT.onlyThePartnersMessageCanBeReported`, `theReportedMessageNeverReachesTheLog`,
+`ChatPurgeIT.aChatLockedByAnotherReplicaIsSkippedWithoutWaiting`, `messagesArePurgedAfterTheRetention` e
+`aRunStopsAtItsBatchLimit`. Também existem e passam: `ChatReportIT.theReportKeepsTheMessageAfterThePurge`,
+`aWebSessionWithoutCsrfTokenCannotReport`, `invalidReportIsRejectedWithoutWriting`,
+`theReportQuotaIsSharedWithAccountReports`, `whoBlockedCanStillReport`, `aClosedChatCanStillBeReportedUntilThePurge`,
+`ChatPurgeIT.twoReplicasPurgeWithoutConflict`, `chatsNotYetExpiredAreKept`, `theBacklogMetricCountsExpiredChats`,
+`ChatPurgeSchedulingIT`, `RequiredChatPurgeSettingsIT`, `ReportsWithEvidenceIT`, `ChatMessageEvidenceTest`,
+`JitteredDelayTriggerTest` e `DenyByDefaultIT` (rota nova na enumeração). O `twoReplicasPurgeWithoutConflict`
+passa mesmo sem `skip locked` (a segunda réplica espera e não acha o que a primeira apagou): ele prova que nada é
+apagado duas vezes e que nenhuma réplica falha; quem prova que uma réplica não espera a outra é o
+`aChatLockedByAnotherReplicaIsSkippedWithoutWaiting`.
+
+Decisões tomadas na implementação, sem mudar o que foi aceito:
+
+1. **Rota:** a ação `:report` sobre a mensagem, como a seção 3 propõe e no estilo da [ADR 0005](0005-contrato-da-api.md),
+   e não `POST /api/reports` com uma referência à mensagem: o `trustsafety` teria de ler o chat (ciclo entre
+   módulos) ou confiar numa cópia mandada pelo cliente. A ação cria um recurso de outro módulo, então responde como
+   um Create: `201`, `Location` em `/api/reports/{id}` (legível por `getMyReport`) e os mesmos campos dele, num
+   schema próprio (`ChatMessageReport`), sem o texto da mensagem.
+2. **API publicada do `trustsafety`:** `Reports.fileWithEvidence(reporter, reported, reason, description,
+   ChatMessageEvidence)`, que devolve `FiledReport`. `ReportReason` e `ReportStatus` saíram de `trustsafety.domain`
+   para a raiz do pacote, porque o chat reusa a lista de motivos, e `Reports.DESCRIPTION_MAX_LENGTH` publica o teto
+   do relato para a spec da rota nova. A [ADR 0015](0015-bloqueio-e-denuncia.md) registra o mesmo.
+3. **Evidência:** tabela própria `report_message_evidence`, uma linha por denúncia (PK = `report_id`,
+   `on delete cascade` a partir de `report`), com `chat_id`, `event_id`, `round_number`, `seq`, `body` e `sent_at`,
+   sem FK para chat ou evento (o chat some no expurgo). O remetente é a conta denunciada, sem coluna repetida. A
+   denúncia e a cópia são gravadas num comando só (duas inserções em CTEs): as duas ou nenhuma, sem transação aberta
+   pelo serviço.
+4. **Ordem das recusas:** par, posição e autor são conferidos antes da cota, então o `404` e o `400` da mensagem
+   não a gastam. Em `POST /api/reports` a conta inexistente gasta, para limitar quem adivinha ids; aqui não há id a
+   adivinhar, e a leitura do chat, sem cota, já responde o mesmo. Depois vêm as regras do relato e a cota, na ordem
+   de `fileReport` (só denúncia válida gasta).
+5. **A própria mensagem é `400`**, entrada inválida como a auto-denúncia da [ADR 0015](0015-bloqueio-e-denuncia.md),
+   e não `403` nem `409`: a mensagem é sempre de quem a enviou, e a resposta não revela nada que a pessoa não saiba.
+6. **Sem transação no serviço do chat:** a mensagem não muda depois de gravada, e a cota é contada em outra conexão.
+   Se o expurgo apagar o chat entre a leitura e a gravação, a cópia é gravada assim mesmo, que é o objetivo dela.
+7. **Denunciar de novo a mesma mensagem** cria outra denúncia, como em `POST /api/reports` (sem `Idempotency-Key`,
+   [ADR 0015](0015-bloqueio-e-denuncia.md)); a cota limita.
+8. **Bloqueio:** as duas pessoas continuam denunciando depois de um bloqueio, porque as duas continuam lendo até o
+   expurgo (fatias 1 e 2); quem foi bloqueado não descobre o bloqueio por aqui.
+9. **`GET .../messages/{seq}` não aceita `:`** no mapeamento (`{seq:[^:]+}`), como as ações do ADMIN: `GET` na ação
+   responde `405`, e não `400`. A spec não muda.
+10. **Corte do expurgo:** `purge_after < agora`, estrito; no instante de `purge_after` o chat ainda existe, e um
+    microssegundo depois sai. O instante é lido uma vez por execução, do `Clock` injetado.
+11. **Lote:** `delete from chat where id in (select id ... where purge_after < :now order by purge_after limit :n
+    for update skip locked)`, um comando por lote; as mensagens saem pela FK `on delete cascade`. Sem ShedLock nem
+    advisory lock: os locks de linha bastam, e uma réplica parada no meio só deixa um lote para a próxima. A
+    execução para no primeiro lote incompleto ou em `max-batches-per-run`.
+12. **Agendamento:** `SchedulingConfigurer` com um `Trigger` próprio (`JitteredDelayTrigger`): a próxima execução é
+    o fim da anterior (ou a subida) mais `interval` e mais um desvio sorteado a cada vez, de zero a `jitter`. O
+    `@Scheduled` do Spring não tem jitter, e dormir dentro da tarefa prenderia a única thread do agendador. Um erro
+    numa execução vai para o log pelo agendador, e a próxima tenta de novo; não há retry dentro dela.
+13. **Métrica e log:** o gauge conta os chats vencidos na leitura da métrica (pelo índice de `purge_after`), e o log
+    de cada execução traz só números (apagados, lotes, restantes), nunca ids, pares ou texto.
+14. **Testes sem o agendador:** a configuração de teste põe `interval` em um dia, para um contexto em cache com o
+    relógio de teste adiantado não apagar chats de outro teste; o `ChatPurgeIT` chama o expurgo direto, e o
+    `ChatPurgeSchedulingIT` confere que a tarefa está registrada com o trigger com jitter.
+15. **Depois do expurgo,** `GET .../chat` ainda recria um chat vazio e fechado (o `insert ... on conflict do nothing`
+    das fatias 1 e 2), com outro `chatId`, que o expurgo seguinte apaga; nenhum conteúdo volta. A lista de mensagens
+    vem vazia, e a mensagem e a denúncia respondem `404`. Mudar isso (responder `404` depois do prazo) muda o
+    contrato das fatias 1 e 2 e fica como pendência abaixo.
+16. **Limites da cópia:** `ChatMessageEvidence` aceita de 1 a 500 caracteres e posição de 1 a 300, os mesmos do chat,
+    repetidos no `trustsafety` (que não pode ler o chat); `ChatMessageTest.everyMessageFitsInTheReportEvidence`
+    quebra se o chat passar a aceitar mais.
 
 ## Pendente com o usuário (decisões críticas)
 
@@ -418,17 +506,28 @@ Decisões tomadas na implementação, sem mudar o que foi aceito:
 3. **Stream e sessão:** a reabertura do SSE renova os 30 min de inatividade da sessão ([ADR 0002](0002-front-web-com-bff.md))?
    Proposto: não; só requisições do usuário renovam (exige não tocar a sessão no stream).
 4. **Base legal e política de privacidade** para conversa como dado sensível, com apoio jurídico.
+5. **Retenção da evidência de mensagem:** segue a das denúncias, ainda pendente
+   ([ADR 0015](0015-bloqueio-e-denuncia.md), pendência 2; a [ADR 0023](0023-exclusao-de-conta-e-retencao.md) propõe
+   até a resolução e 2 anos depois de encerrada). Hoje nenhuma denúncia nem cópia é apagada, e só a moderação, que
+   ainda não existe, as leria.
+6. **Chat depois do expurgo:** manter o chat vazio recriado pela leitura (decisão 15 das fatias 3 e 4) ou responder
+   `404` em todas as rotas do chat depois de `purge_after`. Proposto: `404`, que só troca o `200` vazio por um
+   erro já documentado; entra quando o `duora-web` tratar o fim do chat.
 
 ## Consequências
 
 - Módulo novo `chat` (core), dependente de `matching.Pairings`, `events.EventRoster` e
-  `trustsafety.Blocking`; `trustsafety` ganha `Reports.fileWithEvidence`. O `matching` pode precisar
+  `trustsafety.Blocking`; `trustsafety` ganha `Reports.fileWithEvidence` e publica `ReportReason` e
+  `ReportStatus`. O `matching` pode precisar
   publicar "qual é a última rodada" (ou `Pairings` ganha esse dado).
 - O cursor `afterSeq` transparente é uma exceção registrada à [ADR 0005](0005-contrato-da-api.md).
 - O polling soma requisições à cota grátis do Container Apps; acompanhar o número por evento.
 - Se (b) for escolhido, cada réplica abre uma conexão a mais no PostgreSQL (fora do Hikari) e o shutdown
   passa a fechar streams; a ADR 0008 ganha mais uma thread vigiada pela liveness.
 - Nada muda na infraestrutura com (b), (c) ou (d); com (a), o Bicep ganha o Web PubSub e um papel RBAC.
+- Cada réplica roda o expurgo a cada 10 a 12 min; com o volume do piloto (até 50 chats por evento), uma
+  execução apaga tudo num lote. O alerta sobre `duora.chat.purge.backlog` (subindo por mais de uma hora) entra
+  com o monitoramento da [ADR 0014](0014-infraestrutura-do-piloto-na-azure.md).
 
 ## Compliance
 
