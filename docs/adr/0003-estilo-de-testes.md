@@ -64,6 +64,20 @@ pessoais.
     ([ADR 0017](0017-pareamento.md), pendência 10), então a frase acima já não vale para ele; adotá-lo segue como
     decisão de biblioteca aberta com o usuário ([pendências](../pendencias-do-usuario.md)). Para o PIT não há
     registro de spike.
+  - **Atualização de 2026-10-09:** o usuário decidiu adotar o jqwik. Entrou o `net.jqwik:jqwik` 1.10.1 (a versão
+    do spike e a última estável no Maven Central nesta data), escopo `test`, versão na propriedade `jqwik.version`
+    do `pom.xml`. As propriedades seguem as mesmas regras do domínio acima: sem Spring, sem mocks, verificando saída.
+    Ficam em classes `*PropertiesTest`, separadas dos exemplos, porque com as duas engines na mesma classe o
+    Surefire grava um relatório `.txt` por engine e o segundo sobrescreve o primeiro. A configuração mora em
+    `src/test/resources/junit-platform.properties`: 200 tentativas por padrão (quem precisa de mais declara `tries`),
+    base de falhas em `target/jqwik-database` (fora do repositório; `.jqwik-database` também está no `.gitignore`),
+    repetição do caso mínimo antes da semente anterior depois de uma falha, e aviso para semente fixa esquecida no
+    código. Para reproduzir uma falha de outra máquina, `@Property(seed = "...")` com o `seed` do relatório (README,
+    "Propriedades").
+    Cada propriedade nova ou convertida foi vista falhando com o código sabotado (por exemplo: ignorar os pares
+    proibidos, inverter a prioridade de quem ficou de fora, desligar o blossom, comparar o UUID com sinal) antes de
+    entrar. O PIT continua com o mesmo score e os mesmos sobreviventes ([ADR 0025](0025-mutation-testing-com-pit.md),
+    atualização de 2026-10-09).
 
 ## Compliance
 

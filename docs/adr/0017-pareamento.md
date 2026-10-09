@@ -277,12 +277,21 @@ buracos (FK da rodada anterior), o maior número é a última iniciada.
     incompatível. Adotar é decisão de biblioteca: até lá, as propriedades rodam como casos aleatórios com
     semente fixa num teste parametrizado (`RoundPairingRandomCasesTest`).
     *Nota de 2026-10-08: sem mudança; o `pom.xml` ainda não tem jqwik. A ADR 0003 recebeu o resultado do spike.*
+    *Nota de 2026-10-09: resolvida. O usuário decidiu adotar o jqwik 1.10.1 ([ADR 0003](0003-estilo-de-testes.md)).
+    `RoundPairingRandomCasesTest` virou `RoundPairingPropertiesTest`: as quatro propriedades de antes (cada pessoa
+    num só lugar, nenhum par proibido, máximo de pares e nenhuma troca mais justa, as duas últimas contra a mesma
+    busca exaustiva) mais uma nova, o mesmo sorteio em qualquer ordem de chegada dos candidatos. Os grafos aleatórios
+    de `MaximumMatchingTest` e `PriorityMatchingTest` também viraram propriedades, em
+    `MaximumMatchingPropertiesTest` e `PriorityMatchingPropertiesTest`, e os 32 768 grafos de 6 vértices rodam como
+    geração exaustiva do jqwik. Numa falha, o shrinking entrega o menor grupo ou grafo que ainda falha.*
 
 ## Consequências
 
 - O sorteio é testado sem Spring nem banco ([ADR 0003](0003-estilo-de-testes.md)), com exemplos por
   partição e 300 grupos aleatórios conferidos contra busca exaustiva (máximo de pares, nenhum par proibido,
   cada pessoa em exatamente um lugar e nenhuma troca que deixaria o sorteio mais justo).
+  *Atualização de 2026-10-09: os 300 grupos com semente fixa viraram propriedades do jqwik, com 200 grupos novos a
+  cada execução (pendência 10).*
 - O algoritmo é menos óbvio que um embaralhamento; a explicação mora no Javadoc de `MaximumMatching` e
   `PriorityMatching`, e um teste quebra se o blossom for desligado.
 - A justiça vale dentro de um evento; entre eventos, ninguém carrega "rodadas sem par".
