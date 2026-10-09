@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.chat;
 
+import static bipo.tech.duoraapi.ConcurrentCalls.inAnotherThread;
 import static bipo.tech.duoraapi.chat.ChatFixtures.ENDS_AT;
 import static bipo.tech.duoraapi.chat.ChatFixtures.messagesPath;
 import static bipo.tech.duoraapi.chat.ChatFixtures.newKey;
@@ -17,7 +18,6 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -35,6 +35,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import io.micrometer.core.instrument.MeterRegistry;
 
+import bipo.tech.duoraapi.HeldLock;
 import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
@@ -174,28 +175,14 @@ class ChatPurgeIT {
     void aChatLockedByAnotherReplicaIsSkippedWithoutWaiting() throws Exception {
         insertChats(1, LONG_AGO.minus(Duration.ofDays(1)));
         insertChats(4, LONG_AGO);
-        var locked = new CountDownLatch(1);
-        var release = new CountDownLatch(1);
-        ExecutorService executor = Executors.newFixedThreadPool(2);
 
-        try {
-            Future<?> otherReplica = executor.submit(() -> transactionTemplate.executeWithoutResult(status -> {
-                jdbcClient.sql("select id from chat order by purge_after limit 1 for update").query(UUID.class).single();
-                locked.countDown();
-                awaitQuietly(release);
-            }));
-            assertThat(locked.await(30, TimeUnit.SECONDS)).isTrue();
-            Future<Integer> run = executor.submit(() -> purge.purgeExpired(10, 10));
-            try {
-                assertThat(run.get(10, TimeUnit.SECONDS)).isEqualTo(4);
-                assertThat(chatRows()).isOne();
-            } finally {
-                release.countDown();
-            }
-            otherReplica.get(30, TimeUnit.SECONDS);
-        } finally {
-            executor.shutdown();
-            assertThat(executor.awaitTermination(30, TimeUnit.SECONDS)).isTrue();
+        try (var _ = HeldLock.hold(transactionTemplate, () -> jdbcClient
+                .sql("select id from chat order by purge_after limit 1 for update")
+                .query(UUID.class).single())) {
+            var deleted = inAnotherThread(() -> purge.purgeExpired(10, 10));
+
+            assertThat(deleted).isEqualTo(4);
+            assertThat(chatRows()).isOne();
         }
 
         assertThat(purge.purgeExpired(10, 10)).isOne();
@@ -253,14 +240,6 @@ class ChatPurgeIT {
                         """)
                 .param("subject", subject)
                 .query(UUID.class).single();
-    }
-
-    private static void awaitQuietly(CountDownLatch latch) {
-        try {
-            latch.await(30, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 
 }

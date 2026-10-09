@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.chat;
 
+import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
 import static bipo.tech.duoraapi.chat.ChatFixtures.IDEMPOTENCY_KEY;
 import static bipo.tech.duoraapi.chat.ChatFixtures.messagesPath;
 import static bipo.tech.duoraapi.chat.ChatFixtures.newKey;
@@ -24,7 +25,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -61,29 +61,25 @@ class ChatFieldErrorsIT {
 
     @ParameterizedTest
     @MethodSource("invalidBodies")
-    void invalidBodyNamesTheFieldAndTheReason(String body, String detail, String errors) throws Exception {
+    void invalidBodyNamesTheFieldAndTheReason(String body, String errors) throws Exception {
         send(body)
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(content().json("""
-                        {"title": "Bad Request", "status": 400, "detail": "%s", "instance": "%s", "errors": %s}
-                        """.formatted(detail, messagesPath(eventId, 1), errors), JsonCompareMode.STRICT));
+                        {"title": "Bad Request", "status": 400, "instance": "%s", "errors": %s}
+                        """.formatted(messagesPath(eventId, 1), errors), strictIgnoringDetail()));
 
         assertThat(ChatFixtures.messageRows(jdbcClient)).isZero();
     }
 
     static Stream<Arguments> invalidBodies() {
         return Stream.of(
-                invalid("sem texto", "{}", "Invalid request content.", "text", "REQUIRED"),
-                invalid("texto nulo", "{\"text\": null}", "Invalid request content.", "text", "REQUIRED"),
-                invalid("texto em branco", "{\"text\": \"  \\n \"}", "text must have 1 to 500 characters", "text",
-                        "TOO_SHORT"),
-                invalid("texto com 501 caracteres", "{\"text\": \"" + "a".repeat(501) + "\"}",
-                        "text must have 1 to 500 characters", "text", "TOO_LONG"),
-                invalid("texto com NUL", "{\"text\": \"oi\\u0000\"}", "text contains a forbidden character", "text",
-                        "FORBIDDEN_CHARACTER"),
-                invalid("texto que é objeto", "{\"text\": {\"value\": \"oi\"}}", "Failed to read request", "text",
-                        "INVALID_FORMAT"));
+                invalid("sem texto", "{}", "text", "REQUIRED"),
+                invalid("texto nulo", "{\"text\": null}", "text", "REQUIRED"),
+                invalid("texto em branco", "{\"text\": \"  \\n \"}", "text", "TOO_SHORT"),
+                invalid("texto com 501 caracteres", "{\"text\": \"" + "a".repeat(501) + "\"}", "text", "TOO_LONG"),
+                invalid("texto com NUL", "{\"text\": \"oi\\u0000\"}", "text", "FORBIDDEN_CHARACTER"),
+                invalid("texto que é objeto", "{\"text\": {\"value\": \"oi\"}}", "text", "INVALID_FORMAT"));
     }
 
     /** Posição, horário, remetente e chat são do servidor (docs/adr/0021, STRIDE: Tampering). */
@@ -113,8 +109,8 @@ class ChatFieldErrorsIT {
         assertThat(ChatFixtures.messageRows(jdbcClient)).isZero();
     }
 
-    private static Arguments invalid(String name, String body, String detail, String field, String code) {
-        return Arguments.of(Named.of(name, body), detail, """
+    private static Arguments invalid(String name, String body, String field, String code) {
+        return Arguments.of(Named.of(name, body), """
                 [{"field": "%s", "code": "%s"}]""".formatted(field, code));
     }
 

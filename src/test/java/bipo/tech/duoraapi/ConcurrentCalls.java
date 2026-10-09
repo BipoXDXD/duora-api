@@ -31,10 +31,15 @@ public final class ConcurrentCalls {
 
     }
 
-    /** Roda as chamadas ao mesmo tempo e devolve os resultados na ordem em que foram dadas. */
+    /**
+     * Roda as chamadas ao mesmo tempo e devolve os resultados na ordem em que foram dadas. Se uma passar do teto
+     * de espera, falha na hora: o executor é encerrado sem esperar, porque a chamada travada pode depender de
+     * algo que o teste só solta depois (um lock segurado, por exemplo).
+     */
     public static <T> List<T> together(List<Callable<T>> calls) throws Exception {
         var start = new CountDownLatch(1);
-        try (var executor = Executors.newFixedThreadPool(calls.size())) {
+        var executor = Executors.newFixedThreadPool(calls.size());
+        try {
             var futures = calls.stream()
                     .map(call -> executor.submit(() -> {
                         start.await();
@@ -47,7 +52,18 @@ public final class ConcurrentCalls {
                 results.add(future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS));
             }
             return results;
+        } finally {
+            executor.shutdownNow();
         }
+    }
+
+    /**
+     * Roda a chamada numa thread à parte e espera pelo resultado até o teto. Serve a quem precisa provar que a
+     * chamada termina sem esperar um lock que o teste está segurando: se esperasse, o teste falharia em vez de
+     * pendurar.
+     */
+    public static <T> T inAnotherThread(Callable<T> call) throws Exception {
+        return together(List.of(call)).getFirst();
     }
 
     /** Roda a mesma chamada {@code times} vezes ao mesmo tempo. */

@@ -11,6 +11,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import bipo.tech.duoraapi.AccountFixtures;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.events.EventFixtures;
 import bipo.tech.duoraapi.matching.RoundFixtures;
@@ -82,9 +83,7 @@ public final class ChatFixtures {
     }
 
     public static String accountOf(JdbcClient jdbcClient, String name) {
-        return jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", "oid-" + name)
-                .query(UUID.class).single().toString();
+        return AccountFixtures.accountIdOf(jdbcClient, name);
     }
 
     public static long messageRows(JdbcClient jdbcClient) {
