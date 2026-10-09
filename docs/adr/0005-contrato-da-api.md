@@ -58,6 +58,20 @@ query evita vazar perfil de quem bloqueou.
 - A idempotência segue a regra de segurança: chave escopada por usuário, fingerprint do corpo e
   reserva atômica.
 
+## Atualização de 2026-10-08
+
+A decisão acima não foi reescrita. O que o código fez depois dela:
+
+- **Erros:** o `400` de validação ganhou `errors: [{field, code}]` ([ADR 0018](0018-erros-de-campo-no-problem-detail.md)),
+  e o `409` e o `403` de regra ganharam `reason` ([ADR 0020](0020-motivo-das-recusas-no-problem-detail.md)).
+- **Idempotência:** inscrição, rodada e decisão são idempotentes pela chave de negócio, sem `Idempotency-Key`
+  ([ADR 0016](0016-eventos-e-inscricoes.md), [0017](0017-pareamento.md), [0019](0019-decisao-privada-e-conexoes.md));
+  o chat é a única operação com `Idempotency-Key` até agora ([ADR 0021](0021-chat-temporario-e-reconexao.md)).
+- **Cursor:** o chat usa `afterSeq`, transparente, no lugar do `pageToken` opaco, porque a sequência não tem
+  lacunas (exceção registrada na ADR 0021).
+- **Ação de jogo:** o `POST .../actions` acima é só a intenção do plano. A [ADR 0024](0024-primeiro-jogo-e-modulo-experiences.md)
+  propõe um `PUT` por chave de negócio; a escolha está aberta (pendência 9 dela).
+
 ## Compliance
 
 - `CustomActionRoutingTest`: o Spring MVC roteia cada `:verbo` para o seu handler, recusa variações

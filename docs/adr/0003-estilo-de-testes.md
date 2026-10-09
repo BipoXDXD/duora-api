@@ -34,6 +34,9 @@ Seguimos o estilo de Khorikov:
   e-mail, Blob Storage quando entrega URL ao navegador. O mock fica no último tipo nosso antes
   do SDK. O Entra é simulado por um servidor HTTP local que entrega JWKS e tokens, como em
   `WebLoginIT`.
+  - **Atualização de 2026-10-08:** o Web PubSub não entra no primeiro deploy; o tempo real começa por
+    polling e SSE no próprio Spring ([ADR 0021](0021-chat-temporario-e-reconexao.md)). O exemplo só vale
+    se ele vier a ser adotado.
 - Serviço de aplicação sem regra (só orquestra) não ganha teste unitário: o teste de integração
   já o cobre.
 
@@ -57,6 +60,10 @@ pessoais.
 - O plano técnico (§8) foi atualizado: Mockito deixa de ser ferramenta de unidade.
 - jqwik e PIT ainda não têm suporte confirmado ao JUnit 6 do Boot 4; property-based e mutation
   testing esperam um spike.
+  - **Atualização de 2026-10-08:** o spike do jqwik 1.10.1 rodou no JUnit 6 do Boot 4
+    ([ADR 0017](0017-pareamento.md), pendência 10), então a frase acima já não vale para ele; adotá-lo segue como
+    decisão de biblioteca aberta com o usuário ([pendências](../pendencias-do-usuario.md)). Para o PIT não há
+    registro de spike.
 
 ## Compliance
 

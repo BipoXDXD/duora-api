@@ -164,6 +164,10 @@ limita o volume. A infraestrutura de idempotência (chave por usuário, fingerpr
 com a primeira operação em que a repetição custa caro (ação de jogo, pagamento), e a denúncia passa a
 usá-la. Bloquear e desbloquear já são idempotentes pelo estado.
 
+*Nota de 2026-10-08: o chat ([ADR 0021](0021-chat-temporario-e-reconexao.md), #34) foi a primeira operação a
+usar `Idempotency-Key`, guardada na própria linha da mensagem, sem infraestrutura genérica. A denúncia
+continua sem a chave, e a cota limita o volume.*
+
 ### Fila de moderação
 
 **Fica para depois.** O plano exige acesso a evidências "restrito e auditado", e a trilha de auditoria
@@ -205,6 +209,10 @@ aparece em `GET /api/reports/{id}`: ela é da moderação.
    moderação precisar do histórico (padrão de assédio), o desbloqueio vira mudança de estado.
 5. **Efeito do bloqueio nos outros módulos.** O que o bloqueio esconde (perfil, presença no mesmo evento,
    conversas existentes) será decidido com chat e pareamento; hoje só a consulta existe.
+   *Nota de 2026-10-08, resolvido em parte: o pareamento nunca forma par bloqueado (#19), a conexão não se forma
+   com bloqueio (#23) e o chat fecha para envio com bloqueio em qualquer direção, com a mesma resposta do fim
+   normal (#34). Em aberto: perfil, presença no mesmo evento e a conexão que já existe quando o bloqueio chega
+   ([ADR 0019](0019-decisao-privada-e-conexoes.md), pendência 3).*
 
 ## Consequências
 

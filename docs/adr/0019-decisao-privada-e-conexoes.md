@@ -206,10 +206,15 @@ acontece fora da transação da decisão, para a espera pelo bucket não segurar
    de uma API publicada do `profiles`.
 5. **Aviso de "vocês se conectaram"** para quem decidiu primeiro: depende da outbox
    ([ADR 0009](0009-outbox-e-eventos.md)) e do módulo de notificações.
+   *Nota de 2026-10-08: a fatia 6 da [ADR 0021](0021-chat-temporario-e-reconexao.md) propõe o aviso
+   `connection.formed` no canal do SSE, sem outbox; não implementada.*
 6. **Remover uma conexão** ("desconectar") e o que isso faz com o chat.
 7. **Retenção das decisões:** guardar para sempre, apagar depois do evento ou depois do prazo. São dado
    pessoal sensível (interesse romântico) sem uso depois da conexão formada.
 8. **Exclusão de conta:** as FKs são `restrict`; a futura exclusão precisa apagar decisões e conexões antes.
+   *Nota de 2026-10-08: as pendências 7 e 8 são endereçadas pela [ADR 0023](0023-exclusao-de-conta-e-retencao.md)
+   (decisões apagadas 7 dias depois do fim do evento e na exclusão de quem decidiu, tudo proposto); a ADR segue
+   proposta, aguardando decisão do usuário.*
 
 ## Consequências
 

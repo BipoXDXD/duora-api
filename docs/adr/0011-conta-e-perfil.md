@@ -153,6 +153,8 @@ Implementação: `ProfileEditRateLimitProperties` e `ProfileEditRateLimitConfigu
 2. **Retenção e exclusão (LGPD).** Não há fluxo de exclusão de conta, prazo de retenção de conta e
    perfil, nem política para backups. A FK `restrict` obriga esse fluxo a passar por cada módulo. Base
    legal e consentimento para os dados do perfil (`consent_records` do plano §4) também estão em aberto.
+   *Nota de 2026-10-08: a [ADR 0023](0023-exclusao-de-conta-e-retencao.md) propõe o fluxo de exclusão, o
+   tombstone e a retenção por categoria; segue proposta, aguardando decisão do usuário.*
 3. **Suspeita de menor.** O plano §7 pede um fluxo de proteção. Hoje a data de menor só é recusada,
    sem registro: a pessoa pode tentar de novo com outra data. Guardar a tentativa permitiria bloquear,
    mas é guardar dado de menor. Decidir com apoio jurídico.
@@ -196,6 +198,11 @@ STRIDE do fluxo (dado pessoal):
 
 Repudiation (quem mudou o perfil e quando) não é tratada: não há trilha de auditoria de edição. Entra
 junto com a moderação, se ela precisar do histórico.
+
+**Nota de 2026-10-08:** a allowlist de `GET /api/me` ganhou `roles` (os papéis vindos das authorities do
+servidor, `[]` para o usuário comum) por #38, conforme a [ADR 0002](0002-front-web-com-bff.md). A linha
+"Information disclosure: `/api/me`" acima descreve o estado de 2026-10-05; `WebLoginIT` e
+`BearerTokenValidationIT` já afirmam as três chaves.
 
 Fronteira entre módulos: `ArchitectureTest.modulesUseOnlyPublishedApisOfOtherModules`, com
 `ArchitectureRulesTest` conferindo que a regra pega a violação.
