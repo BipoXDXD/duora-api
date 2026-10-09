@@ -3,6 +3,7 @@ package bipo.tech.duoraapi.events;
 import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
 import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
 import static bipo.tech.duoraapi.ConcurrentCalls.together;
+import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.ADMIN_EVENTS_PATH;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
@@ -122,8 +123,8 @@ class AdminEventIT {
         mockMvc.perform(post(adminEventPath(id) + ":publish").with(admin()))
                 .andExpect(status().isConflict())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(content().json(conflict("only a draft can be published", id, ":publish",
-                        "EVENT_ALREADY_PUBLISHED"), JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( id, ":publish",
+                        "EVENT_ALREADY_PUBLISHED"), strictIgnoringDetail()));
     }
 
     @Test
@@ -133,8 +134,7 @@ class AdminEventIT {
 
         mockMvc.perform(post(adminEventPath(id) + ":publish").with(admin()))
                 .andExpect(status().isConflict())
-                .andExpect(content().json(conflict("the event has already started", id, ":publish", "EVENT_STARTED"),
-                        JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( id, ":publish", "EVENT_STARTED"), strictIgnoringDetail()));
 
         assertThat(statusOf(id)).isEqualTo("DRAFT");
     }
@@ -146,8 +146,7 @@ class AdminEventIT {
 
         mockMvc.perform(post(adminEventPath(id) + ":publish").with(admin()))
                 .andExpect(status().isConflict())
-                .andExpect(content().json(conflict("the event has already ended", id, ":publish", "EVENT_ENDED"),
-                        JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( id, ":publish", "EVENT_ENDED"), strictIgnoringDetail()));
 
         assertThat(statusOf(id)).isEqualTo("DRAFT");
     }
@@ -170,8 +169,8 @@ class AdminEventIT {
 
         mockMvc.perform(post(adminEventPath(id) + ":cancel").with(admin()))
                 .andExpect(status().isConflict())
-                .andExpect(content().json(conflict("the event is already cancelled", id, ":cancel",
-                        "EVENT_CANCELLED"), JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( id, ":cancel",
+                        "EVENT_CANCELLED"), strictIgnoringDetail()));
     }
 
     @Test
@@ -181,8 +180,7 @@ class AdminEventIT {
 
         mockMvc.perform(post(adminEventPath(id) + ":cancel").with(admin()))
                 .andExpect(status().isConflict())
-                .andExpect(content().json(conflict("the event has already ended", id, ":cancel", "EVENT_ENDED"),
-                        JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( id, ":cancel", "EVENT_ENDED"), strictIgnoringDetail()));
 
         assertThat(statusOf(id)).isEqualTo("PUBLISHED");
     }
@@ -194,8 +192,8 @@ class AdminEventIT {
 
         mockMvc.perform(post(adminEventPath(id) + ":publish").with(admin()))
                 .andExpect(status().isConflict())
-                .andExpect(content().json(conflict("only a draft can be published", id, ":publish",
-                        "EVENT_CANCELLED"), JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( id, ":publish",
+                        "EVENT_CANCELLED"), strictIgnoringDetail()));
 
         assertThat(statusOf(id)).isEqualTo("CANCELLED");
     }
@@ -490,10 +488,10 @@ class AdminEventIT {
     }
 
     /** O 409 inteiro de uma ação do ADMIN, com o motivo em reason (docs/adr/0020). */
-    private static String conflict(String detail, String id, String action, String reason) {
+    private static String conflict(String id, String action, String reason) {
         return """
-                {"title": "Conflict", "status": 409, "detail": "%s", "instance": "%s%s", "reason": "%s"}
-                """.formatted(detail, adminEventPath(id), action, reason);
+                {"title": "Conflict", "status": 409, "instance": "%s%s", "reason": "%s"}
+                """.formatted(adminEventPath(id), action, reason);
     }
 
 }

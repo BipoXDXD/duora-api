@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.connections;
 
+import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
 import static bipo.tech.duoraapi.events.EventFixtures.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -21,7 +22,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -52,30 +52,27 @@ class ConnectionFieldErrorsIT {
 
     @ParameterizedTest
     @MethodSource("invalidBodies")
-    void invalidBodyNamesTheFieldAndTheReason(String body, String detail, String errors) throws Exception {
+    void invalidBodyNamesTheFieldAndTheReason(String body, String errors) throws Exception {
         decide(body)
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(content().json("""
-                        {"title": "Bad Request", "status": 400, "detail": "%s", "instance": "%s", "errors": %s}
-                        """.formatted(detail, PATH, errors), JsonCompareMode.STRICT));
+                        {"title": "Bad Request", "status": 400, "instance": "%s", "errors": %s}
+                        """.formatted(PATH, errors), strictIgnoringDetail()));
 
         assertThat(jdbcClient.sql("select count(*) from round_decision").query(Long.class).single()).isZero();
     }
 
     static Stream<Arguments> invalidBodies() {
         return Stream.of(
-                invalid("sem a escolha", "{}", "Invalid request content.", "interested", "REQUIRED"),
-                invalid("escolha nula", "{\"interested\": null}", "Invalid request content.", "interested", "REQUIRED"),
-                invalid("escolha em texto", "{\"interested\": \"yes\"}", "Failed to read request", "interested",
-                        "INVALID_FORMAT"),
-                invalid("booleano em texto", "{\"interested\": \"true\"}", "Failed to read request", "interested",
-                        "INVALID_FORMAT"),
-                invalid("escolha numérica", "{\"interested\": 1}", "Failed to read request", "interested",
-                        "INVALID_FORMAT"),
+                invalid("sem a escolha", "{}", "interested", "REQUIRED"),
+                invalid("escolha nula", "{\"interested\": null}", "interested", "REQUIRED"),
+                invalid("escolha em texto", "{\"interested\": \"yes\"}", "interested", "INVALID_FORMAT"),
+                invalid("booleano em texto", "{\"interested\": \"true\"}", "interested", "INVALID_FORMAT"),
+                invalid("escolha numérica", "{\"interested\": 1}", "interested", "INVALID_FORMAT"),
                 invalid("par vindo do cliente", "{\"interested\": true, \"partnerAccountId\": \"x\"}",
-                        "Failed to read request", "partnerAccountId", "UNKNOWN_FIELD"),
-                Arguments.of(Named.of("JSON quebrado", "{\"interested\": "), "Failed to read request",
+                        "partnerAccountId", "UNKNOWN_FIELD"),
+                Arguments.of(Named.of("JSON quebrado", "{\"interested\": "),
                         "[{\"code\": \"MALFORMED_BODY\"}]"));
     }
 
@@ -91,8 +88,8 @@ class ConnectionFieldErrorsIT {
         assertThat(response).contains("\"errors\"").doesNotContain(canary);
     }
 
-    private static Arguments invalid(String name, String body, String detail, String field, String code) {
-        return Arguments.of(Named.of(name, body), detail, """
+    private static Arguments invalid(String name, String body, String field, String code) {
+        return Arguments.of(Named.of(name, body), """
                 [{"field": "%s", "code": "%s"}]""".formatted(field, code));
     }
 

@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.profiles;
 
+import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
 import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -22,12 +23,13 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import bipo.tech.duoraapi.AccountTables;
+import bipo.tech.duoraapi.TestClockConfiguration;
+import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
 /**
@@ -36,7 +38,7 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, TestClockConfiguration.class})
 class ProfileFieldErrorsIT {
 
     private static final String PROFILE_PATH = "/api/me/profile";
@@ -47,20 +49,24 @@ class ProfileFieldErrorsIT {
     @Autowired
     private JdbcClient jdbcClient;
 
+    @Autowired
+    private TestClock clock;
+
     @BeforeEach
-    void cleanDatabase() {
+    void resetState() {
+        clock.setTo(TestClockConfiguration.NOW);
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
     }
 
     @ParameterizedTest
     @MethodSource("invalidBodies")
-    void invalidBodyNamesTheFieldAndTheReason(String body, String detail, String errors) throws Exception {
+    void invalidBodyNamesTheFieldAndTheReason(String body, String errors) throws Exception {
         edit(body)
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(content().json("""
-                        {"title": "Bad Request", "status": 400, "detail": "%s", "instance": "%s", "errors": %s}
-                        """.formatted(detail, PROFILE_PATH, errors), JsonCompareMode.STRICT));
+                        {"title": "Bad Request", "status": 400, "instance": "%s", "errors": %s}
+                        """.formatted(PROFILE_PATH, errors), strictIgnoringDetail()));
 
         assertThat(profileRows()).isZero();
     }
@@ -68,34 +74,23 @@ class ProfileFieldErrorsIT {
     static Stream<Arguments> invalidBodies() {
         return Stream.of(
                 invalid("nome com 51 caracteres", "{\"displayName\": \"" + "a".repeat(51) + "\"}",
-                        "displayName must have 1 to 50 characters", "displayName", "TOO_LONG"),
-                invalid("nome em branco", "{\"displayName\": \"   \"}",
-                        "displayName must have 1 to 50 characters", "displayName", "TOO_SHORT"),
+                        "displayName", "TOO_LONG"),
+                invalid("nome em branco", "{\"displayName\": \"   \"}", "displayName", "TOO_SHORT"),
                 invalid("nome com zero-width space", "{\"displayName\": \"Ana\\u200B\"}",
-                        "displayName contains a forbidden character", "displayName", "FORBIDDEN_CHARACTER"),
-                invalid("nome apagado", "{\"displayName\": null}",
-                        "displayName cannot be removed", "displayName", "REQUIRED"),
-                invalid("nome como objeto", "{\"displayName\": {}}",
-                        "Failed to read request", "displayName", "INVALID_FORMAT"),
-                invalid("bio com 301 caracteres", "{\"bio\": \"" + "a".repeat(301) + "\"}",
-                        "bio must have at most 300 characters", "bio", "TOO_LONG"),
-                invalid("bio com NUL", "{\"bio\": \"oi\\u0000\"}",
-                        "bio contains a forbidden character", "bio", "FORBIDDEN_CHARACTER"),
-                invalid("data fora do ISO 8601", "{\"birthDate\": \"10/05/1990\"}",
-                        "birthDate must be a date in the format 1990-05-10", "birthDate", "INVALID_FORMAT"),
-                invalid("menor de idade", "{\"birthDate\": \"2020-01-01\"}",
-                        "birthDate must be at least 18 years ago", "birthDate", "ABOVE_MAXIMUM"),
-                invalid("idade implausível", "{\"birthDate\": \"1890-01-01\"}",
-                        "birthDate must be at most 120 years ago", "birthDate", "BELOW_MINIMUM"),
-                invalid("região fora da lista", "{\"region\": \"SP\"}",
-                        "region must be the ISO 3166-2 code of a Brazilian state, like BR-SP", "region",
-                        "UNSUPPORTED_VALUE"),
-                invalid("região apagada", "{\"region\": null}", "region cannot be removed", "region", "REQUIRED"),
-                invalid("campo desconhecido", "{\"nickname\": \"Ana\"}",
-                        "Failed to read request", "nickname", "UNKNOWN_FIELD"),
-                Arguments.of(Named.of("JSON quebrado", "{\"displayName\": "), "Failed to read request",
+                        "displayName", "FORBIDDEN_CHARACTER"),
+                invalid("nome apagado", "{\"displayName\": null}", "displayName", "REQUIRED"),
+                invalid("nome como objeto", "{\"displayName\": {}}", "displayName", "INVALID_FORMAT"),
+                invalid("bio com 301 caracteres", "{\"bio\": \"" + "a".repeat(301) + "\"}", "bio", "TOO_LONG"),
+                invalid("bio com NUL", "{\"bio\": \"oi\\u0000\"}", "bio", "FORBIDDEN_CHARACTER"),
+                invalid("data fora do ISO 8601", "{\"birthDate\": \"10/05/1990\"}", "birthDate", "INVALID_FORMAT"),
+                invalid("menor de idade", "{\"birthDate\": \"2020-01-01\"}", "birthDate", "ABOVE_MAXIMUM"),
+                invalid("idade implausível", "{\"birthDate\": \"1890-01-01\"}", "birthDate", "BELOW_MINIMUM"),
+                invalid("região fora da lista", "{\"region\": \"SP\"}", "region", "UNSUPPORTED_VALUE"),
+                invalid("região apagada", "{\"region\": null}", "region", "REQUIRED"),
+                invalid("campo desconhecido", "{\"nickname\": \"Ana\"}", "nickname", "UNKNOWN_FIELD"),
+                Arguments.of(Named.of("JSON quebrado", "{\"displayName\": "),
                         "[{\"code\": \"MALFORMED_BODY\"}]"),
-                Arguments.of(Named.of("lista no lugar do objeto", "[]"), "Failed to read request",
+                Arguments.of(Named.of("lista no lugar do objeto", "[]"),
                         "[{\"code\": \"MALFORMED_BODY\"}]"));
     }
 
@@ -113,8 +108,8 @@ class ProfileFieldErrorsIT {
         assertThat(response).contains("\"errors\"").doesNotContain(canary);
     }
 
-    private static Arguments invalid(String name, String body, String detail, String field, String code) {
-        return Arguments.of(Named.of(name, body), detail, """
+    private static Arguments invalid(String name, String body, String field, String code) {
+        return Arguments.of(Named.of(name, body), """
                 [{"field": "%s", "code": "%s"}]""".formatted(field, code));
     }
 

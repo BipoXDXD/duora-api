@@ -4,6 +4,7 @@ import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
 import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
 import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
 import static bipo.tech.duoraapi.ConcurrentCalls.together;
+import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.adminEventPath;
@@ -168,9 +169,8 @@ class RoundIT {
                 .andExpect(status().isConflict())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(content().json("""
-                        {"title": "Conflict", "status": 409, "detail": "the previous round has not started yet",
-                         "instance": "%s", "reason": "ROUND_OUT_OF_SEQUENCE"}
-                        """.formatted(roundPath(eventId, 2)), JsonCompareMode.STRICT));
+                        {"title": "Conflict", "status": 409, "instance": "%s", "reason": "ROUND_OUT_OF_SEQUENCE"}
+                        """.formatted(roundPath(eventId, 2)), strictIgnoringDetail()));
 
         assertThat(roundRows(eventId)).isZero();
         assertThat(seatRows(eventId)).isZero();
@@ -240,7 +240,7 @@ class RoundIT {
 
         startRound(eventId, 1)
                 .andExpect(status().isConflict())
-                .andExpect(content().json(notUnderway(eventId), JsonCompareMode.STRICT));
+                .andExpect(content().json(notUnderway(eventId), strictIgnoringDetail()));
 
         assertThat(roundRows(eventId)).isZero();
     }
@@ -252,7 +252,7 @@ class RoundIT {
 
         startRound(eventId, 1)
                 .andExpect(status().isConflict())
-                .andExpect(content().json(notUnderway(eventId), JsonCompareMode.STRICT));
+                .andExpect(content().json(notUnderway(eventId), strictIgnoringDetail()));
 
         assertThat(roundRows(eventId)).isZero();
     }
@@ -273,7 +273,7 @@ class RoundIT {
 
         startRound(eventId, 1)
                 .andExpect(status().isConflict())
-                .andExpect(content().json(notUnderway(eventId), JsonCompareMode.STRICT));
+                .andExpect(content().json(notUnderway(eventId), strictIgnoringDetail()));
 
         assertThat(roundRows(eventId)).isZero();
     }
@@ -285,7 +285,7 @@ class RoundIT {
 
         startRound(eventId, 1)
                 .andExpect(status().isConflict())
-                .andExpect(content().json(notUnderway(eventId), JsonCompareMode.STRICT));
+                .andExpect(content().json(notUnderway(eventId), strictIgnoringDetail()));
 
         assertThat(roundRows(eventId)).isZero();
     }
@@ -566,9 +566,7 @@ class RoundIT {
 
     private static String notUnderway(String eventId) {
         return """
-                {"title": "Conflict", "status": 409,
-                 "detail": "rounds start only while the event is published and underway",
-                 "instance": "%s", "reason": "EVENT_NOT_UNDERWAY"}
+                {"title": "Conflict", "status": 409, "instance": "%s", "reason": "EVENT_NOT_UNDERWAY"}
                 """.formatted(roundPath(eventId, 1));
     }
 

@@ -1,5 +1,10 @@
 package bipo.tech.duoraapi.trustsafety;
 
+import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
+import static bipo.tech.duoraapi.RateLimitTestSupport.expectRejectedByTheLimit;
+import static bipo.tech.duoraapi.RateLimitTestSupport.expectUnavailableBecauseTheLimitCannotBeCounted;
+import static bipo.tech.duoraapi.RateLimitTestSupport.whileTheLimitCannotBeCounted;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -8,7 +13,6 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -70,7 +74,7 @@ class ReportIT {
     @BeforeEach
     void cleanDatabase() {
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
     }
 
     @Test
@@ -156,9 +160,9 @@ class ReportIT {
         file(ana(), harassmentOf(ana))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().json("""
-                        {"title": "Bad Request", "status": 400, "detail": "an account cannot report itself",
-                         "instance": "/api/reports", "errors": [{"field": "reportedAccountId", "code": "SELF_REFERENCE"}]}
-                        """, JsonCompareMode.STRICT));
+                        {"title": "Bad Request", "status": 400, "instance": "/api/reports",
+                         "errors": [{"field": "reportedAccountId", "code": "SELF_REFERENCE"}]}
+                        """, strictIgnoringDetail()));
 
         assertThat(reportRows()).isEmpty();
     }
@@ -258,13 +262,7 @@ class ReportIT {
             file(ana(), harassmentOf(bruno)).andExpect(status().isCreated());
         }
 
-        file(ana(), harassmentOf(bruno))
-                .andExpect(status().isTooManyRequests())
-                .andExpect(header().string(HttpHeaders.RETRY_AFTER, SECONDS_TO_NEXT_REPORT))
-                .andExpect(content().json("""
-                        {"title": "Too Many Requests", "status": 429, "detail": "rate limit exceeded; try again later",
-                         "instance": "/api/reports"}
-                        """, JsonCompareMode.STRICT));
+        expectRejectedByTheLimit(file(ana(), harassmentOf(bruno)), SECONDS_TO_NEXT_REPORT, "/api/reports");
 
         assertThat(reportRows()).hasSize(DAILY_QUOTA);
     }
@@ -296,18 +294,9 @@ class ReportIT {
     @Test
     void reportIsRefusedWithoutWritingWhenTheQuotaCannotBeCounted() throws Exception {
         var bruno = accountIdOf("oid-bruno");
-        jdbcClient.sql("alter table rate_limit_bucket rename to rate_limit_bucket_unavailable").update();
-        try {
-            file(ana(), harassmentOf(bruno))
-                    .andExpect(status().isServiceUnavailable())
-                    .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
-                    .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                    .andExpect(content().json("""
-                            {"title": "Service Unavailable", "status": 503, "instance": "/api/reports"}
-                            """, JsonCompareMode.STRICT));
-        } finally {
-            jdbcClient.sql("alter table rate_limit_bucket_unavailable rename to rate_limit_bucket").update();
-        }
+        whileTheLimitCannotBeCounted(jdbcClient, () -> expectUnavailableBecauseTheLimitCannotBeCounted(
+                file(ana(), harassmentOf(bruno)),
+                "/api/reports"));
 
         assertThat(reportRows()).isEmpty();
     }

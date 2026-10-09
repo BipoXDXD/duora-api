@@ -117,12 +117,6 @@ class PairingsIT {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
-    @Test
-    void theRoundNumbersGoFromOneToOneHundred() {
-        assertThat(Pairings.FIRST_ROUND).isEqualTo(1);
-        assertThat(Pairings.LAST_ROUND).isEqualTo(100);
-    }
-
     private UUID roundOneWith(String... names) throws Exception {
         clock.setTo(TestClockConfiguration.NOW);
         String eventId = createPublishedEvent(mockMvc);

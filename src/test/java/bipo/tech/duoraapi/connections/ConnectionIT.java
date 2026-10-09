@@ -288,30 +288,36 @@ class ConnectionIT {
                 .andExpect(jsonPath("$.items[0].connectedAt").value(DECIDED_AT));
     }
 
-    /** Ficar de fora, estar fora do sorteio ou pedir uma rodada que não existe: o mesmo 404, nada gravado. */
     @Test
-    void onlyWhoFormedThePairDecides() throws Exception {
-        String otherEvent = createPublishedEvent(mockMvc);
-        registerWithCompleteProfile(mockMvc, user("davi"), otherEvent);
+    void someoneSittingOutOfTheRoundIsToldTheyHaveNoPartner() throws Exception {
         String eventId = pairedInRoundOne("ana", "bruno", "carla");
         String satOut = sittingOutIn(eventId);
 
-        String sittingOut = decide(eventId, satOut, YES).andExpect(status().isNotFound())
-                .andReturn().getResponse().getContentAsString();
-        String outsider = decide(eventId, "davi", YES).andExpect(status().isNotFound())
-                .andReturn().getResponse().getContentAsString();
-        String missingRound = mockMvc.perform(put(decisionPath(eventId, 2)).with(user("ana"))
-                        .contentType(MediaType.APPLICATION_JSON).content(YES))
-                .andExpect(status().isNotFound())
-                .andReturn().getResponse().getContentAsString();
-        String unknownEvent = decide(UUID.randomUUID().toString(), "ana", YES).andExpect(status().isNotFound())
-                .andReturn().getResponse().getContentAsString();
+        expectNoPartnerAndNothingWritten(decide(eventId, satOut, YES), eventId);
+    }
 
-        assertThat(List.of(sittingOut, outsider, missingRound, unknownEvent))
-                .extracting(body -> JsonPath.<String>read(body, "$.detail"))
-                .containsOnly("the caller has no partner in this round");
-        assertThat(outsider).doesNotContain(accountOf("ana"), accountOf("bruno"), accountOf("carla"));
-        assertThat(decisionRows(eventId)).isZero();
+    @Test
+    void someoneNotRegisteredInTheEventIsToldTheyHaveNoPartner() throws Exception {
+        String otherEvent = createPublishedEvent(mockMvc);
+        registerWithCompleteProfile(mockMvc, user("davi"), otherEvent);
+        String eventId = pairedInRoundOne("ana", "bruno", "carla");
+
+        expectNoPartnerAndNothingWritten(decide(eventId, "davi", YES), eventId);
+    }
+
+    @Test
+    void aRoundThatDoesNotExistIsToldTheCallerHasNoPartner() throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno", "carla");
+
+        expectNoPartnerAndNothingWritten(mockMvc.perform(put(decisionPath(eventId, 2)).with(user("ana"))
+                .contentType(MediaType.APPLICATION_JSON).content(YES)), eventId);
+    }
+
+    @Test
+    void anUnknownEventIsToldTheCallerHasNoPartner() throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno", "carla");
+
+        expectNoPartnerAndNothingWritten(decide(UUID.randomUUID().toString(), "ana", YES), eventId);
     }
 
     @ParameterizedTest
@@ -530,6 +536,19 @@ class ConnectionIT {
 
     private long connectionRows() {
         return jdbcClient.sql("select count(*) from connection").query(Long.class).single();
+    }
+
+    /**
+     * Quem não formou par recebe o mesmo 404 em qualquer um dos casos, sem id de conta de ninguém, e nada é
+     * gravado no evento do sorteio. O texto do detail é o que o cliente lê para distinguir esse 404 de um id
+     * de evento mal formado.
+     */
+    private void expectNoPartnerAndNothingWritten(ResultActions response, String drawnEventId) throws Exception {
+        String body = response.andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
+
+        assertThat(JsonPath.<String>read(body, "$.detail")).isEqualTo("the caller has no partner in this round");
+        assertThat(body).doesNotContain(accountOf("ana"), accountOf("bruno"), accountOf("carla"));
+        assertThat(decisionRows(drawnEventId)).isZero();
     }
 
     private String sittingOutIn(String eventId) {
