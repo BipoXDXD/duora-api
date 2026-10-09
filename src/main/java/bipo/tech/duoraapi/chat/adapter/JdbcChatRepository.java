@@ -56,15 +56,43 @@ class JdbcChatRepository implements ChatRepository {
     }
 
     @Override
-    public void limitLockWait() {
+    public Chat findOrAdd(ChatKey key, Instant purgeAfter, Instant createdAt) {
+        addIfAbsent(key, purgeAfter, createdAt);
+        return find(key).orElseThrow(JdbcChatRepository::chatVanished);
+    }
+
+    @Override
+    public Chat lockOrAdd(ChatKey key, Instant purgeAfter, Instant createdAt) {
+        limitLockWait();
+        addIfAbsent(key, purgeAfter, createdAt);
+        return translatingLockTimeout(() -> jdbcClient.sql(SELECT_CHAT_BY_KEY + " for update")
+                .params(keyParams(key))
+                .query(chatMapper(key))
+                .optional())
+                .orElseThrow(JdbcChatRepository::chatVanished);
+    }
+
+    @Override
+    public Optional<Chat> find(ChatKey key) {
+        return jdbcClient.sql(SELECT_CHAT_BY_KEY)
+                .params(keyParams(key))
+                .query(chatMapper(key))
+                .optional();
+    }
+
+    /** Até o fim da transação: o teto vale também para o que ela grava depois de travar o chat. */
+    private void limitLockWait() {
         jdbcClient.sql("select set_config('lock_timeout', :timeout, true)")
                 .param("timeout", LOCK_TIMEOUT)
                 .query(String.class)
                 .single();
     }
 
-    @Override
-    public void addIfAbsent(ChatKey key, Instant purgeAfter, Instant createdAt) {
+    /**
+     * {@code on conflict do nothing} na chave natural: com o mesmo chat sendo criado por outra transação, o insert
+     * espera ela terminar e, se ela confirmar, não faz nada.
+     */
+    private void addIfAbsent(ChatKey key, Instant purgeAfter, Instant createdAt) {
         translatingLockTimeout(() -> jdbcClient.sql("""
                         insert into chat (event_id, round_number, first_account_id, second_account_id, purge_after,
                                           created_at)
@@ -77,20 +105,12 @@ class JdbcChatRepository implements ChatRepository {
                 .update());
     }
 
-    @Override
-    public Optional<Chat> find(ChatKey key) {
-        return jdbcClient.sql(SELECT_CHAT_BY_KEY)
-                .params(keyParams(key))
-                .query(chatMapper(key))
-                .optional();
-    }
-
-    @Override
-    public Optional<Chat> lock(ChatKey key) {
-        return translatingLockTimeout(() -> jdbcClient.sql(SELECT_CHAT_BY_KEY + " for update")
-                .params(keyParams(key))
-                .query(chatMapper(key))
-                .optional());
+    /**
+     * Só o expurgo apaga um chat, e só o vencido: sumir entre a criação e a leitura é a corrida com ele num chat de
+     * evento acabado há mais de 24 h.
+     */
+    private static IllegalStateException chatVanished() {
+        return new IllegalStateException("the chat was deleted between its creation and its read");
     }
 
     @Override

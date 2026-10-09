@@ -63,8 +63,7 @@ public class ChatService {
         Instant now = now();
         var key = new ChatKey(eventId, roundNumber, ChatPair.of(caller, partner));
         EventPeriod period = periodOf(eventId, now);
-        chats.addIfAbsent(key, Chat.purgeAfter(period.endsAt()), now);
-        Chat chat = chats.find(key).orElseThrow();
+        Chat chat = chats.findOrAdd(key, Chat.purgeAfter(period.endsAt()), now);
         return new ChatView(chat.id(), chat.acceptsMessages(conditionsOf(key, period, caller, partner)),
                 chat.lastSeq());
     }
@@ -84,9 +83,7 @@ public class ChatService {
         Instant now = now();
         var key = new ChatKey(eventId, roundNumber, ChatPair.of(sender, partner));
         EventPeriod period = periodOf(eventId, now);
-        chats.limitLockWait();
-        chats.addIfAbsent(key, Chat.purgeAfter(period.endsAt()), now);
-        Chat chat = chats.lock(key).orElseThrow();
+        Chat chat = chats.lockOrAdd(key, Chat.purgeAfter(period.endsAt()), now);
         Optional<ChatMessage> earlier = chats.findBySenderAndIdempotencyKey(chat.id(), sender, idempotencyKey);
         if (earlier.isPresent()) {
             return new SendOutcome(earlier.get().replayFor(text), false);
