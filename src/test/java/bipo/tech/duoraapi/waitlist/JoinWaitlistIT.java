@@ -8,6 +8,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.ArrayList;
+import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
+
+import jakarta.servlet.http.Cookie;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -36,6 +47,11 @@ class JoinWaitlistIT {
     private static final String CLIENT_C = "198.51.100.3";
     private static final String CLIENT_D = "198.51.100.5";
     private static final String CLIENT_E = "198.51.100.6";
+    private static final String CLIENT_F = "198.51.100.7";
+    private static final String CLIENT_G = "198.51.100.8";
+    /** Mudam a cada resposta por natureza, e não pelo e-mail: o id da requisição e o token CSRF novo. */
+    private static final Set<String> PER_RESPONSE_HEADERS = Set.of("x-request-id", "set-cookie");
+    private static final int SIMULTANEOUS_JOINS = 4;
     private static final int CAPACITY = 10;
 
     @Autowired
@@ -60,6 +76,48 @@ class JoinWaitlistIT {
 
         assertThat(repository.count()).isEqualTo(1);
         assertThat(repository.findByEmail("ana@example.com")).isPresent();
+    }
+
+    /** A resposta não revela se o e-mail já estava na lista: mesmo status, headers e corpo vazio. */
+    @Test
+    void joiningWithAnEmailAlreadyListedLooksLikeJoiningWithANewOne() throws Exception {
+        join("ana@example.com", CLIENT_G).andExpect(status().isAccepted());
+
+        var listed = join("ana@example.com", CLIENT_G).andReturn().getResponse();
+        var fresh = join("bruno@example.com", CLIENT_G).andReturn().getResponse();
+
+        assertThat(listed.getStatus()).isEqualTo(fresh.getStatus()).isEqualTo(202);
+        assertThat(listed.getContentAsString()).isEqualTo(fresh.getContentAsString()).isEmpty();
+        assertThat(listed.getHeaderNames()).containsExactlyInAnyOrderElementsOf(fresh.getHeaderNames());
+        assertThat(listed.getCookies()).extracting(Cookie::getName)
+                .containsExactlyInAnyOrderElementsOf(Stream.of(fresh.getCookies()).map(Cookie::getName).toList());
+        for (String name : listed.getHeaderNames()) {
+            if (!PER_RESPONSE_HEADERS.contains(name.toLowerCase(Locale.ROOT))) {
+                assertThat(listed.getHeaders(name)).as(name).isEqualTo(fresh.getHeaders(name));
+            }
+        }
+    }
+
+    /** A unicidade é do banco (on conflict), e não de um "existe? então insere" no código. */
+    @Test
+    void simultaneousJoinsWithTheSameEmailKeepSingleEntry() throws Exception {
+        var start = new CountDownLatch(1);
+        var statuses = new ArrayList<Future<Integer>>();
+
+        try (var executor = Executors.newFixedThreadPool(SIMULTANEOUS_JOINS)) {
+            for (int i = 0; i < SIMULTANEOUS_JOINS; i++) {
+                statuses.add(executor.submit(() -> {
+                    start.await();
+                    return join("carla@example.com", CLIENT_F).andReturn().getResponse().getStatus();
+                }));
+            }
+            start.countDown();
+            for (Future<Integer> status : statuses) {
+                assertThat(status.get(30, TimeUnit.SECONDS)).isEqualTo(202);
+            }
+        }
+
+        assertThat(repository.count()).isEqualTo(1);
     }
 
     @Test

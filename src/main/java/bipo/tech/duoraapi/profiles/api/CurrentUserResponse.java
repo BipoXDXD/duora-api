@@ -15,4 +15,11 @@ record CurrentUserResponse(
         @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
                 description = "Se o perfil já tem o necessário para usar o Duora; se não, o front leva ao cadastro")
         boolean profileComplete) {
+
+    /** O Spring MVC registra a resposta por este toString em DEBUG: o nome é dado pessoal e fica de fora. */
+    @Override
+    public String toString() {
+        return "CurrentUserResponse[profileComplete=" + profileComplete + "]";
+    }
+
 }

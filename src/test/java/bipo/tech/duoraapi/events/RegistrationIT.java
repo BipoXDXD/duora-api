@@ -556,6 +556,26 @@ class RegistrationIT {
                 .andExpect(jsonPath("$.nextPageToken").value(nullValue()));
     }
 
+    /** O token só marca a posição: a consulta continua filtrando por quem pede. */
+    @Test
+    void pageTokenFromAnotherAccountOnlyPagesTheCallersOwnRegistrations() throws Exception {
+        completeProfile(mockMvc, ana());
+        for (int day = 1; day <= 2; day++) {
+            String eventId = createPublishedEvent(mockMvc,
+                    eventJson("2026-11-0%dT22:00:00Z".formatted(day), "2026-11-0%dT23:00:00Z".formatted(day), 10));
+            register(ana(), eventId).andExpect(status().isCreated());
+        }
+        String anaFirstPage = mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("maxPageSize", "1").with(ana()))
+                .andReturn().getResponse().getContentAsString();
+        String anaToken = JsonPath.read(anaFirstPage, "$.nextPageToken");
+
+        mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("pageToken", anaToken).with(bruno()))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {"items": [], "nextPageToken": null}
+                        """, JsonCompareMode.STRICT));
+    }
+
     @Test
     void invalidPageOfOwnRegistrationsIsABadRequest() throws Exception {
         mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("maxPageSize", "51").with(ana()))

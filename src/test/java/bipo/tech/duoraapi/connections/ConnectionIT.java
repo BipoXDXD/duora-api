@@ -215,6 +215,24 @@ class ConnectionIT {
         assertThat(body).doesNotContain("interested", accountOf("ana"));
     }
 
+    /** Quem não formou o par recebe 404 sem nada do par, e a decisão já gravada não muda. */
+    @Test
+    void anOutsiderLeavesTheDecisionOfThePairIntact() throws Exception {
+        String otherEvent = createPublishedEvent(mockMvc);
+        registerWithCompleteProfile(mockMvc, user("davi"), otherEvent);
+        String eventId = pairedInRoundOne("ana", "bruno");
+        decide(eventId, "ana", YES).andExpect(status().isCreated());
+
+        String outsider = decide(eventId, "davi", NO).andExpect(status().isNotFound())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(outsider).doesNotContain("interested", accountOf("ana"), accountOf("bruno"));
+        mockMvc.perform(get(decisionPath(eventId, 1)).with(user("ana")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.interested").value(true));
+        assertThat(decisionRows(eventId)).isEqualTo(1);
+    }
+
     /** Dois cliques em "sim" ao mesmo tempo, um de cada lado: sempre uma conexão, nunca zero nem duas. */
     @RepeatedTest(5)
     void simultaneousYesesCreateExactlyOneConnection() throws Exception {
@@ -429,6 +447,24 @@ class ConnectionIT {
         String body = connectionsBodyOf("carla");
 
         assertThat(body).contains("\"items\":[]").doesNotContain(accountOf("ana"), accountOf("bruno"));
+    }
+
+    /** O token só marca a posição: a consulta continua filtrando por quem pede. */
+    @Test
+    void aPageTokenFromAnotherAccountOnlyPagesTheCallersOwnConnections() throws Exception {
+        connectDirectly("ana", "bruno", "2026-11-01T22:02:00Z");
+        connectDirectly("ana", "carla", "2026-11-01T22:01:00Z");
+        createAccount("davi");
+        String anaFirstPage = mockMvc.perform(get(CONNECTIONS_PATH).param("maxPageSize", "1").with(user("ana")))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String anaToken = JsonPath.read(anaFirstPage, "$.nextPageToken");
+
+        mockMvc.perform(get(CONNECTIONS_PATH).param("pageToken", anaToken).with(user("davi")))
+                .andExpect(status().isOk())
+                .andExpect(content().json("""
+                        {"items": [], "nextPageToken": null}
+                        """, JsonCompareMode.STRICT));
     }
 
     @ParameterizedTest
