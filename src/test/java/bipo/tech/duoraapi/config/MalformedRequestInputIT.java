@@ -1,8 +1,7 @@
 package bipo.tech.duoraapi.config;
 
-import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -71,7 +70,7 @@ class MalformedRequestInputIT {
     }
 
     private static RequestPostProcessor user() {
-        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", "oid-malformed-input"));
+        return bearer("oid-malformed-input");
     }
 
 }

@@ -146,50 +146,79 @@ Itens revisados e deixados como estão:
 
 ### Testes
 
-20. **Helpers repetidos em 3 ou mais classes (Rule of Three).** É o maior custo de manutenção da suíte.
-    Ordem sugerida de extração:
-    - `accountIdOf`/`accountOf` em 8 cópias e "primeiro acesso cria a conta" em 7: um `AccountFixtures`.
-    - `user()`, `admin()` e `webSession()` com claims ligeiramente diferentes, em uns 15 lugares: ampliar
-      `TestIdentities`.
-    - O harness de concorrência (latch + executor + `get(30, SECONDS)`) em 7 classes e o `awaitQuietly`
-      com "segurar o lock" em 3: `ConcurrentCalls` e `HeldLock`.
-    - `pairedInRoundOne` e `underwayEventWith` em 6 variações: um `RoundFixtures`.
-    - Nos `*RateLimitIT`: `keysOfTheLimit` em 5 cópias, o `rename rate_limit_bucket` em 6 e o JSON do 429 em
-      5. Um `RateLimitTestSupport` resolve.
-    - `insertAccount`, `insertBlock` e `insertConnection` nos `*SchemaIT`, e o
-      `isInstanceOf(DataIntegrityViolationException).hasMessageContaining(...)` em umas 25 asserções: um
-      `assertViolates(constraint, ...)`.
+Passada só de testes em `refactor/test-quality-pass` (2026-10-09), sem tocar em `src/main`. O número de testes
+mudou como descrito no fim desta seção. Cada item abaixo diz o que foi feito e o que sobrou.
 
-    Cada um é um commit mecânico, que toca de 5 a 20 arquivos. Ficou para uma passada só de testes, depois
-    do merge do PR #40, que mexe nas mesmas classes.
-21. **Asserts frágeis.** O `detail` em inglês está fixado em JSON STRICT nos `*FieldErrorsIT`, inclusive o
-    texto do Spring (`"Failed to read request"`, `"Invalid request content."`), e nas recusas de negócio.
-    Isso quebra num upgrade do Spring sem que o contrato mude. **Decisão sua:** o `detail` faz parte do
-    contrato?
-    - Se não faz, os testes assertam `status`, `reason`/`errors[].code` e `instance`.
-    - Se faz, os textos ficam numa classe só, com um teste por texto.
-22. **Relógio real.**
-    - `ProfileIT` e `ProfileFieldErrorsIT` usam datas absolutas com o relógio do sistema: o caso "menor de
-      idade" (2020-01-01) vira maior de idade em 2038. A saída é importar `TestClockConfiguration`.
-    - `BlockIT` ordena por `created_at` de três POSTs seguidos, sem relógio injetado.
-    - `AccountRateLimitIT` tem `Thread.sleep` justificado (o que se testa é um teto de tempo).
-    - `ExpiredRateLimitBucketCleanerIT` usa `System.currentTimeMillis()`, porque o Bucket4j usa o relógio do
-      sistema. Deixar, mas escrever o porquê.
-23. **Testes com vários comportamentos.** Viram `@ParameterizedTest` ou se dividem:
-    - `ConnectionIT.onlyWhoFormedThePairDecides` (4 cenários)
-    - `RegistrationIT.invalidPageOfOwnRegistrationsIsABadRequest` (4 chamadas)
-    - `ProfileIT.absentFieldsStayAndNullClearsTheBio`
+20. **Helpers repetidos em 3 ou mais classes (Rule of Three).** Feito, com cada grupo num commit mecânico:
+    - **`AccountFixtures`** (`bipo.tech.duoraapi`): `firstAccess`, `openAccount`, `accountIdOf`, `accountOf`. Havia
+      `accountIdOf` em 6 classes e o `select id from account where subject = ...` em 15 lugares. Os testes mantêm
+      um embrulho de uma linha onde ele deixa a chamada curta (`accountOf("ana")`), sem repetir o SQL.
+    - **`TestIdentities.bearer(objectId)`** troca as 8 cópias do `jwt().jwt(token -> token.issuer(ISSUER)...)`. O
+      `ISSUER` solto em `ReportIT` e `ReportFieldErrorsIT` também saiu.
+    - **`ConcurrentCalls`** (`together`, `sameCallTogether`, `inAnotherThread`, `statusCodeOf`) e **`HeldLock`**
+      (um `AutoCloseable` que segura o lock numa transação e solta, esperando o dono, mesmo se o corpo do teste
+      falhar). Saíram o executor, a trava de partida, o `get(30, SECONDS)` e o `awaitQuietly` de 10 classes. O
+      `ChatIT.aReaderAfterEachCommitNeverSkipsAMessage` fica com a própria estrutura: é um leitor em laço contra
+      escritores, e não uma corrida de chamadas.
+    - **`RoundFixtures`** (`matching`): `underwayEventWith`, `pairedInRoundOne`, `startRound`. Eram 6 variações, só
+      uma delas com a regra "o perfil completo se cria uma vez por pessoa". O `ChatFixtures` delega.
+    - **`RateLimitTestSupport`**: `expectRejectedByTheLimit` (429), `expectUnavailableBecauseTheLimitCannotBeCounted`
+      (503), `whileTheLimitCannotBeCounted` (o `rename` da tabela, com `finally`), `bucketKeysOf` e `clearBuckets`
+      (18 lugares). O `ReportIT` também usa.
+    - **Não feito:** os `webSession(...)`/`admin()` com claims diferentes (8 classes com `oidcLogin`, 5 com `ROLE_ADMIN`
+      no `jwt`) ficam como estão, porque cada um carrega um claim que o teste mostra; e os `insertAccount`,
+      `insertBlock` e `insertConnection` dos `*SchemaIT`, com o `assertViolates(constraint, ...)` das ~25 asserções.
+      Os dois são o mesmo tipo de commit mecânico, e entram na próxima passada.
+21. **Asserts frágeis.** Aplicado de forma **provisória**, na linha da recomendação da decisão 2 abaixo, até você
+    decidir. `ProblemJson.strictIgnoringDetail()` compara o corpo inteiro em STRICT (título, status, `instance`,
+    `reason`, `errors`), falha se aparecer um campo a mais e deixa o `detail` de fora. Passaram a usá-lo: os 6
+    `*FieldErrorsIT` (o texto do Spring, `"Failed to read request"`, saiu dos argumentos), as recusas com `reason`
+    do `RoundIT`, `RegistrationIT` e `AdminEventIT`, os 409/400 com `reason` ou `errors` do `ProfileIT` e
+    `ReportIT`, e o 429 de todos os `*RateLimitIT` com corpo.
+    O `detail` **continua** assertado onde o texto é o comportamento testado:
+    - os testes que dizem no nome que o `detail` nomeia o teto da lista (`BlockIT` e `ConnectionIT`, `maxPageSize`) e os
+      de `pageToken`/`status` inválidos das listas de eventos;
+    - os "mesma resposta em todos os casos" (os 4 `ConnectionIT.*HaveNoPartner` e, no `RegistrationIT`, rascunho =
+      evento inexistente), onde o texto é o que prova que as respostas são iguais;
+    - os 400/404 sem `reason` nem `errors` cujo único testemunho da causa é o texto (`BlockIT`, `ReportIT`,
+      `AdminEventIT`, `RegistrationIT`, `MalformedRequestInputIT`);
+    - o 503 de "não consegui contar o limite", que não pode ter `detail`: o STRICT sem ele fica.
+    Se a decisão 2 for "o `detail` é contrato", é só trocar `strictIgnoringDetail()` por `JsonCompareMode.STRICT` e
+    voltar os textos, que estão no histórico do git.
+22. **Relógio real.** Feito:
+    - `ProfileIT` e `ProfileFieldErrorsIT` importam o `TestClockConfiguration`, e o "menor de idade" (2020-01-01)
+      não vira maior em 2038.
+    - `BlockIT` avança o `TestClock` entre os bloqueios. "Bloquear de novo mantém a data do primeiro" agora prova
+      de verdade (o segundo bloqueio aconteceria um segundo depois), e a ordem "mais recente primeiro" não depende
+      de três POSTs terem `created_at` diferentes.
+    - `ExpiredRateLimitBucketCleanerIT` fica com o relógio do sistema, e a classe agora diz por quê (o Bucket4j
+      grava `expires_at` com `System.currentTimeMillis()`).
+    - `AccountRateLimitIT` fica com o `Thread.sleep`, já justificado no próprio código (o que se testa é um teto
+      de tempo).
+23. **Testes com vários comportamentos.** Feito:
+    - `ConnectionIT.onlyWhoFormedThePairDecides` virou 4 testes (fora do sorteio, sem inscrição, rodada que não
+      existe, evento que não existe), com um helper que afirma o mesmo 404, sem id de conta e nada gravado.
+    - `RegistrationIT.invalidPageOfOwnRegistrationsIsABadRequest` virou `@ParameterizedTest` com 4 casos.
+    - `ProfileIT.absentFieldsStayAndNullClearsTheBio` virou `fieldsAbsentFromThePatchStayAsTheyWere` e
+      `nullInThePatchClearsTheBio`.
+    - `PairingsIT.theRoundNumbersGoFromOneToOneHundred` foi removido: só comparava duas constantes.
+    - Revisados e deixados como estão, porque o nome diz tudo e a asserção é uma só: `aDecisionCannotChange`,
+      `theAnswerIsTheSameWhetherThePartnerSaidNoOrHasNotDecided`, `anotherUserNeitherSeesNorCancelsTheRegistration`.
+24. **DDL em tabela compartilhada.** Feito: o `src/test/resources/junit-platform.properties` desliga o paralelismo
+    de forma explícita e diz por que, e a Javadoc de `RateLimitTestSupport.whileTheLimitCannotBeCounted` e da
+    constante do `UnexpectedErrorIT` apontam para ele.
 
-    `PairingsIT.theRoundNumbersGoFromOneToOneHundred` só testa duas constantes: remover.
-24. **DDL em tabela compartilhada.** `rename rate_limit_bucket` e `rename waitlist_entry` estão seguros só
-    porque a suíte é sequencial. Registrar isso em `TestStyleTest` ou em `junit-platform.properties`.
+**Contagem de testes** (`./mvnw clean verify`, 0 falhas): 2963 em `0163efc`, a base desta branch, e 2994 depois do
+rebase em `main`. Dos 31 a mais, 25 vêm dos PRs #46 e #48 (`ChatKeyTest`, `MaximumMatchingTest`,
+`PriorityMatchingTest`, `RoundSummaryTest`, +1 em `ChatTest` e +1 em `ChatIT`), e 6 são desta passada: +3 em
+`ConnectionIT`, +3 em `RegistrationIT`, +1 em `ProfileIT` e -1 em `PairingsIT`.
 
 ## 4. Decisões que dependem de você
 
 | # | Decisão | Recomendação |
 |---|---|---|
 | 1 | Migrar o `BlockPageToken` para o `KeysetPageToken`: muda o separador e o detail do 400 (item 3.1) | Sim, como `fix` com nota no changelog. O front não guarda tokens |
-| 2 | O `detail` em inglês faz parte do contrato? (item 3.21) | Não. Os testes assertam `reason`/`errors[].code`, e o texto fica livre para melhorar |
+| 2 | O `detail` em inglês faz parte do contrato? (item 3.21) | Não. Os testes assertam `reason`/`errors[].code`, e o texto fica livre para melhorar. **Aplicado de forma provisória** na passada de testes, com as exceções do item 3.21 |
 | 3 | `RegistrationRepository` com JDBC no `domain` do events (item 3.12) | Emendar a ADR 0007 para "Spring Data ou JDBC" no domain do supporting |
 | 4 | Remover `EVENT_NOT_PUBLISHED` da spec (item 3.16) | Remover agora, na 0.1.0, ainda sem consumidor externo |
 

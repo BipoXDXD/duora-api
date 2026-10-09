@@ -1,5 +1,8 @@
 package bipo.tech.duoraapi.chat;
 
+import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
+import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
+import static bipo.tech.duoraapi.ConcurrentCalls.together;
 import static bipo.tech.duoraapi.chat.ChatFixtures.ENDS_AT;
 import static bipo.tech.duoraapi.chat.ChatFixtures.IDEMPOTENCY_KEY;
 import static bipo.tech.duoraapi.chat.ChatFixtures.chatPath;
@@ -24,7 +27,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -52,6 +54,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import com.jayway.jsonpath.JsonPath;
 
+import bipo.tech.duoraapi.HeldLock;
 import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
@@ -275,20 +278,10 @@ class ChatIT {
     void concurrentSendsWithTheSameKeyRecordOne() throws Exception {
         String eventId = paired("ana", "bruno");
         String key = newKey();
-        var start = new CountDownLatch(1);
-        var results = new ArrayList<Future<Integer>>();
 
-        try (var executor = Executors.newFixedThreadPool(4)) {
-            for (int i = 0; i < 4; i++) {
-                results.add(executor.submit(sendAfter(start, eventId, "ana", key, "oi")));
-            }
-            start.countDown();
-            var statuses = new ArrayList<Integer>();
-            for (var result : results) {
-                statuses.add(result.get(30, TimeUnit.SECONDS));
-            }
-            assertThat(statuses).containsOnly(201, 200).containsOnlyOnce(201);
-        }
+        var statuses = sameCallTogether(4, statusCodeOf(() -> send(eventId, "ana", key, "oi")));
+
+        assertThat(statuses).containsOnly(201, 200).containsOnlyOnce(201);
         assertThat(ChatFixtures.messageRows(jdbcClient)).isEqualTo(1);
         assertThat(lastSeqOf(eventId)).isEqualTo(1);
     }
@@ -297,16 +290,12 @@ class ChatIT {
     @RepeatedTest(5)
     void concurrentSendsGetConsecutiveSequenceNumbers() throws Exception {
         String eventId = paired("ana", "bruno");
-        var start = new CountDownLatch(1);
 
-        try (var executor = Executors.newFixedThreadPool(2)) {
-            Future<Integer> ana = executor.submit(sendAfter(start, eventId, "ana", newKey(), "oi"));
-            Future<Integer> bruno = executor.submit(sendAfter(start, eventId, "bruno", newKey(), "olá"));
-            start.countDown();
-            assertThat(ana.get(30, TimeUnit.SECONDS)).isEqualTo(201);
-            assertThat(bruno.get(30, TimeUnit.SECONDS)).isEqualTo(201);
-        }
+        var statuses = together(List.of(
+                statusCodeOf(() -> send(eventId, "ana", newKey(), "oi")),
+                statusCodeOf(() -> send(eventId, "bruno", newKey(), "olá"))));
 
+        assertThat(statuses).containsExactly(201, 201);
         assertThat(seqsOf(eventId)).containsExactly(1, 2);
         assertThat(lastSeqOf(eventId)).isEqualTo(2);
     }
@@ -316,19 +305,12 @@ class ChatIT {
     void manyConcurrentSendsGetConsecutiveSequenceNumbers() throws Exception {
         String eventId = paired("ana", "bruno");
         int sends = 8;
-        var start = new CountDownLatch(1);
-        var results = new ArrayList<Future<Integer>>();
 
-        try (var executor = Executors.newFixedThreadPool(sends)) {
-            for (int i = 0; i < sends; i++) {
-                results.add(executor.submit(sendAfter(start, eventId, i % 2 == 0 ? "ana" : "bruno", newKey(), "oi")));
-            }
-            start.countDown();
-            for (var result : results) {
-                assertThat(result.get(30, TimeUnit.SECONDS)).isEqualTo(201);
-            }
-        }
+        var statuses = together(IntStream.range(0, sends)
+                .mapToObj(i -> statusCodeOf(() -> send(eventId, i % 2 == 0 ? "ana" : "bruno", newKey(), "oi")))
+                .toList());
 
+        assertThat(statuses).containsOnly(201);
         assertThat(seqsOf(eventId)).containsExactlyElementsOf(IntStream.rangeClosed(1, sends).boxed().toList());
         assertThat(lastSeqOf(eventId)).isEqualTo(sends);
     }
@@ -614,26 +596,16 @@ class ChatIT {
     void aSendIsRefusedWhenAnotherHoldsTheChatTooLong() throws Exception {
         String eventId = paired("ana", "bruno");
         mockMvc.perform(get(chatPath(eventId, 1)).with(user("ana"))).andExpect(status().isOk());
-        var holding = new CountDownLatch(1);
-        var release = new CountDownLatch(1);
 
-        try (var executor = Executors.newSingleThreadExecutor()) {
-            Future<?> holder = executor.submit(() -> transactionTemplate.executeWithoutResult(transaction -> {
-                jdbcClient.sql("select id from chat where event_id = cast(:id as uuid) for update")
-                        .param("id", eventId).query(UUID.class).single();
-                holding.countDown();
-                awaitQuietly(release);
-            }));
-            assertThat(holding.await(30, TimeUnit.SECONDS)).isTrue();
-
+        try (var _ = HeldLock.hold(transactionTemplate, () -> jdbcClient
+                .sql("select id from chat where event_id = cast(:id as uuid) for update")
+                .param("id", eventId).query(UUID.class).single())) {
             send(eventId, "ana", newKey(), "oi")
                     .andExpect(status().isServiceUnavailable())
                     .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
                     .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
-
-            release.countDown();
-            holder.get(30, TimeUnit.SECONDS);
         }
+
         assertThat(ChatFixtures.messageRows(jdbcClient)).isZero();
     }
 
@@ -643,13 +615,6 @@ class ChatIT {
 
     private ResultActions send(String eventId, String name, String key, String text) throws Exception {
         return ChatFixtures.send(mockMvc, eventId, user(name), key, text);
-    }
-
-    private Callable<Integer> sendAfter(CountDownLatch start, String eventId, String name, String key, String text) {
-        return () -> {
-            start.await();
-            return send(eventId, name, key, text).andReturn().getResponse().getStatus();
-        };
     }
 
     private void block(String blocker, String blocked) throws Exception {
@@ -718,14 +683,6 @@ class ChatIT {
 
     private static RequestPostProcessor webSession(String name) {
         return oidcLogin().idToken(token -> token.issuer(ISSUER).claim("oid", "oid-" + name));
-    }
-
-    private static void awaitQuietly(CountDownLatch latch) {
-        try {
-            latch.await(30, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 
 }

@@ -1,7 +1,11 @@
 package bipo.tech.duoraapi.connections;
 
+import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
+import static bipo.tech.duoraapi.AccountFixtures.firstAccess;
+import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
+import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
+import static bipo.tech.duoraapi.ConcurrentCalls.together;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
-import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
 import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
 import static bipo.tech.duoraapi.events.EventFixtures.user;
@@ -22,11 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.RepeatedTest;
@@ -49,10 +48,12 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import com.jayway.jsonpath.JsonPath;
 
+import bipo.tech.duoraapi.HeldLock;
 import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 import bipo.tech.duoraapi.events.EventFixtures;
+import bipo.tech.duoraapi.matching.RoundFixtures;
 
 /**
  * Decisão privada depois da rodada e conexão por interesse mútuo (docs/adr/0019): só decide quem formou o
@@ -237,16 +238,12 @@ class ConnectionIT {
     @RepeatedTest(5)
     void simultaneousYesesCreateExactlyOneConnection() throws Exception {
         String eventId = pairedInRoundOne("ana", "bruno");
-        var start = new CountDownLatch(1);
 
-        try (var executor = Executors.newFixedThreadPool(2)) {
-            Future<Integer> ana = executor.submit(decideAfter(start, eventId, "ana"));
-            Future<Integer> bruno = executor.submit(decideAfter(start, eventId, "bruno"));
-            start.countDown();
-            assertThat(ana.get(30, TimeUnit.SECONDS)).isEqualTo(201);
-            assertThat(bruno.get(30, TimeUnit.SECONDS)).isEqualTo(201);
-        }
+        var statuses = together(List.of(
+                statusCodeOf(() -> decide(eventId, "ana", YES)),
+                statusCodeOf(() -> decide(eventId, "bruno", YES))));
 
+        assertThat(statuses).containsExactly(201, 201);
         assertThat(connectionRows()).isEqualTo(1);
     }
 
@@ -254,20 +251,10 @@ class ConnectionIT {
     @RepeatedTest(3)
     void simultaneousRepeatsOfTheSameDecisionRecordItOnce() throws Exception {
         String eventId = pairedInRoundOne("ana", "bruno");
-        var start = new CountDownLatch(1);
-        var statuses = new ArrayList<Future<Integer>>();
 
-        try (var executor = Executors.newFixedThreadPool(3)) {
-            for (int i = 0; i < 3; i++) {
-                statuses.add(executor.submit(decideAfter(start, eventId, "ana")));
-            }
-            start.countDown();
-            var results = new ArrayList<Integer>();
-            for (var result : statuses) {
-                results.add(result.get(30, TimeUnit.SECONDS));
-            }
-            assertThat(results).containsOnly(201, 200).containsOnlyOnce(201);
-        }
+        var statuses = sameCallTogether(3, statusCodeOf(() -> decide(eventId, "ana", YES)));
+
+        assertThat(statuses).containsOnly(201, 200).containsOnlyOnce(201);
         assertThat(decisionRows(eventId)).isEqualTo(1);
     }
 
@@ -301,30 +288,36 @@ class ConnectionIT {
                 .andExpect(jsonPath("$.items[0].connectedAt").value(DECIDED_AT));
     }
 
-    /** Ficar de fora, estar fora do sorteio ou pedir uma rodada que não existe: o mesmo 404, nada gravado. */
     @Test
-    void onlyWhoFormedThePairDecides() throws Exception {
-        String otherEvent = createPublishedEvent(mockMvc);
-        registerWithCompleteProfile(mockMvc, user("davi"), otherEvent);
+    void someoneSittingOutOfTheRoundIsToldTheyHaveNoPartner() throws Exception {
         String eventId = pairedInRoundOne("ana", "bruno", "carla");
         String satOut = sittingOutIn(eventId);
 
-        String sittingOut = decide(eventId, satOut, YES).andExpect(status().isNotFound())
-                .andReturn().getResponse().getContentAsString();
-        String outsider = decide(eventId, "davi", YES).andExpect(status().isNotFound())
-                .andReturn().getResponse().getContentAsString();
-        String missingRound = mockMvc.perform(put(decisionPath(eventId, 2)).with(user("ana"))
-                        .contentType(MediaType.APPLICATION_JSON).content(YES))
-                .andExpect(status().isNotFound())
-                .andReturn().getResponse().getContentAsString();
-        String unknownEvent = decide(UUID.randomUUID().toString(), "ana", YES).andExpect(status().isNotFound())
-                .andReturn().getResponse().getContentAsString();
+        expectNoPartnerAndNothingWritten(decide(eventId, satOut, YES), eventId);
+    }
 
-        assertThat(List.of(sittingOut, outsider, missingRound, unknownEvent))
-                .extracting(body -> JsonPath.<String>read(body, "$.detail"))
-                .containsOnly("the caller has no partner in this round");
-        assertThat(outsider).doesNotContain(accountOf("ana"), accountOf("bruno"), accountOf("carla"));
-        assertThat(decisionRows(eventId)).isZero();
+    @Test
+    void someoneNotRegisteredInTheEventIsToldTheyHaveNoPartner() throws Exception {
+        String otherEvent = createPublishedEvent(mockMvc);
+        registerWithCompleteProfile(mockMvc, user("davi"), otherEvent);
+        String eventId = pairedInRoundOne("ana", "bruno", "carla");
+
+        expectNoPartnerAndNothingWritten(decide(eventId, "davi", YES), eventId);
+    }
+
+    @Test
+    void aRoundThatDoesNotExistIsToldTheCallerHasNoPartner() throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno", "carla");
+
+        expectNoPartnerAndNothingWritten(mockMvc.perform(put(decisionPath(eventId, 2)).with(user("ana"))
+                .contentType(MediaType.APPLICATION_JSON).content(YES)), eventId);
+    }
+
+    @Test
+    void anUnknownEventIsToldTheCallerHasNoPartner() throws Exception {
+        String eventId = pairedInRoundOne("ana", "bruno", "carla");
+
+        expectNoPartnerAndNothingWritten(decide(UUID.randomUUID().toString(), "ana", YES), eventId);
     }
 
     @ParameterizedTest
@@ -371,27 +364,17 @@ class ConnectionIT {
     @Test
     void aDecisionIsRefusedWhenThePartnersTakesTooLong() throws Exception {
         String eventId = pairedInRoundOne("ana", "bruno");
-        var holding = new CountDownLatch(1);
-        var release = new CountDownLatch(1);
 
-        try (var executor = Executors.newSingleThreadExecutor()) {
-            Future<?> holder = executor.submit(() -> transactionTemplate.executeWithoutResult(transaction -> {
-                jdbcClient.sql("select 1 from (select pg_advisory_xact_lock(hashtextextended(:key, 0))) as locked")
-                        .param("key", lockKeyOf(eventId, "ana", "bruno"))
-                        .query(Integer.class).single();
-                holding.countDown();
-                awaitQuietly(release);
-            }));
-            assertThat(holding.await(30, TimeUnit.SECONDS)).isTrue();
-
+        try (var _ = HeldLock.hold(transactionTemplate, () -> jdbcClient
+                .sql("select 1 from (select pg_advisory_xact_lock(hashtextextended(:key, 0))) as locked")
+                .param("key", lockKeyOf(eventId, "ana", "bruno"))
+                .query(Integer.class).single())) {
             decide(eventId, "ana", YES)
                     .andExpect(status().isServiceUnavailable())
                     .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
                     .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
-
-            release.countDown();
-            holder.get(30, TimeUnit.SECONDS);
         }
+
         assertThat(decisionRows(eventId)).isZero();
     }
 
@@ -442,7 +425,7 @@ class ConnectionIT {
     @Test
     void nobodySeesTheConnectionsOfOthers() throws Exception {
         connectDirectly("ana", "bruno", DECIDED_AT);
-        createAccount("carla");
+        firstAccess(mockMvc, user("carla"));
 
         String body = connectionsBodyOf("carla");
 
@@ -454,7 +437,7 @@ class ConnectionIT {
     void aPageTokenFromAnotherAccountOnlyPagesTheCallersOwnConnections() throws Exception {
         connectDirectly("ana", "bruno", "2026-11-01T22:02:00Z");
         connectDirectly("ana", "carla", "2026-11-01T22:01:00Z");
-        createAccount("davi");
+        firstAccess(mockMvc, user("davi"));
         String anaFirstPage = mockMvc.perform(get(CONNECTIONS_PATH).param("maxPageSize", "1").with(user("ana")))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
@@ -470,7 +453,7 @@ class ConnectionIT {
     @ParameterizedTest
     @ValueSource(strings = {"0", "101", "-1", "abc", ""})
     void anInvalidPageSizeIsABadRequest(String size) throws Exception {
-        createAccount("ana");
+        firstAccess(mockMvc, user("ana"));
 
         mockMvc.perform(get(CONNECTIONS_PATH).param("maxPageSize", size).with(user("ana")))
                 .andExpect(status().isBadRequest())
@@ -481,7 +464,7 @@ class ConnectionIT {
     @ValueSource(strings = {"bm90LWEtdG9rZW4", "!!!", "", "MTk2OS0xMi0zMVQyMzo1OTo1OVogMDE5NjZjNGUtN2QxYS03YzNlLTliNWYtM2YyYTFjMGQ5ZThi",
             "KzEwMDAwMDAtMDEtMDFUMDA6MDA6MDBaIDAxOTY2YzRlLTdkMWEtN2MzZS05YjVmLTNmMmExYzBkOWU4Yg"})
     void aPageTokenTheApiDidNotIssueIsABadRequest(String token) throws Exception {
-        createAccount("ana");
+        firstAccess(mockMvc, user("ana"));
 
         mockMvc.perform(get(CONNECTIONS_PATH).param("pageToken", token).with(user("ana")))
                 .andExpect(status().isBadRequest())
@@ -490,7 +473,7 @@ class ConnectionIT {
 
     @Test
     void anInvalidPageSizeNamesTheLimitOfThisList() throws Exception {
-        createAccount("ana");
+        firstAccess(mockMvc, user("ana"));
 
         mockMvc.perform(get(CONNECTIONS_PATH).param("maxPageSize", "101").with(user("ana")))
                 .andExpect(content().json("""
@@ -501,7 +484,7 @@ class ConnectionIT {
 
     @Test
     void aPageTokenTheApiDidNotIssueIsReportedWithoutEchoingIt() throws Exception {
-        createAccount("ana");
+        firstAccess(mockMvc, user("ana"));
 
         mockMvc.perform(get(CONNECTIONS_PATH).param("pageToken", "bm90LWEtdG9rZW4").with(user("ana")))
                 .andExpect(content().json("""
@@ -512,42 +495,12 @@ class ConnectionIT {
 
     /** Publica um evento, inscreve as pessoas, leva o relógio ao início e sorteia a rodada 1. */
     private String pairedInRoundOne(String... names) throws Exception {
-        clock.setTo(TestClockConfiguration.NOW);
-        String eventId = createPublishedEvent(mockMvc);
-        for (String name : names) {
-            registerWithCompleteProfileOnce(name, eventId);
-        }
-        clock.setTo(STARTS_AT);
-        mockMvc.perform(put("/api/admin/events/" + eventId + "/rounds/1").with(admin()))
-                .andExpect(status().isCreated());
-        return eventId;
-    }
-
-    /** O perfil completo só se cria uma vez por pessoa; depois basta se inscrever. */
-    private void registerWithCompleteProfileOnce(String name, String eventId) throws Exception {
-        boolean hasProfile = jdbcClient.sql("""
-                        select exists (select 1 from profile p join account a on a.id = p.account_id
-                                        where a.subject = :subject)
-                        """)
-                .param("subject", "oid-" + name).query(Boolean.class).single();
-        if (hasProfile) {
-            mockMvc.perform(put(EventFixtures.registrationPath(eventId)).with(user(name)))
-                    .andExpect(status().isCreated());
-        } else {
-            registerWithCompleteProfile(mockMvc, user(name), eventId);
-        }
+        return RoundFixtures.pairedInRoundOne(mockMvc, jdbcClient, clock, names);
     }
 
     private ResultActions decide(String eventId, String name, String body) throws Exception {
         return mockMvc.perform(put(decisionPath(eventId, 1)).with(user(name))
                 .contentType(MediaType.APPLICATION_JSON).content(body));
-    }
-
-    private Callable<Integer> decideAfter(CountDownLatch start, String eventId, String name) {
-        return () -> {
-            start.await();
-            return decide(eventId, name, YES).andReturn().getResponse().getStatus();
-        };
     }
 
     private String connectionsBodyOf(String name) throws Exception {
@@ -585,6 +538,19 @@ class ConnectionIT {
         return jdbcClient.sql("select count(*) from connection").query(Long.class).single();
     }
 
+    /**
+     * Quem não formou par recebe o mesmo 404 em qualquer um dos casos, sem id de conta de ninguém, e nada é
+     * gravado no evento do sorteio. O texto do detail é o que o cliente lê para distinguir esse 404 de um id
+     * de evento mal formado.
+     */
+    private void expectNoPartnerAndNothingWritten(ResultActions response, String drawnEventId) throws Exception {
+        String body = response.andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
+
+        assertThat(JsonPath.<String>read(body, "$.detail")).isEqualTo("the caller has no partner in this round");
+        assertThat(body).doesNotContain(accountOf("ana"), accountOf("bruno"), accountOf("carla"));
+        assertThat(decisionRows(drawnEventId)).isZero();
+    }
+
     private String sittingOutIn(String eventId) {
         String account = jdbcClient.sql("""
                         select account_id from round_seat
@@ -596,8 +562,8 @@ class ConnectionIT {
     }
 
     private void connectDirectly(String one, String other, String connectedAt) throws Exception {
-        createAccount(one);
-        createAccount(other);
+        firstAccess(mockMvc, user(one));
+        firstAccess(mockMvc, user(other));
         String first = accountOf(one);
         String second = accountOf(other);
         jdbcClient.sql("""
@@ -609,27 +575,12 @@ class ConnectionIT {
                 .update();
     }
 
-    /** O primeiro acesso cria a conta. */
-    private void createAccount(String name) throws Exception {
-        mockMvc.perform(get("/api/me").with(user(name))).andExpect(status().isOk());
-    }
-
     private String accountOf(String name) {
-        return jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", "oid-" + name)
-                .query(UUID.class).single().toString();
+        return accountIdOf(jdbcClient, name);
     }
 
     private static RequestPostProcessor webSession(String name) {
         return oidcLogin().idToken(token -> token.issuer(ISSUER).claim("oid", "oid-" + name));
-    }
-
-    private static void awaitQuietly(CountDownLatch latch) {
-        try {
-            latch.await(30, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 
 }

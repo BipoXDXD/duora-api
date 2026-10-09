@@ -1,13 +1,15 @@
 package bipo.tech.duoraapi.chat;
 
+import static bipo.tech.duoraapi.RateLimitTestSupport.bucketKeysOf;
+import static bipo.tech.duoraapi.RateLimitTestSupport.expectRejectedByTheLimit;
+import static bipo.tech.duoraapi.RateLimitTestSupport.expectUnavailableBecauseTheLimitCannotBeCounted;
+import static bipo.tech.duoraapi.RateLimitTestSupport.whileTheLimitCannotBeCounted;
 import static bipo.tech.duoraapi.chat.ChatFixtures.chatPath;
 import static bipo.tech.duoraapi.chat.ChatFixtures.messagesPath;
 import static bipo.tech.duoraapi.chat.ChatFixtures.newKey;
 import static bipo.tech.duoraapi.events.EventFixtures.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
@@ -18,10 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -69,14 +68,8 @@ class ChatRateLimitIT {
             send(eventId, "ana", newKey()).andExpect(status().isCreated());
         }
 
-        send(eventId, "ana", newKey())
-                .andExpect(status().isTooManyRequests())
-                .andExpect(header().string(HttpHeaders.RETRY_AFTER, SECONDS_TO_NEXT_CALL))
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(content().json("""
-                        {"title": "Too Many Requests", "status": 429,
-                         "detail": "rate limit exceeded; try again later", "instance": "%s"}
-                        """.formatted(messagesPath(eventId, 1)), JsonCompareMode.STRICT));
+        expectRejectedByTheLimit(send(eventId, "ana", newKey()),
+                SECONDS_TO_NEXT_CALL, messagesPath(eventId, 1));
 
         assertThat(ChatFixtures.messageRows(jdbcClient)).isEqualTo(CAPACITY);
     }
@@ -154,18 +147,9 @@ class ChatRateLimitIT {
     @Test
     void sendIsRefusedWhenTheLimitCannotBeCounted() throws Exception {
         String eventId = paired("ana", "bruno");
-        jdbcClient.sql("alter table rate_limit_bucket rename to rate_limit_bucket_unavailable").update();
-        try {
-            send(eventId, "ana", newKey())
-                    .andExpect(status().isServiceUnavailable())
-                    .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
-                    .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                    .andExpect(content().json("""
-                            {"title": "Service Unavailable", "status": 503, "instance": "%s"}
-                            """.formatted(messagesPath(eventId, 1)), JsonCompareMode.STRICT));
-        } finally {
-            jdbcClient.sql("alter table rate_limit_bucket_unavailable rename to rate_limit_bucket").update();
-        }
+        whileTheLimitCannotBeCounted(jdbcClient, () -> expectUnavailableBecauseTheLimitCannotBeCounted(
+                send(eventId, "ana", newKey()),
+                messagesPath(eventId, 1)));
 
         assertThat(ChatFixtures.messageRows(jdbcClient)).isZero();
     }
@@ -179,8 +163,7 @@ class ChatRateLimitIT {
     }
 
     private List<String> keysOfTheLimit() {
-        return jdbcClient.sql("select id from rate_limit_bucket where id like 'chat:%'")
-                .query(String.class).list();
+        return bucketKeysOf(jdbcClient, "chat");
     }
 
 }

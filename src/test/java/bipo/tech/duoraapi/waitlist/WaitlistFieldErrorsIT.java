@@ -1,5 +1,7 @@
 package bipo.tech.duoraapi.waitlist;
 
+import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -20,7 +22,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -48,39 +49,37 @@ class WaitlistFieldErrorsIT {
     @BeforeEach
     void cleanDatabase() {
         jdbcClient.sql("delete from waitlist_entry").update();
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
     }
 
     @ParameterizedTest
     @MethodSource("invalidBodies")
-    void invalidBodyNamesTheFieldAndTheReason(String body, String detail, String errors) throws Exception {
+    void invalidBodyNamesTheFieldAndTheReason(String body, String errors) throws Exception {
         join(body)
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(content().json("""
-                        {"title": "Bad Request", "status": 400, "detail": "%s", "instance": "%s", "errors": %s}
-                        """.formatted(detail, WAITLIST_PATH, errors), JsonCompareMode.STRICT));
+                        {"title": "Bad Request", "status": 400, "instance": "%s", "errors": %s}
+                        """.formatted(WAITLIST_PATH, errors), strictIgnoringDetail()));
 
         assertThat(entries()).isZero();
     }
 
     static Stream<Arguments> invalidBodies() {
         return Stream.of(
-                Arguments.of(Named.of("sem e-mail", "{}"), "email is required",
+                Arguments.of(Named.of("sem e-mail", "{}"),
                         "[{\"field\": \"email\", \"code\": \"REQUIRED\"}]"),
-                Arguments.of(Named.of("e-mail null", "{\"email\": null}"), "email is required",
+                Arguments.of(Named.of("e-mail null", "{\"email\": null}"),
                         "[{\"field\": \"email\", \"code\": \"REQUIRED\"}]"),
-                Arguments.of(Named.of("e-mail sem arroba", "{\"email\": \"ana.example.com\"}"),
-                        "email is not a valid address", "[{\"field\": \"email\", \"code\": \"INVALID_FORMAT\"}]"),
-                Arguments.of(Named.of("e-mail como objeto", "{\"email\": {}}"), "Failed to read request",
+                Arguments.of(Named.of("e-mail sem arroba", "{\"email\": \"ana.example.com\"}"), "[{\"field\": \"email\", \"code\": \"INVALID_FORMAT\"}]"),
+                Arguments.of(Named.of("e-mail como objeto", "{\"email\": {}}"),
                         "[{\"field\": \"email\", \"code\": \"INVALID_FORMAT\"}]"),
-                Arguments.of(Named.of("campo desconhecido", "{\"email\": \"ana@example.com\", \"nickname\": \"Ana\"}"),
-                        "Failed to read request", "[{\"field\": \"nickname\", \"code\": \"UNKNOWN_FIELD\"}]"),
-                Arguments.of(Named.of("JSON quebrado", "{\"email\": "), "Failed to read request",
+                Arguments.of(Named.of("campo desconhecido", "{\"email\": \"ana@example.com\", \"nickname\": \"Ana\"}"), "[{\"field\": \"nickname\", \"code\": \"UNKNOWN_FIELD\"}]"),
+                Arguments.of(Named.of("JSON quebrado", "{\"email\": "),
                         "[{\"code\": \"MALFORMED_BODY\"}]"),
-                Arguments.of(Named.of("null no lugar do objeto", "null"), "Failed to read request",
+                Arguments.of(Named.of("null no lugar do objeto", "null"),
                         "[{\"code\": \"MALFORMED_BODY\"}]"),
-                Arguments.of(Named.of("lista no lugar do objeto", "[]"), "Failed to read request",
+                Arguments.of(Named.of("lista no lugar do objeto", "[]"),
                         "[{\"code\": \"MALFORMED_BODY\"}]"));
     }
 

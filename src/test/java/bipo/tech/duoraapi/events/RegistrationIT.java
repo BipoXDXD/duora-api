@@ -1,5 +1,9 @@
 package bipo.tech.duoraapi.events;
 
+import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
+import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
+import static bipo.tech.duoraapi.ConcurrentCalls.together;
+import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.MY_REGISTRATIONS_PATH;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
@@ -29,15 +33,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -53,6 +54,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import com.jayway.jsonpath.JsonPath;
 
+import bipo.tech.duoraapi.HeldLock;
 import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
@@ -152,9 +154,8 @@ class RegistrationIT {
         register(ana(), eventId)
                 .andExpect(status().isForbidden())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(content().json(refusal(403, "Forbidden",
-                        "complete your profile (name, birth date and region) before registering", eventId,
-                        "PROFILE_INCOMPLETE"), JsonCompareMode.STRICT));
+                .andExpect(content().json(refusal(403, "Forbidden", eventId,
+                        "PROFILE_INCOMPLETE"), strictIgnoringDetail()));
 
         assertThat(registrationsOf(eventId)).isZero();
     }
@@ -194,8 +195,8 @@ class RegistrationIT {
 
         register(ana(), eventId)
                 .andExpect(status().isForbidden())
-                .andExpect(content().json(refusal(403, "Forbidden", "only adults (18 or older) can register",
-                        eventId, "UNDERAGE"), JsonCompareMode.STRICT));
+                .andExpect(content().json(refusal(403, "Forbidden",
+                        eventId, "UNDERAGE"), strictIgnoringDetail()));
 
         assertThat(registrationsOf(eventId)).isZero();
     }
@@ -241,8 +242,7 @@ class RegistrationIT {
         register(ana(), eventId)
                 .andExpect(status().isConflict())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(content().json(conflict("the event was cancelled", eventId, "EVENT_CANCELLED"),
-                        JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( eventId, "EVENT_CANCELLED"), strictIgnoringDetail()));
 
         assertThat(registrationsOf(eventId)).isZero();
     }
@@ -255,8 +255,7 @@ class RegistrationIT {
 
         register(ana(), eventId)
                 .andExpect(status().isConflict())
-                .andExpect(content().json(conflict("the event has already started", eventId, "EVENT_STARTED"),
-                        JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( eventId, "EVENT_STARTED"), strictIgnoringDetail()));
 
         assertThat(registrationsOf(eventId)).isZero();
     }
@@ -269,8 +268,7 @@ class RegistrationIT {
 
         register(ana(), eventId)
                 .andExpect(status().isConflict())
-                .andExpect(content().json(conflict("the event has already ended", eventId, "EVENT_ENDED"),
-                        JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( eventId, "EVENT_ENDED"), strictIgnoringDetail()));
 
         assertThat(registrationsOf(eventId)).isZero();
     }
@@ -286,8 +284,7 @@ class RegistrationIT {
         register(user("bruno"), eventId).andExpect(status().isCreated());
         register(user("carla"), eventId)
                 .andExpect(status().isConflict())
-                .andExpect(content().json(conflict("the event is full", eventId, "EVENT_FULL"),
-                        JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( eventId, "EVENT_FULL"), strictIgnoringDetail()));
 
         assertThat(registrationsOf(eventId)).isEqualTo(2);
     }
@@ -350,22 +347,16 @@ class RegistrationIT {
     void registrationRacingTheEventCancellationEndsConsistent() throws Exception {
         String eventId = createPublishedEvent(mockMvc);
         completeProfile(mockMvc, ana());
-        var start = new CountDownLatch(1);
 
-        try (var executor = Executors.newFixedThreadPool(2)) {
-            Future<Integer> registered = executor.submit(registerAfter(start, ana(), eventId));
-            Future<Integer> cancelled = executor.submit(() -> {
-                start.await();
-                return mockMvc.perform(post(adminEventPath(eventId) + ":cancel").with(admin()))
-                        .andReturn().getResponse().getStatus();
-            });
-            start.countDown();
-            int registration = registered.get(30, TimeUnit.SECONDS);
+        var statuses = together(List.of(
+                statusCodeOf(() -> register(ana(), eventId)),
+                statusCodeOf(() -> mockMvc.perform(post(adminEventPath(eventId) + ":cancel").with(admin())))));
 
-            assertThat(cancelled.get(30, TimeUnit.SECONDS)).isEqualTo(200);
-            assertThat(registration).isIn(201, 409);
-            assertThat(registrationsOf(eventId)).isEqualTo(registration == 201 ? 1 : 0);
-        }
+        int registration = statuses.getFirst();
+        int cancellation = statuses.getLast();
+        assertThat(cancellation).isEqualTo(200);
+        assertThat(registration).isIn(201, 409);
+        assertThat(registrationsOf(eventId)).isEqualTo(registration == 201 ? 1 : 0);
     }
 
     /** Com o evento travado por outra transação além do teto, a inscrição desiste com 503, sem gravar. */
@@ -373,28 +364,18 @@ class RegistrationIT {
     void registrationThatWaitsTooLongForTheEventLockIsRefused() throws Exception {
         String eventId = createPublishedEvent(mockMvc);
         completeProfile(mockMvc, ana());
-        var locked = new CountDownLatch(1);
-        var release = new CountDownLatch(1);
 
-        try (var executor = Executors.newSingleThreadExecutor()) {
-            Future<?> holder = executor.submit(() -> transactionTemplate.executeWithoutResult(transaction -> {
-                jdbcClient.sql("select id from event where id = cast(:id as uuid) for update")
-                        .param("id", eventId)
-                        .query(String.class)
-                        .single();
-                locked.countDown();
-                awaitQuietly(release);
-            }));
-            assertThat(locked.await(30, TimeUnit.SECONDS)).isTrue();
-
+        try (var _ = HeldLock.hold(transactionTemplate, () -> jdbcClient
+                .sql("select id from event where id = cast(:id as uuid) for update")
+                .param("id", eventId)
+                .query(String.class)
+                .single())) {
             register(ana(), eventId)
                     .andExpect(status().isServiceUnavailable())
                     .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
                     .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
-
-            release.countDown();
-            holder.get(30, TimeUnit.SECONDS);
         }
+
         assertThat(registrationsOf(eventId)).isZero();
     }
 
@@ -411,7 +392,8 @@ class RegistrationIT {
                 .andExpect(jsonPath("$.registrationCount").value(2))
                 .andReturn().getResponse().getContentAsString();
 
-        assertThat(body).doesNotContain("ana", "bruno", accountIdOf("ana"), accountIdOf("bruno"));
+        assertThat(body)
+                .doesNotContain("ana", "bruno", accountIdOf(jdbcClient, "ana"), accountIdOf(jdbcClient, "bruno"));
     }
 
     @Test
@@ -457,8 +439,7 @@ class RegistrationIT {
 
         unregister(ana(), eventId)
                 .andExpect(status().isConflict())
-                .andExpect(content().json(conflict("the event has already started", eventId, "EVENT_STARTED"),
-                        JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( eventId, "EVENT_STARTED"), strictIgnoringDetail()));
 
         assertThat(registrationsOf(eventId)).isEqualTo(1);
     }
@@ -472,8 +453,7 @@ class RegistrationIT {
 
         unregister(ana(), eventId)
                 .andExpect(status().isConflict())
-                .andExpect(content().json(conflict("the event has already ended", eventId, "EVENT_ENDED"),
-                        JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( eventId, "EVENT_ENDED"), strictIgnoringDetail()));
 
         assertThat(registrationsOf(eventId)).isEqualTo(1);
     }
@@ -503,7 +483,7 @@ class RegistrationIT {
                         """, JsonCompareMode.STRICT))
                 .andReturn().getResponse().getContentAsString();
 
-        assertThat(brunoView + brunoList).doesNotContain(accountIdOf("ana"), NOW);
+        assertThat(brunoView + brunoList).doesNotContain(accountIdOf(jdbcClient, "ana"), NOW);
         assertThat(registrationsOf(eventId)).isEqualTo(1);
     }
 
@@ -577,15 +557,15 @@ class RegistrationIT {
                         """, JsonCompareMode.STRICT));
     }
 
-    @Test
-    void invalidPageOfOwnRegistrationsIsABadRequest() throws Exception {
-        mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("maxPageSize", "51").with(ana()))
-                .andExpect(status().isBadRequest());
-        mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("maxPageSize", "").with(ana()))
-                .andExpect(status().isBadRequest());
-        mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("pageToken", "AAAA").with(ana()))
-                .andExpect(status().isBadRequest());
-        mockMvc.perform(get(MY_REGISTRATIONS_PATH).param("pageToken", YEAR_BEYOND_TIMESTAMPTZ_TOKEN).with(ana()))
+    @ParameterizedTest
+    @CsvSource(value = {
+            "maxPageSize, 51",
+            "maxPageSize, ''",
+            "pageToken, AAAA",
+            "pageToken, " + YEAR_BEYOND_TIMESTAMPTZ_TOKEN},
+            quoteCharacter = '\'')
+    void invalidPageOfOwnRegistrationsIsABadRequest(String parameter, String value) throws Exception {
+        mockMvc.perform(get(MY_REGISTRATIONS_PATH).param(parameter, value).with(ana()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -632,26 +612,9 @@ class RegistrationIT {
     }
 
     private List<Integer> registerAllAtOnce(String eventId, List<RequestPostProcessor> people) throws Exception {
-        var start = new CountDownLatch(1);
-        var futures = new ArrayList<Future<Integer>>();
-        try (var executor = Executors.newFixedThreadPool(people.size())) {
-            for (RequestPostProcessor person : people) {
-                futures.add(executor.submit(registerAfter(start, person, eventId)));
-            }
-            start.countDown();
-            var statuses = new ArrayList<Integer>();
-            for (var future : futures) {
-                statuses.add(future.get(30, TimeUnit.SECONDS));
-            }
-            return statuses;
-        }
-    }
-
-    private Callable<Integer> registerAfter(CountDownLatch start, RequestPostProcessor person, String eventId) {
-        return () -> {
-            start.await();
-            return register(person, eventId).andReturn().getResponse().getStatus();
-        };
+        return together(people.stream()
+                .map(person -> statusCodeOf(() -> register(person, eventId)))
+                .toList());
     }
 
     private ResultActions register(RequestPostProcessor person, String eventId) throws Exception {
@@ -666,20 +629,6 @@ class RegistrationIT {
         return jdbcClient.sql("select count(*) from registration where event_id = cast(:id as uuid)")
                 .param("id", eventId)
                 .query(Long.class).single();
-    }
-
-    private String accountIdOf(String name) {
-        return jdbcClient.sql("select id::text from account where subject = :subject")
-                .param("subject", "oid-" + name)
-                .query(String.class).single();
-    }
-
-    private static void awaitQuietly(CountDownLatch latch) {
-        try {
-            latch.await(30, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
     }
 
     private static String registration(String eventId, String registeredAt) {
@@ -709,14 +658,14 @@ class RegistrationIT {
     }
 
     /** O 409 inteiro da inscrição, com o motivo em reason (docs/adr/0020). */
-    private static String conflict(String detail, String eventId, String reason) {
-        return refusal(409, "Conflict", detail, eventId, reason);
+    private static String conflict(String eventId, String reason) {
+        return refusal(409, "Conflict", eventId, reason);
     }
 
-    private static String refusal(int status, String title, String detail, String eventId, String reason) {
+    private static String refusal(int status, String title, String eventId, String reason) {
         return """
-                {"title": "%s", "status": %d, "detail": "%s", "instance": "%s", "reason": "%s"}
-                """.formatted(title, status, detail, registrationPath(eventId), reason);
+                {"title": "%s", "status": %d, "instance": "%s", "reason": "%s"}
+                """.formatted(title, status, registrationPath(eventId), reason);
     }
 
 }

@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -53,7 +54,7 @@ class ControlCharactersInRequestIT {
 
     @AfterEach
     void cleanDatabase() {
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
     }
 

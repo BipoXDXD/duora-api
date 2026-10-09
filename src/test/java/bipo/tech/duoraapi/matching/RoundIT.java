@@ -1,5 +1,10 @@
 package bipo.tech.duoraapi.matching;
 
+import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
+import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
+import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
+import static bipo.tech.duoraapi.ConcurrentCalls.together;
+import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.adminEventPath;
@@ -23,18 +28,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.sql.ResultSet;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.RepeatedTest;
@@ -57,6 +56,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import com.jayway.jsonpath.JsonPath;
 
+import bipo.tech.duoraapi.HeldLock;
 import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
@@ -134,20 +134,10 @@ class RoundIT {
     @RepeatedTest(3)
     void concurrentStartsOfTheSameRoundCreateASingleRound() throws Exception {
         String eventId = underwayEventWith("ana", "bruno", "carla", "davi", "eva");
-        var start = new CountDownLatch(1);
-        var statuses = new ArrayList<Future<Integer>>();
 
-        try (var executor = Executors.newFixedThreadPool(CONCURRENT_REQUESTS)) {
-            for (int i = 0; i < CONCURRENT_REQUESTS; i++) {
-                statuses.add(executor.submit(startRoundAfter(start, eventId, 1)));
-            }
-            start.countDown();
-            var results = new ArrayList<Integer>();
-            for (var status : statuses) {
-                results.add(status.get(30, TimeUnit.SECONDS));
-            }
-            assertThat(results).containsOnly(201, 200).containsOnlyOnce(201);
-        }
+        var statuses = sameCallTogether(CONCURRENT_REQUESTS, statusCodeOf(() -> startRound(eventId, 1)));
+
+        assertThat(statuses).containsOnly(201, 200).containsOnlyOnce(201);
         assertThat(roundRows(eventId)).isEqualTo(1);
         assertThat(partnersIn(eventId, 1)).hasSize(5);
     }
@@ -156,15 +146,13 @@ class RoundIT {
     @RepeatedTest(3)
     void aRoundStartedTogetherWithThePreviousOneNeverExistsWithoutIt() throws Exception {
         String eventId = underwayEventWith("ana", "bruno", "carla", "davi");
-        var start = new CountDownLatch(1);
 
-        try (var executor = Executors.newFixedThreadPool(2)) {
-            Future<Integer> first = executor.submit(startRoundAfter(start, eventId, 1));
-            Future<Integer> second = executor.submit(startRoundAfter(start, eventId, 2));
-            start.countDown();
-            assertThat(first.get(30, TimeUnit.SECONDS)).isEqualTo(201);
-            assertThat(second.get(30, TimeUnit.SECONDS)).isIn(201, 409);
-        }
+        var statuses = together(List.of(
+                statusCodeOf(() -> startRound(eventId, 1)),
+                statusCodeOf(() -> startRound(eventId, 2))));
+
+        assertThat(statuses.getFirst()).isEqualTo(201);
+        assertThat(statuses.getLast()).isIn(201, 409);
         assertThat(jdbcClient.sql("""
                         select count(*) from round r
                          where r.event_id = cast(:id as uuid) and r.number = 2
@@ -181,9 +169,8 @@ class RoundIT {
                 .andExpect(status().isConflict())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(content().json("""
-                        {"title": "Conflict", "status": 409, "detail": "the previous round has not started yet",
-                         "instance": "%s", "reason": "ROUND_OUT_OF_SEQUENCE"}
-                        """.formatted(roundPath(eventId, 2)), JsonCompareMode.STRICT));
+                        {"title": "Conflict", "status": 409, "instance": "%s", "reason": "ROUND_OUT_OF_SEQUENCE"}
+                        """.formatted(roundPath(eventId, 2)), strictIgnoringDetail()));
 
         assertThat(roundRows(eventId)).isZero();
         assertThat(seatRows(eventId)).isZero();
@@ -253,7 +240,7 @@ class RoundIT {
 
         startRound(eventId, 1)
                 .andExpect(status().isConflict())
-                .andExpect(content().json(notUnderway(eventId), JsonCompareMode.STRICT));
+                .andExpect(content().json(notUnderway(eventId), strictIgnoringDetail()));
 
         assertThat(roundRows(eventId)).isZero();
     }
@@ -265,7 +252,7 @@ class RoundIT {
 
         startRound(eventId, 1)
                 .andExpect(status().isConflict())
-                .andExpect(content().json(notUnderway(eventId), JsonCompareMode.STRICT));
+                .andExpect(content().json(notUnderway(eventId), strictIgnoringDetail()));
 
         assertThat(roundRows(eventId)).isZero();
     }
@@ -286,7 +273,7 @@ class RoundIT {
 
         startRound(eventId, 1)
                 .andExpect(status().isConflict())
-                .andExpect(content().json(notUnderway(eventId), JsonCompareMode.STRICT));
+                .andExpect(content().json(notUnderway(eventId), strictIgnoringDetail()));
 
         assertThat(roundRows(eventId)).isZero();
     }
@@ -298,7 +285,7 @@ class RoundIT {
 
         startRound(eventId, 1)
                 .andExpect(status().isConflict())
-                .andExpect(content().json(notUnderway(eventId), JsonCompareMode.STRICT));
+                .andExpect(content().json(notUnderway(eventId), strictIgnoringDetail()));
 
         assertThat(roundRows(eventId)).isZero();
     }
@@ -439,31 +426,19 @@ class RoundIT {
     @Test
     void aRoundStartIsRefusedWhenAnotherRequestHoldsItTooLong() throws Exception {
         String eventId = underwayEventWith("ana", "bruno");
-        var holding = new CountDownLatch(1);
-        var release = new CountDownLatch(1);
 
-        try (var executor = Executors.newSingleThreadExecutor()) {
-            Future<?> holder = executor.submit(() -> transactionTemplate.executeWithoutResult(transaction -> {
-                jdbcClient.sql("""
-                                insert into round (event_id, number, previous_number, seed, started_at)
-                                values (cast(:id as uuid), 1, null, 42, now())
-                                """)
-                        .param("id", eventId)
-                        .update();
-                holding.countDown();
-                awaitQuietly(release);
-                transaction.setRollbackOnly();
-            }));
-            assertThat(holding.await(30, TimeUnit.SECONDS)).isTrue();
-
+        try (var _ = HeldLock.hold(transactionTemplate, () -> jdbcClient.sql("""
+                        insert into round (event_id, number, previous_number, seed, started_at)
+                        values (cast(:id as uuid), 1, null, 42, now())
+                        """)
+                .param("id", eventId)
+                .update())) {
             startRound(eventId, 1)
                     .andExpect(status().isServiceUnavailable())
                     .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
                     .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON));
-
-            release.countDown();
-            holder.get(30, TimeUnit.SECONDS);
         }
+
         assertThat(roundRows(eventId)).isZero();
         assertThat(seatRows(eventId)).isZero();
     }
@@ -512,19 +487,7 @@ class RoundIT {
 
     /** Publica um evento, inscreve as pessoas com o perfil completo e leva o relógio ao início. */
     private String underwayEventWith(String... names) throws Exception {
-        String eventId = createPublishedEvent(mockMvc);
-        for (String name : names) {
-            registerWithCompleteProfile(mockMvc, user(name), eventId);
-        }
-        clock.setTo(STARTS_AT);
-        return eventId;
-    }
-
-    private Callable<Integer> startRoundAfter(CountDownLatch start, String eventId, int number) {
-        return () -> {
-            start.await();
-            return startRound(eventId, number).andReturn().getResponse().getStatus();
-        };
+        return RoundFixtures.underwayEventWith(mockMvc, jdbcClient, clock, names);
     }
 
     private ResultActions startRound(String eventId, int number) throws Exception {
@@ -587,9 +550,7 @@ class RoundIT {
     }
 
     private String accountOf(String name) {
-        return jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", "oid-" + name)
-                .query(UUID.class).single().toString();
+        return accountIdOf(jdbcClient, name);
     }
 
     private String nameOf(String accountId) {
@@ -603,19 +564,9 @@ class RoundIT {
                 .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
     }
 
-    private static void awaitQuietly(CountDownLatch latch) {
-        try {
-            latch.await(30, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
     private static String notUnderway(String eventId) {
         return """
-                {"title": "Conflict", "status": 409,
-                 "detail": "rounds start only while the event is published and underway",
-                 "instance": "%s", "reason": "EVENT_NOT_UNDERWAY"}
+                {"title": "Conflict", "status": 409, "instance": "%s", "reason": "EVENT_NOT_UNDERWAY"}
                 """.formatted(roundPath(eventId, 1));
     }
 

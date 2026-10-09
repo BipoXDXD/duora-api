@@ -1,20 +1,20 @@
 package bipo.tech.duoraapi.matching;
 
+import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
+import static bipo.tech.duoraapi.RateLimitTestSupport.bucketKeysOf;
+import static bipo.tech.duoraapi.RateLimitTestSupport.expectRejectedByTheLimit;
+import static bipo.tech.duoraapi.RateLimitTestSupport.expectUnavailableBecauseTheLimitCannotBeCounted;
+import static bipo.tech.duoraapi.RateLimitTestSupport.whileTheLimitCannotBeCounted;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
-import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
 import static bipo.tech.duoraapi.events.EventFixtures.randomId;
-import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
 import static bipo.tech.duoraapi.events.EventFixtures.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.time.Instant;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -23,11 +23,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -76,14 +73,8 @@ class RoundRateLimitIT {
         startRound(eventId, 1, admin()).andExpect(status().isOk());
         startRound(eventId, 1, admin()).andExpect(status().isOk());
 
-        startRound(eventId, 2, admin())
-                .andExpect(status().isTooManyRequests())
-                .andExpect(header().string(HttpHeaders.RETRY_AFTER, SECONDS_TO_NEXT_CALL))
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(content().json("""
-                        {"title": "Too Many Requests", "status": 429,
-                         "detail": "rate limit exceeded; try again later", "instance": "%s"}
-                        """.formatted(roundPath(eventId, 2)), JsonCompareMode.STRICT));
+        expectRejectedByTheLimit(startRound(eventId, 2, admin()),
+                SECONDS_TO_NEXT_CALL, roundPath(eventId, 2));
 
         assertThat(roundRows(eventId)).isEqualTo(1);
     }
@@ -149,8 +140,7 @@ class RoundRateLimitIT {
     void theBucketLivesUnderTheRoundKeyOfTheAdminAccount() throws Exception {
         startRound(randomId(), 1, admin()).andExpect(status().isNotFound());
 
-        String accountId = jdbcClient.sql("select id::text from account where subject = 'oid-admin'")
-                .query(String.class).single();
+        String accountId = accountIdOf(jdbcClient, "admin");
 
         assertThat(keysOfTheLimit()).containsExactly("round:" + accountId);
     }
@@ -159,30 +149,16 @@ class RoundRateLimitIT {
     @Test
     void roundIsRefusedWithoutWritingWhenTheLimitCannotBeCounted() throws Exception {
         String eventId = underwayEventWith("ana", "bruno");
-        jdbcClient.sql("alter table rate_limit_bucket rename to rate_limit_bucket_unavailable").update();
-        try {
-            startRound(eventId, 1, admin())
-                    .andExpect(status().isServiceUnavailable())
-                    .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
-                    .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                    .andExpect(content().json("""
-                            {"title": "Service Unavailable", "status": 503, "instance": "%s"}
-                            """.formatted(roundPath(eventId, 1)), JsonCompareMode.STRICT));
-        } finally {
-            jdbcClient.sql("alter table rate_limit_bucket_unavailable rename to rate_limit_bucket").update();
-        }
+        whileTheLimitCannotBeCounted(jdbcClient, () -> expectUnavailableBecauseTheLimitCannotBeCounted(
+                startRound(eventId, 1, admin()),
+                roundPath(eventId, 1)));
 
         assertThat(roundRows(eventId)).isZero();
     }
 
     /** Publica um evento, inscreve as pessoas com o perfil completo e leva o relógio ao início. */
     private String underwayEventWith(String... names) throws Exception {
-        String eventId = createPublishedEvent(mockMvc);
-        for (String name : names) {
-            registerWithCompleteProfile(mockMvc, user(name), eventId);
-        }
-        clock.setTo(Instant.parse(EventFixtures.STARTS_AT));
-        return eventId;
+        return RoundFixtures.underwayEventWith(mockMvc, jdbcClient, clock, names);
     }
 
     private ResultActions startRound(String eventId, int number, RequestPostProcessor caller) throws Exception {
@@ -200,8 +176,7 @@ class RoundRateLimitIT {
     }
 
     private List<String> keysOfTheLimit() {
-        return jdbcClient.sql("select id from rate_limit_bucket where id like 'round:%'")
-                .query(String.class).list();
+        return bucketKeysOf(jdbcClient, "round");
     }
 
     private static RequestPostProcessor anotherAdmin() {

@@ -23,6 +23,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
 
+import bipo.tech.duoraapi.AccountFixtures;
 import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
@@ -116,12 +117,6 @@ class PairingsIT {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
-    @Test
-    void theRoundNumbersGoFromOneToOneHundred() {
-        assertThat(Pairings.FIRST_ROUND).isEqualTo(1);
-        assertThat(Pairings.LAST_ROUND).isEqualTo(100);
-    }
-
     private UUID roundOneWith(String... names) throws Exception {
         clock.setTo(TestClockConfiguration.NOW);
         String eventId = createPublishedEvent(mockMvc);
@@ -135,9 +130,7 @@ class PairingsIT {
     }
 
     private AccountId accountOf(String name) {
-        return new AccountId(jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", "oid-" + name)
-                .query(UUID.class).single());
+        return AccountFixtures.accountOf(jdbcClient, name);
     }
 
 }

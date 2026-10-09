@@ -1,17 +1,17 @@
 package bipo.tech.duoraapi.connections;
 
-import static bipo.tech.duoraapi.events.EventFixtures.admin;
-import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
-import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
+import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
+import static bipo.tech.duoraapi.AccountFixtures.firstAccess;
+import static bipo.tech.duoraapi.RateLimitTestSupport.bucketKeysOf;
+import static bipo.tech.duoraapi.RateLimitTestSupport.expectRejectedByTheLimit;
+import static bipo.tech.duoraapi.RateLimitTestSupport.expectUnavailableBecauseTheLimitCannotBeCounted;
+import static bipo.tech.duoraapi.RateLimitTestSupport.whileTheLimitCannotBeCounted;
 import static bipo.tech.duoraapi.events.EventFixtures.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.time.Instant;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -20,10 +20,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -31,6 +29,7 @@ import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 import bipo.tech.duoraapi.events.EventFixtures;
+import bipo.tech.duoraapi.matching.RoundFixtures;
 
 /**
  * Limite por conta da decisão (docs/adr/0019, "Rate limit"): cada PUT abre uma transação e disputa o advisory
@@ -74,14 +73,8 @@ class DecisionRateLimitIT {
         decide(eventId, "ana", YES).andExpect(status().isOk());
         decide(eventId, "ana", YES).andExpect(status().isOk());
 
-        decide(eventId, "ana", NO)
-                .andExpect(status().isTooManyRequests())
-                .andExpect(header().string(HttpHeaders.RETRY_AFTER, SECONDS_TO_NEXT_CALL))
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(content().json("""
-                        {"title": "Too Many Requests", "status": 429,
-                         "detail": "rate limit exceeded; try again later", "instance": "%s"}
-                        """.formatted(decisionPath(eventId, 1)), JsonCompareMode.STRICT));
+        expectRejectedByTheLimit(decide(eventId, "ana", NO),
+                SECONDS_TO_NEXT_CALL, decisionPath(eventId, 1));
 
         assertThat(decisionRows(eventId)).isEqualTo(1);
         assertThat(interestedOf(eventId, "ana")).isTrue();
@@ -102,7 +95,7 @@ class DecisionRateLimitIT {
     @Test
     void callsFromWhoFormedNoPairSpendTheLimit() throws Exception {
         String eventId = pairedInRoundOne("ana", "bruno");
-        createAccount("carla");
+        firstAccess(mockMvc, user("carla"));
         for (int i = 0; i < CAPACITY; i++) {
             decide(eventId, "carla", YES).andExpect(status().isNotFound());
         }
@@ -155,8 +148,7 @@ class DecisionRateLimitIT {
         String eventId = pairedInRoundOne("ana", "bruno");
         decide(eventId, "ana", YES).andExpect(status().isCreated());
 
-        String accountId = jdbcClient.sql("select id::text from account where subject = 'oid-ana'")
-                .query(String.class).single();
+        String accountId = accountIdOf(jdbcClient, "ana");
 
         assertThat(keysOfTheLimit()).containsExactly("decision:" + accountId);
     }
@@ -165,42 +157,21 @@ class DecisionRateLimitIT {
     @Test
     void decisionIsRefusedWithoutWritingWhenTheLimitCannotBeCounted() throws Exception {
         String eventId = pairedInRoundOne("ana", "bruno");
-        jdbcClient.sql("alter table rate_limit_bucket rename to rate_limit_bucket_unavailable").update();
-        try {
-            decide(eventId, "ana", YES)
-                    .andExpect(status().isServiceUnavailable())
-                    .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
-                    .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                    .andExpect(content().json("""
-                            {"title": "Service Unavailable", "status": 503, "instance": "%s"}
-                            """.formatted(decisionPath(eventId, 1)), JsonCompareMode.STRICT));
-        } finally {
-            jdbcClient.sql("alter table rate_limit_bucket_unavailable rename to rate_limit_bucket").update();
-        }
+        whileTheLimitCannotBeCounted(jdbcClient, () -> expectUnavailableBecauseTheLimitCannotBeCounted(
+                decide(eventId, "ana", YES),
+                decisionPath(eventId, 1)));
 
         assertThat(decisionRows(eventId)).isZero();
     }
 
     /** Publica um evento, inscreve as pessoas com o perfil completo, leva o relógio ao início e sorteia a rodada 1. */
     private String pairedInRoundOne(String... names) throws Exception {
-        String eventId = createPublishedEvent(mockMvc);
-        for (String name : names) {
-            registerWithCompleteProfile(mockMvc, user(name), eventId);
-        }
-        clock.setTo(Instant.parse(EventFixtures.STARTS_AT));
-        mockMvc.perform(put("/api/admin/events/" + eventId + "/rounds/1").with(admin()))
-                .andExpect(status().isCreated());
-        return eventId;
+        return RoundFixtures.pairedInRoundOne(mockMvc, jdbcClient, clock, names);
     }
 
     private ResultActions decide(String eventId, String name, String body) throws Exception {
         return mockMvc.perform(put(decisionPath(eventId, 1)).with(user(name))
                 .contentType(MediaType.APPLICATION_JSON).content(body));
-    }
-
-    /** O primeiro acesso cria a conta. */
-    private void createAccount(String name) throws Exception {
-        mockMvc.perform(get("/api/me").with(user(name))).andExpect(status().isOk());
     }
 
     private static String decisionPath(String eventId, int number) {
@@ -222,8 +193,7 @@ class DecisionRateLimitIT {
     }
 
     private List<String> keysOfTheLimit() {
-        return jdbcClient.sql("select id from rate_limit_bucket where id like 'decision:%'")
-                .query(String.class).list();
+        return bucketKeysOf(jdbcClient, "decision");
     }
 
 }

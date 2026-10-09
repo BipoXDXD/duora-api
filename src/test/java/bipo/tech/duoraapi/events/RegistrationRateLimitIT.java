@@ -1,5 +1,10 @@
 package bipo.tech.duoraapi.events;
 
+import static bipo.tech.duoraapi.AccountFixtures.accountIdOf;
+import static bipo.tech.duoraapi.RateLimitTestSupport.bucketKeysOf;
+import static bipo.tech.duoraapi.RateLimitTestSupport.expectRejectedByTheLimit;
+import static bipo.tech.duoraapi.RateLimitTestSupport.expectUnavailableBecauseTheLimitCannotBeCounted;
+import static bipo.tech.duoraapi.RateLimitTestSupport.whileTheLimitCannotBeCounted;
 import static bipo.tech.duoraapi.events.EventFixtures.completeProfile;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
 import static bipo.tech.duoraapi.events.EventFixtures.randomId;
@@ -8,8 +13,6 @@ import static bipo.tech.duoraapi.events.EventFixtures.user;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
@@ -20,10 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -67,14 +67,8 @@ class RegistrationRateLimitIT {
             register(ana(), eventId).andExpect(status().is2xxSuccessful());
         }
 
-        register(ana(), eventId)
-                .andExpect(status().isTooManyRequests())
-                .andExpect(header().string(HttpHeaders.RETRY_AFTER, SECONDS_TO_NEXT_CALL))
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(content().json("""
-                        {"title": "Too Many Requests", "status": 429,
-                         "detail": "rate limit exceeded; try again later", "instance": "%s"}
-                        """.formatted(registrationPath(eventId)), JsonCompareMode.STRICT));
+        expectRejectedByTheLimit(register(ana(), eventId),
+                SECONDS_TO_NEXT_CALL, registrationPath(eventId));
         unregister(ana(), eventId).andExpect(status().isTooManyRequests());
 
         assertThat(registrationsOf(eventId)).isEqualTo(1);
@@ -150,8 +144,7 @@ class RegistrationRateLimitIT {
         completeProfile(mockMvc, ana());
         register(ana(), eventId).andExpect(status().isCreated());
 
-        String accountId = jdbcClient.sql("select id::text from account where subject = 'oid-ana'")
-                .query(String.class).single();
+        String accountId = accountIdOf(jdbcClient, "ana");
 
         assertThat(keysOfTheLimit()).containsExactly("registration:" + accountId);
     }
@@ -161,13 +154,9 @@ class RegistrationRateLimitIT {
     void registrationIsRefusedWithoutWritingWhenTheLimitCannotBeCounted() throws Exception {
         String eventId = createPublishedEvent(mockMvc);
         completeProfile(mockMvc, ana());
-        withTheLimitStoreUnavailable(() -> register(ana(), eventId)
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(content().json("""
-                        {"title": "Service Unavailable", "status": 503, "instance": "%s"}
-                        """.formatted(registrationPath(eventId)), JsonCompareMode.STRICT)));
+        whileTheLimitCannotBeCounted(jdbcClient, () -> expectUnavailableBecauseTheLimitCannotBeCounted(
+                register(ana(), eventId),
+                registrationPath(eventId)));
 
         assertThat(registrationsOf(eventId)).isZero();
     }
@@ -177,21 +166,11 @@ class RegistrationRateLimitIT {
         String eventId = createPublishedEvent(mockMvc);
         completeProfile(mockMvc, ana());
         register(ana(), eventId).andExpect(status().isCreated());
-        withTheLimitStoreUnavailable(() -> unregister(ana(), eventId)
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON)));
+        whileTheLimitCannotBeCounted(jdbcClient, () -> expectUnavailableBecauseTheLimitCannotBeCounted(
+                unregister(ana(), eventId),
+                registrationPath(eventId)));
 
         assertThat(registrationsOf(eventId)).isEqualTo(1);
-    }
-
-    private void withTheLimitStoreUnavailable(ThrowingRunnable action) throws Exception {
-        jdbcClient.sql("alter table rate_limit_bucket rename to rate_limit_bucket_unavailable").update();
-        try {
-            action.run();
-        } finally {
-            jdbcClient.sql("alter table rate_limit_bucket_unavailable rename to rate_limit_bucket").update();
-        }
     }
 
     private ResultActions register(RequestPostProcessor person, String eventId) throws Exception {
@@ -209,8 +188,7 @@ class RegistrationRateLimitIT {
     }
 
     private List<String> keysOfTheLimit() {
-        return jdbcClient.sql("select id from rate_limit_bucket where id like 'registration:%'")
-                .query(String.class).list();
+        return bucketKeysOf(jdbcClient, "registration");
     }
 
     private static RequestPostProcessor ana() {
@@ -219,11 +197,6 @@ class RegistrationRateLimitIT {
 
     private static RequestPostProcessor bruno() {
         return user("bruno");
-    }
-
-    @FunctionalInterface
-    private interface ThrowingRunnable {
-        void run() throws Exception;
     }
 
 }

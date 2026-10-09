@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.waitlist.api;
 
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.sql.Connection;
@@ -48,7 +49,7 @@ class JoinWaitlistRateLimitFilterIT {
 
     @BeforeEach
     void setUp() {
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
         filter = new JoinWaitlistRateLimitFilter(rateLimitBuckets, CAPACITY, PERIOD);
     }
 

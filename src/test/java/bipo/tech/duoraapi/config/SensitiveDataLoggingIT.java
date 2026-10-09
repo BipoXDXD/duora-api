@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
 import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
@@ -10,7 +11,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.io.IOException;
 import java.net.URI;
@@ -43,6 +43,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.jayway.jsonpath.JsonPath;
 
+import bipo.tech.duoraapi.AccountFixtures;
 import bipo.tech.duoraapi.AccountTables;
 import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
@@ -107,7 +108,7 @@ class SensitiveDataLoggingIT {
     void cleanDatabase() {
         clock.setTo(TestClockConfiguration.NOW);
         jdbcClient.sql("delete from waitlist_entry").update();
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
     }
 
@@ -349,10 +350,7 @@ class SensitiveDataLoggingIT {
 
     /** Abre a conta pelo primeiro acesso, como em produção, e devolve o id dela. */
     private String accountIdOf(String name) throws Exception {
-        mockMvc.perform(get("/api/me").with(EventFixtures.user(name))).andExpect(status().isOk());
-        return jdbcClient.sql("select id::text from account where subject = :subject")
-                .param("subject", "oid-" + name)
-                .query(String.class).single();
+        return AccountFixtures.openAccount(mockMvc, jdbcClient, EventFixtures.user(name), "oid-" + name);
     }
 
     private void insertBlock(String blocker, String blocked, String blockedAt) {
@@ -388,10 +386,7 @@ class SensitiveDataLoggingIT {
 
     /** Abre a conta denunciada pelo primeiro acesso, como em produção. */
     private UUID reportedAccountId() throws Exception {
-        mockMvc.perform(get("/api/me").with(jwt().jwt(token -> token.issuer(ISSUER).claim("oid", REPORTED_OBJECT_ID))));
-        return jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", REPORTED_OBJECT_ID)
-                .query(UUID.class).single();
+        return UUID.fromString(AccountFixtures.openAccount(mockMvc, jdbcClient, REPORTED_OBJECT_ID));
     }
 
     private MockHttpServletResponse editProfile(String body) throws Exception {

@@ -1,16 +1,18 @@
 package bipo.tech.duoraapi.trustsafety;
 
-import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.RateLimitTestSupport.bucketKeysOf;
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
+import static bipo.tech.duoraapi.RateLimitTestSupport.expectRejectedByTheLimit;
+import static bipo.tech.duoraapi.RateLimitTestSupport.expectUnavailableBecauseTheLimitCannotBeCounted;
+import static bipo.tech.duoraapi.RateLimitTestSupport.whileTheLimitCannotBeCounted;
+import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
-import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,13 +21,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import bipo.tech.duoraapi.AccountFixtures;
 import bipo.tech.duoraapi.AccountTables;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
@@ -58,7 +59,7 @@ class BlockRateLimitIT {
     @BeforeEach
     void cleanDatabase() {
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
     }
 
     @Test
@@ -69,14 +70,8 @@ class BlockRateLimitIT {
             block(ana(), bruno).andExpect(status().isNoContent());
         }
 
-        block(ana(), carla)
-                .andExpect(status().isTooManyRequests())
-                .andExpect(header().string(HttpHeaders.RETRY_AFTER, SECONDS_TO_NEXT_CALL))
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(content().json("""
-                        {"title": "Too Many Requests", "status": 429,
-                         "detail": "rate limit exceeded; try again later", "instance": "/api/accounts/%s:block"}
-                        """.formatted(carla), JsonCompareMode.STRICT));
+        expectRejectedByTheLimit(block(ana(), carla),
+                SECONDS_TO_NEXT_CALL, "/api/accounts/%s:block".formatted(carla));
 
         assertThat(blockedAccounts()).containsExactly(bruno);
     }
@@ -154,18 +149,9 @@ class BlockRateLimitIT {
     void blockIsRefusedWithoutWritingWhenTheLimitCannotBeCounted() throws Exception {
         var bruno = accountIdOf("oid-bruno");
         accountIdOf("oid-ana");
-        jdbcClient.sql("alter table rate_limit_bucket rename to rate_limit_bucket_unavailable").update();
-        try {
-            block(ana(), bruno)
-                    .andExpect(status().isServiceUnavailable())
-                    .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
-                    .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                    .andExpect(content().json("""
-                            {"title": "Service Unavailable", "status": 503, "instance": "/api/accounts/%s:block"}
-                            """.formatted(bruno), JsonCompareMode.STRICT));
-        } finally {
-            jdbcClient.sql("alter table rate_limit_bucket_unavailable rename to rate_limit_bucket").update();
-        }
+        whileTheLimitCannotBeCounted(jdbcClient, () -> expectUnavailableBecauseTheLimitCannotBeCounted(
+                block(ana(), bruno),
+                "/api/accounts/%s:block".formatted(bruno)));
 
         assertThat(blockedAccounts()).isEmpty();
     }
@@ -174,14 +160,9 @@ class BlockRateLimitIT {
     void unblockIsRefusedWithoutWritingWhenTheLimitCannotBeCounted() throws Exception {
         var bruno = accountIdOf("oid-bruno");
         block(ana(), bruno).andExpect(status().isNoContent());
-        jdbcClient.sql("alter table rate_limit_bucket rename to rate_limit_bucket_unavailable").update();
-        try {
-            unblock(ana(), bruno)
-                    .andExpect(status().isServiceUnavailable())
-                    .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"));
-        } finally {
-            jdbcClient.sql("alter table rate_limit_bucket_unavailable rename to rate_limit_bucket").update();
-        }
+        whileTheLimitCannotBeCounted(jdbcClient, () -> expectUnavailableBecauseTheLimitCannotBeCounted(
+                unblock(ana(), bruno),
+                "/api/accounts/%s:unblock".formatted(bruno)));
 
         assertThat(blockedAccounts()).containsExactly(bruno);
     }
@@ -196,10 +177,7 @@ class BlockRateLimitIT {
 
     /** Abre a conta pelo primeiro acesso, como acontece em produção, e devolve o id dela. */
     private String accountIdOf(String objectId) throws Exception {
-        mockMvc.perform(get("/api/me").with(user(objectId))).andExpect(status().isOk());
-        return jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", objectId)
-                .query(UUID.class).single().toString();
+        return AccountFixtures.openAccount(mockMvc, jdbcClient, objectId);
     }
 
     private List<String> blockedAccounts() {
@@ -208,20 +186,15 @@ class BlockRateLimitIT {
     }
 
     private List<String> keysOfTheLimit() {
-        return jdbcClient.sql("select id from rate_limit_bucket where id like 'block:%'")
-                .query(String.class).list();
+        return bucketKeysOf(jdbcClient, "block");
     }
 
     private static RequestPostProcessor ana() {
-        return user("oid-ana");
+        return bearer("oid-ana");
     }
 
     private static RequestPostProcessor bruno() {
-        return user("oid-bruno");
-    }
-
-    private static RequestPostProcessor user(String objectId) {
-        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", objectId));
+        return bearer("oid-bruno");
     }
 
 }

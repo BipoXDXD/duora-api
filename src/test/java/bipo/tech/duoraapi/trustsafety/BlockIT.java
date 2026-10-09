@@ -1,9 +1,11 @@
 package bipo.tech.duoraapi.trustsafety;
 
+import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
+import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -12,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -19,11 +22,6 @@ import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -46,7 +44,10 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import com.jayway.jsonpath.JsonPath;
 
+import bipo.tech.duoraapi.AccountFixtures;
 import bipo.tech.duoraapi.AccountTables;
+import bipo.tech.duoraapi.TestClockConfiguration;
+import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 import bipo.tech.duoraapi.identity.AccountId;
 
@@ -58,13 +59,14 @@ import bipo.tech.duoraapi.identity.AccountId;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, TestClockConfiguration.class})
 class BlockIT {
 
     private static final String BLOCKED_ACCOUNTS_PATH = "/api/me/blocked-accounts";
     /** UUIDv7 bem formado que não é de conta nenhuma. */
     private static final String UNKNOWN_ACCOUNT_ID = "01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b";
     private static final int CONCURRENT_BLOCKS = 4;
+    private static final Duration TICK = Duration.ofSeconds(1);
 
     @Autowired
     private MockMvc mockMvc;
@@ -75,8 +77,12 @@ class BlockIT {
     @Autowired
     private Blocking blocking;
 
+    @Autowired
+    private TestClock clock;
+
     @BeforeEach
-    void cleanDatabase() {
+    void resetState() {
+        clock.setTo(TestClockConfiguration.NOW);
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
     }
 
@@ -96,12 +102,12 @@ class BlockIT {
     void blockingTwiceKeepsASingleBlockFromTheFirstTime() throws Exception {
         var bruno = accountIdOf("oid-bruno");
         block(ana(), bruno).andExpect(status().isNoContent());
-        var firstBlockedAt = blockedAtOf(bruno);
+        clock.advance(TICK);
 
         block(ana(), bruno).andExpect(status().isNoContent());
 
         assertThat(blockRows()).hasSize(1);
-        assertThat(blockedAtOf(bruno)).isEqualTo(firstBlockedAt);
+        assertThat(blockedAtOf(bruno)).isEqualTo(TestClockConfiguration.NOW);
     }
 
     /** Toques repetidos no botão: todos respondem sucesso, e o par continua com uma linha só. */
@@ -109,21 +115,10 @@ class BlockIT {
     void concurrentBlocksOfTheSamePairKeepASingleBlock() throws Exception {
         accountIdOf("oid-ana");
         var bruno = accountIdOf("oid-bruno");
-        var start = new CountDownLatch(1);
-        var statuses = new ArrayList<Future<Integer>>();
 
-        try (var executor = Executors.newFixedThreadPool(CONCURRENT_BLOCKS)) {
-            for (int i = 0; i < CONCURRENT_BLOCKS; i++) {
-                statuses.add(executor.submit(blockAfter(start, bruno)));
-            }
-            start.countDown();
-            var results = new ArrayList<Integer>();
-            for (var status : statuses) {
-                results.add(status.get(30, TimeUnit.SECONDS));
-            }
-            assertThat(results).containsOnly(204);
-        }
+        var statuses = sameCallTogether(CONCURRENT_BLOCKS, statusCodeOf(() -> block(ana(), bruno)));
 
+        assertThat(statuses).containsOnly(204);
         assertThat(blockRows()).hasSize(1);
     }
 
@@ -180,7 +175,7 @@ class BlockIT {
         var carla = accountIdOf("oid-carla");
         block(ana(), bruno).andExpect(status().isNoContent());
         block(ana(), carla).andExpect(status().isNoContent());
-        block(user("oid-carla"), bruno).andExpect(status().isNoContent());
+        block(bearer("oid-carla"), bruno).andExpect(status().isNoContent());
 
         unblock(ana(), bruno).andExpect(status().isNoContent());
 
@@ -219,7 +214,9 @@ class BlockIT {
         var carla = accountIdOf("oid-carla");
         var davi = accountIdOf("oid-davi");
         block(ana(), bruno).andExpect(status().isNoContent());
+        clock.advance(TICK);
         block(ana(), carla).andExpect(status().isNoContent());
+        clock.advance(TICK);
         block(ana(), davi).andExpect(status().isNoContent());
 
         var firstPage = listBlocked(ana(), "?maxPageSize=2")
@@ -447,13 +444,6 @@ class BlockIT {
         assertThat(blocking.blockedPairsAmong(List.of())).isEmpty();
     }
 
-    private Callable<Integer> blockAfter(CountDownLatch start, String blocked) {
-        return () -> {
-            start.await();
-            return block(ana(), blocked).andReturn().getResponse().getStatus();
-        };
-    }
-
     private ResultActions block(RequestPostProcessor user, String accountId) throws Exception {
         return mockMvc.perform(post("/api/accounts/{id}:block", accountId).with(user));
     }
@@ -468,10 +458,7 @@ class BlockIT {
 
     /** Abre a conta pelo primeiro acesso, como acontece em produção, e devolve o id dela. */
     private String accountIdOf(String objectId) throws Exception {
-        mockMvc.perform(get("/api/me").with(user(objectId))).andExpect(status().isOk());
-        return jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", objectId)
-                .query(UUID.class).single().toString();
+        return AccountFixtures.openAccount(mockMvc, jdbcClient, objectId);
     }
 
     private void insertBlock(String blocker, String blocked, OffsetDateTime createdAt) {
@@ -515,23 +502,19 @@ class BlockIT {
     }
 
     private static RequestPostProcessor ana() {
-        return user("oid-ana");
+        return bearer("oid-ana");
     }
 
     private static RequestPostProcessor bruno() {
-        return user("oid-bruno");
+        return bearer("oid-bruno");
     }
 
     private static RequestPostProcessor carla() {
-        return user("oid-carla");
+        return bearer("oid-carla");
     }
 
     private static RequestPostProcessor davi() {
-        return user("oid-davi");
-    }
-
-    private static RequestPostProcessor user(String objectId) {
-        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", objectId));
+        return bearer("oid-davi");
     }
 
     private static RequestPostProcessor anaWebSession() {

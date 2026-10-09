@@ -1,11 +1,6 @@
 package bipo.tech.duoraapi.chat;
 
-import static bipo.tech.duoraapi.events.EventFixtures.admin;
-import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
-import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -16,9 +11,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
-import bipo.tech.duoraapi.TestClockConfiguration;
+import bipo.tech.duoraapi.AccountFixtures;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.events.EventFixtures;
+import bipo.tech.duoraapi.matching.RoundFixtures;
 
 /** O que os testes do chat repetem: formar o par pela API, enviar, ler o banco por fora (docs/adr/0021). */
 public final class ChatFixtures {
@@ -36,19 +32,11 @@ public final class ChatFixtures {
      */
     public static String pairedInRoundOne(MockMvc mockMvc, JdbcClient jdbcClient, TestClock clock, String... names)
             throws Exception {
-        clock.setTo(TestClockConfiguration.NOW);
-        String eventId = createPublishedEvent(mockMvc);
-        for (String name : names) {
-            registerOnce(mockMvc, jdbcClient, name, eventId);
-        }
-        clock.setTo(STARTS_AT);
-        startRound(mockMvc, eventId, 1);
-        return eventId;
+        return RoundFixtures.pairedInRoundOne(mockMvc, jdbcClient, clock, names);
     }
 
     public static void startRound(MockMvc mockMvc, String eventId, int number) throws Exception {
-        mockMvc.perform(put("/api/admin/events/" + eventId + "/rounds/" + number).with(admin()))
-                .andExpect(status().isCreated());
+        RoundFixtures.startRound(mockMvc, eventId, number);
     }
 
     public static ResultActions send(MockMvc mockMvc, String eventId, RequestPostProcessor person, String key,
@@ -95,29 +83,11 @@ public final class ChatFixtures {
     }
 
     public static String accountOf(JdbcClient jdbcClient, String name) {
-        return jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", "oid-" + name)
-                .query(UUID.class).single().toString();
+        return AccountFixtures.accountIdOf(jdbcClient, name);
     }
 
     public static long messageRows(JdbcClient jdbcClient) {
         return jdbcClient.sql("select count(*) from chat_message").query(Long.class).single();
-    }
-
-    /** O perfil completo só se cria uma vez por pessoa; depois basta se inscrever. */
-    private static void registerOnce(MockMvc mockMvc, JdbcClient jdbcClient, String name, String eventId)
-            throws Exception {
-        boolean hasProfile = jdbcClient.sql("""
-                        select exists (select 1 from profile p join account a on a.id = p.account_id
-                                        where a.subject = :subject)
-                        """)
-                .param("subject", "oid-" + name).query(Boolean.class).single();
-        if (hasProfile) {
-            mockMvc.perform(put(EventFixtures.registrationPath(eventId)).with(EventFixtures.user(name)))
-                    .andExpect(status().isCreated());
-        } else {
-            registerWithCompleteProfile(mockMvc, EventFixtures.user(name), eventId);
-        }
     }
 
 }

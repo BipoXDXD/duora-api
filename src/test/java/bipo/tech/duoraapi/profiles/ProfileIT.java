@@ -1,5 +1,8 @@
 package bipo.tech.duoraapi.profiles;
 
+import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
+import static bipo.tech.duoraapi.ConcurrentCalls.together;
+import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -11,13 +14,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.util.ArrayList;
 import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -43,6 +41,8 @@ import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import bipo.tech.duoraapi.AccountTables;
+import bipo.tech.duoraapi.TestClockConfiguration;
+import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
 /**
@@ -52,7 +52,7 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
  */
 @SpringBootTest
 @AutoConfigureMockMvc
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, TestClockConfiguration.class})
 @ExtendWith(OutputCaptureExtension.class)
 class ProfileIT {
 
@@ -73,8 +73,12 @@ class ProfileIT {
     @Autowired
     private JdbcClient jdbcClient;
 
+    @Autowired
+    private TestClock clock;
+
     @BeforeEach
-    void cleanDatabase() {
+    void resetState() {
+        clock.setTo(TestClockConfiguration.NOW);
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
     }
 
@@ -98,9 +102,25 @@ class ProfileIT {
                 .andExpect(content().json(ANA_PROFILE, JsonCompareMode.STRICT));
     }
 
-    /** PATCH: campo ausente não muda; null apaga. */
+    /** PATCH: campo ausente não muda. */
     @Test
-    void absentFieldsStayAndNullClearsTheBio() throws Exception {
+    void fieldsAbsentFromThePatchStayAsTheyWere() throws Exception {
+        edit(ana(), "\"0\"", anaProfileJson()).andExpect(status().isOk());
+
+        edit(ana(), "\"1\"", """
+                {"bio": "Gosto de café"}
+                """)
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, "\"2\""))
+                .andExpect(content().json("""
+                        {"displayName": "Ana Souza", "birthDate": "1990-05-10", "bio": "Gosto de café",
+                         "region": "BR-SP", "complete": true}
+                        """, JsonCompareMode.STRICT));
+    }
+
+    /** PATCH: null apaga o campo opcional. */
+    @Test
+    void nullInThePatchClearsTheBio() throws Exception {
         edit(ana(), "\"0\"", anaProfileJson()).andExpect(status().isOk());
 
         edit(ana(), "\"1\"", """
@@ -164,20 +184,12 @@ class ProfileIT {
     @RepeatedTest(3)
     void concurrentEditsFromTheSameVersionKeepOnlyOne() throws Exception {
         edit(ana(), "\"0\"", anaProfileJson()).andExpect(status().isOk());
-        var start = new CountDownLatch(1);
-        var statuses = new ArrayList<Future<Integer>>();
 
-        try (var executor = Executors.newFixedThreadPool(CONCURRENT_EDITS)) {
-            for (int i = 0; i < CONCURRENT_EDITS; i++) {
-                statuses.add(executor.submit(editNameAfter(start, "Nome " + i)));
-            }
-            start.countDown();
-            var results = new ArrayList<Integer>();
-            for (var status : statuses) {
-                results.add(status.get(30, TimeUnit.SECONDS));
-            }
-            assertThat(results).containsOnly(200, 412).containsOnlyOnce(200);
-        }
+        var statuses = together(IntStream.range(0, CONCURRENT_EDITS)
+                .mapToObj(i -> statusCodeOf(() -> editNameFromVersionOne("Nome " + i)))
+                .toList());
+
+        assertThat(statuses).containsOnly(200, 412).containsOnlyOnce(200);
 
         var version = jdbcClient.sql("select version from profile").query(Long.class).single();
         assertThat(version).isEqualTo(2);
@@ -195,9 +207,9 @@ class ProfileIT {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(content().json("""
-                        {"title": "Bad Request", "status": 400, "detail": "%s cannot be removed",
+                        {"title": "Bad Request", "status": 400,
                          "instance": "/api/me/profile", "errors": [{"field": "%s", "code": "REQUIRED"}]}
-                        """.formatted(field, field), JsonCompareMode.STRICT));
+                        """.formatted(field), strictIgnoringDetail()));
 
         mockMvc.perform(get(PROFILE_PATH).with(ana())).andExpect(content().json(ANA_PROFILE, JsonCompareMode.STRICT));
     }
@@ -311,9 +323,9 @@ class ProfileIT {
                 .andExpect(status().isConflict())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(content().json("""
-                        {"title": "Conflict", "status": 409, "detail": "birthDate is already set and cannot be changed",
+                        {"title": "Conflict", "status": 409,
                          "instance": "/api/me/profile", "reason": "BIRTH_DATE_ALREADY_SET"}
-                        """, JsonCompareMode.STRICT));
+                        """, strictIgnoringDetail()));
 
         mockMvc.perform(get(PROFILE_PATH).with(ana())).andExpect(content().json(ANA_PROFILE, JsonCompareMode.STRICT));
     }
@@ -410,13 +422,10 @@ class ProfileIT {
                         """, JsonCompareMode.STRICT));
     }
 
-    private Callable<Integer> editNameAfter(CountDownLatch start, String name) {
-        return () -> {
-            start.await();
-            return edit(ana(), "\"1\"", """
-                    {"displayName": "%s"}
-                    """.formatted(name)).andReturn().getResponse().getStatus();
-        };
+    private ResultActions editNameFromVersionOne(String name) throws Exception {
+        return edit(ana(), "\"1\"", """
+                {"displayName": "%s"}
+                """.formatted(name));
     }
 
     private ResultActions edit(RequestPostProcessor user, String ifMatch, String body) throws Exception {

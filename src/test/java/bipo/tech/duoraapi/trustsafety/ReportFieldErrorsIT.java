@@ -1,8 +1,9 @@
 package bipo.tech.duoraapi.trustsafety;
 
+import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
+import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -23,11 +24,10 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
+import bipo.tech.duoraapi.AccountFixtures;
 import bipo.tech.duoraapi.AccountTables;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
@@ -40,7 +40,6 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 @Import(TestcontainersConfiguration.class)
 class ReportFieldErrorsIT {
 
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String REPORTS_PATH = "/api/reports";
     private static final String REPORTER = "oid-reporter-field-errors";
     private static final String REPORTED = "oid-reported-field-errors";
@@ -56,42 +55,38 @@ class ReportFieldErrorsIT {
     @BeforeEach
     void cleanDatabase() {
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
     }
 
     @ParameterizedTest
     @MethodSource("invalidBodies")
-    void invalidBodyNamesTheFieldAndTheReason(String body, String detail, String errors) throws Exception {
+    void invalidBodyNamesTheFieldAndTheReason(String body, String errors) throws Exception {
         file(body.replace(REPORTED_ID, accountIdOf(REPORTED)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(content().json("""
-                        {"title": "Bad Request", "status": 400, "detail": "%s", "instance": "%s", "errors": %s}
-                        """.formatted(detail, REPORTS_PATH, errors), JsonCompareMode.STRICT));
+                        {"title": "Bad Request", "status": 400, "instance": "%s", "errors": %s}
+                        """.formatted(REPORTS_PATH, errors), strictIgnoringDetail()));
 
         assertThat(reportRows()).isZero();
     }
 
     static Stream<Arguments> invalidBodies() {
         return Stream.of(
-                Arguments.of(Named.of("sem conta nem motivo", "{}"), "Invalid request content.", """
+                Arguments.of(Named.of("sem conta nem motivo", "{}"), """
                         [{"field": "reason", "code": "REQUIRED"}, {"field": "reportedAccountId", "code": "REQUIRED"}]"""),
-                invalid("sem motivo", "{\"reportedAccountId\": \"" + REPORTED_ID + "\"}",
-                        "Invalid request content.", "reason", "REQUIRED"),
+                invalid("sem motivo", "{\"reportedAccountId\": \"" + REPORTED_ID + "\"}", "reason", "REQUIRED"),
                 invalid("id que não é UUID", "{\"reportedAccountId\": \"bruno\", \"reason\": \"HARASSMENT\"}",
-                        "Failed to read request", "reportedAccountId", "INVALID_FORMAT"),
+                        "reportedAccountId", "INVALID_FORMAT"),
                 invalid("motivo fora da lista", "{\"reportedAccountId\": \"" + REPORTED_ID + "\", \"reason\": \"INSULT\"}",
-                        "Failed to read request", "reason", "UNSUPPORTED_VALUE"),
+                        "reason", "UNSUPPORTED_VALUE"),
                 invalid("OTHER sem descrição", "{\"reportedAccountId\": \"" + REPORTED_ID + "\", \"reason\": \"OTHER\"}",
-                        "description is required when the reason is OTHER", "description", "REQUIRED"),
-                invalid("descrição com 1001 caracteres", withDescription("a".repeat(1001)),
-                        "description must have at most 1000 characters", "description", "TOO_LONG"),
-                invalid("descrição com NUL", withDescription("oi\\u0000"),
-                        "description contains a forbidden character", "description", "FORBIDDEN_CHARACTER"),
-                invalid("estado vindo do cliente", "{\"reportedAccountId\": \"" + REPORTED_ID
-                                + "\", \"reason\": \"HARASSMENT\", \"status\": \"CLOSED\"}",
-                        "Failed to read request", "status", "UNKNOWN_FIELD"),
-                Arguments.of(Named.of("JSON quebrado", "{\"reason\": "), "Failed to read request",
+                        "description", "REQUIRED"),
+                invalid("descrição com 1001 caracteres", withDescription("a".repeat(1001)), "description", "TOO_LONG"),
+                invalid("descrição com NUL", withDescription("oi\\u0000"), "description", "FORBIDDEN_CHARACTER"),
+                invalid("estado vindo do cliente", "{\"reportedAccountId\": \"" + REPORTED_ID + "\", \"reason\": \"HARASSMENT\", \"status\": \"CLOSED\"}",
+                        "status", "UNKNOWN_FIELD"),
+                Arguments.of(Named.of("JSON quebrado", "{\"reason\": "),
                         "[{\"code\": \"MALFORMED_BODY\"}]"));
     }
 
@@ -100,9 +95,9 @@ class ReportFieldErrorsIT {
         file("{\"reportedAccountId\": \"%s\", \"reason\": \"HARASSMENT\"}".formatted(accountIdOf(REPORTER)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().json("""
-                        {"title": "Bad Request", "status": 400, "detail": "an account cannot report itself",
-                         "instance": "/api/reports", "errors": [{"field": "reportedAccountId", "code": "SELF_REFERENCE"}]}
-                        """, JsonCompareMode.STRICT));
+                        {"title": "Bad Request", "status": 400, "instance": "/api/reports",
+                         "errors": [{"field": "reportedAccountId", "code": "SELF_REFERENCE"}]}
+                        """, strictIgnoringDetail()));
     }
 
     /** O relato é dado sensível: o valor recusado não volta, nem a chave desconhecida fora do formato de nome. */
@@ -122,8 +117,8 @@ class ReportFieldErrorsIT {
         assertThat(response).contains("\"errors\"").doesNotContain(canary);
     }
 
-    private static Arguments invalid(String name, String body, String detail, String field, String code) {
-        return Arguments.of(Named.of(name, body), detail, """
+    private static Arguments invalid(String name, String body, String field, String code) {
+        return Arguments.of(Named.of(name, body), """
                 [{"field": "%s", "code": "%s"}]""".formatted(field, code));
     }
 
@@ -133,25 +128,18 @@ class ReportFieldErrorsIT {
     }
 
     private ResultActions file(String body) throws Exception {
-        return mockMvc.perform(post(REPORTS_PATH).with(user(REPORTER))
+        return mockMvc.perform(post(REPORTS_PATH).with(bearer(REPORTER))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body));
     }
 
     /** O primeiro acesso cria a conta; o id é o que o banco gerou. */
     private String accountIdOf(String objectId) throws Exception {
-        mockMvc.perform(get("/api/me").with(user(objectId))).andExpect(status().isOk());
-        return jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", objectId)
-                .query(UUID.class).single().toString();
+        return AccountFixtures.openAccount(mockMvc, jdbcClient, objectId);
     }
 
     private long reportRows() {
         return jdbcClient.sql("select count(*) from report").query(Long.class).single();
-    }
-
-    private static RequestPostProcessor user(String objectId) {
-        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", objectId));
     }
 
 }

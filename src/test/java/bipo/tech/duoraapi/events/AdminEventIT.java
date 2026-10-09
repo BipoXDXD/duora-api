@@ -1,19 +1,23 @@
 package bipo.tech.duoraapi.events;
 
+import static bipo.tech.duoraapi.ConcurrentCalls.sameCallTogether;
+import static bipo.tech.duoraapi.ConcurrentCalls.statusCodeOf;
+import static bipo.tech.duoraapi.ConcurrentCalls.together;
+import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
 import static bipo.tech.duoraapi.TestIdentities.ISSUER;
 import static bipo.tech.duoraapi.events.EventFixtures.ADMIN_EVENTS_PATH;
-import static bipo.tech.duoraapi.events.EventFixtures.adminEventPath;
 import static bipo.tech.duoraapi.events.EventFixtures.admin;
+import static bipo.tech.duoraapi.events.EventFixtures.adminEventPath;
 import static bipo.tech.duoraapi.events.EventFixtures.createDraft;
 import static bipo.tech.duoraapi.events.EventFixtures.eventJson;
 import static bipo.tech.duoraapi.events.EventFixtures.randomId;
 import static bipo.tech.duoraapi.events.EventFixtures.user;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
-import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -22,13 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.stream.Stream;
 
@@ -125,8 +123,8 @@ class AdminEventIT {
         mockMvc.perform(post(adminEventPath(id) + ":publish").with(admin()))
                 .andExpect(status().isConflict())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(content().json(conflict("only a draft can be published", id, ":publish",
-                        "EVENT_ALREADY_PUBLISHED"), JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( id, ":publish",
+                        "EVENT_ALREADY_PUBLISHED"), strictIgnoringDetail()));
     }
 
     @Test
@@ -136,8 +134,7 @@ class AdminEventIT {
 
         mockMvc.perform(post(adminEventPath(id) + ":publish").with(admin()))
                 .andExpect(status().isConflict())
-                .andExpect(content().json(conflict("the event has already started", id, ":publish", "EVENT_STARTED"),
-                        JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( id, ":publish", "EVENT_STARTED"), strictIgnoringDetail()));
 
         assertThat(statusOf(id)).isEqualTo("DRAFT");
     }
@@ -149,8 +146,7 @@ class AdminEventIT {
 
         mockMvc.perform(post(adminEventPath(id) + ":publish").with(admin()))
                 .andExpect(status().isConflict())
-                .andExpect(content().json(conflict("the event has already ended", id, ":publish", "EVENT_ENDED"),
-                        JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( id, ":publish", "EVENT_ENDED"), strictIgnoringDetail()));
 
         assertThat(statusOf(id)).isEqualTo("DRAFT");
     }
@@ -173,8 +169,8 @@ class AdminEventIT {
 
         mockMvc.perform(post(adminEventPath(id) + ":cancel").with(admin()))
                 .andExpect(status().isConflict())
-                .andExpect(content().json(conflict("the event is already cancelled", id, ":cancel",
-                        "EVENT_CANCELLED"), JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( id, ":cancel",
+                        "EVENT_CANCELLED"), strictIgnoringDetail()));
     }
 
     @Test
@@ -184,8 +180,7 @@ class AdminEventIT {
 
         mockMvc.perform(post(adminEventPath(id) + ":cancel").with(admin()))
                 .andExpect(status().isConflict())
-                .andExpect(content().json(conflict("the event has already ended", id, ":cancel", "EVENT_ENDED"),
-                        JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( id, ":cancel", "EVENT_ENDED"), strictIgnoringDetail()));
 
         assertThat(statusOf(id)).isEqualTo("PUBLISHED");
     }
@@ -197,8 +192,8 @@ class AdminEventIT {
 
         mockMvc.perform(post(adminEventPath(id) + ":publish").with(admin()))
                 .andExpect(status().isConflict())
-                .andExpect(content().json(conflict("only a draft can be published", id, ":publish",
-                        "EVENT_CANCELLED"), JsonCompareMode.STRICT));
+                .andExpect(content().json(conflict( id, ":publish",
+                        "EVENT_CANCELLED"), strictIgnoringDetail()));
 
         assertThat(statusOf(id)).isEqualTo("CANCELLED");
     }
@@ -210,20 +205,10 @@ class AdminEventIT {
     @RepeatedTest(3)
     void concurrentPublishesPublishOnce() throws Exception {
         String id = createDraft(mockMvc, eventJson());
-        var start = new CountDownLatch(1);
-        var futures = new ArrayList<Future<Integer>>();
 
-        try (var executor = Executors.newFixedThreadPool(CONCURRENT_ACTIONS)) {
-            for (int i = 0; i < CONCURRENT_ACTIONS; i++) {
-                futures.add(executor.submit(actionAfter(start, id, ":publish")));
-            }
-            start.countDown();
-            var statuses = new ArrayList<Integer>();
-            for (var future : futures) {
-                statuses.add(future.get(30, TimeUnit.SECONDS));
-            }
-            assertThat(statuses).containsOnly(200, 409).containsOnlyOnce(200);
-        }
+        var statuses = sameCallTogether(CONCURRENT_ACTIONS, statusCodeOf(() -> adminAction(id, ":publish")));
+
+        assertThat(statuses).containsOnly(200, 409).containsOnlyOnce(200);
         assertThat(statusOf(id)).isEqualTo("PUBLISHED");
     }
 
@@ -235,18 +220,14 @@ class AdminEventIT {
     @RepeatedTest(3)
     void concurrentPublishAndCancelLeaveTheStateOfTheActionsThatSucceeded() throws Exception {
         String id = createDraft(mockMvc, eventJson());
-        var start = new CountDownLatch(1);
 
-        try (var executor = Executors.newFixedThreadPool(2)) {
-            Future<Integer> publish = executor.submit(actionAfter(start, id, ":publish"));
-            Future<Integer> cancel = executor.submit(actionAfter(start, id, ":cancel"));
-            start.countDown();
-            int published = publish.get(30, TimeUnit.SECONDS);
-            int cancelled = cancel.get(30, TimeUnit.SECONDS);
+        var statuses = together(List.of(
+                statusCodeOf(() -> adminAction(id, ":publish")),
+                statusCodeOf(() -> adminAction(id, ":cancel"))));
 
-            assertThat(List.of(published, cancelled)).isSubsetOf(200, 409).contains(200);
-            assertThat(statusOf(id)).isEqualTo(cancelled == 200 ? "CANCELLED" : "PUBLISHED");
-        }
+        int cancelled = statuses.getLast();
+        assertThat(statuses).isSubsetOf(200, 409).contains(200);
+        assertThat(statusOf(id)).isEqualTo(cancelled == 200 ? "CANCELLED" : "PUBLISHED");
     }
 
     @ParameterizedTest
@@ -460,11 +441,8 @@ class AdminEventIT {
                         """.formatted(title)));
     }
 
-    private Callable<Integer> actionAfter(CountDownLatch start, String id, String action) {
-        return () -> {
-            start.await();
-            return mockMvc.perform(post(adminEventPath(id) + action).with(admin())).andReturn().getResponse().getStatus();
-        };
+    private ResultActions adminAction(String id, String action) throws Exception {
+        return mockMvc.perform(post(adminEventPath(id) + action).with(admin()));
     }
 
     private ResultActions create(String body) throws Exception {
@@ -510,10 +488,10 @@ class AdminEventIT {
     }
 
     /** O 409 inteiro de uma ação do ADMIN, com o motivo em reason (docs/adr/0020). */
-    private static String conflict(String detail, String id, String action, String reason) {
+    private static String conflict(String id, String action, String reason) {
         return """
-                {"title": "Conflict", "status": 409, "detail": "%s", "instance": "%s%s", "reason": "%s"}
-                """.formatted(detail, adminEventPath(id), action, reason);
+                {"title": "Conflict", "status": 409, "instance": "%s%s", "reason": "%s"}
+                """.formatted(adminEventPath(id), action, reason);
     }
 
 }

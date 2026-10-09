@@ -1,5 +1,6 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
@@ -36,6 +37,10 @@ class UnexpectedErrorIT {
 
     private static final String REQUEST_ID = "X-Request-Id";
 
+    /**
+     * Nome temporário da tabela da lista de espera enquanto o teste provoca o erro inesperado. É DDL numa tabela
+     * compartilhada: só é seguro porque as classes rodam uma de cada vez (junit-platform.properties).
+     */
     private static final String HIDDEN_TABLE = "waitlist_entry_unavailable";
 
     @LocalServerPort
@@ -48,7 +53,7 @@ class UnexpectedErrorIT {
 
     @BeforeEach
     void cleanRateLimit() {
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
     }
 
     @AfterEach

@@ -1,13 +1,18 @@
 package bipo.tech.duoraapi.trustsafety;
 
+import static bipo.tech.duoraapi.ProblemJson.strictIgnoringDetail;
+import static bipo.tech.duoraapi.RateLimitTestSupport.clearBuckets;
+import static bipo.tech.duoraapi.RateLimitTestSupport.expectRejectedByTheLimit;
+import static bipo.tech.duoraapi.RateLimitTestSupport.expectUnavailableBecauseTheLimitCannotBeCounted;
+import static bipo.tech.duoraapi.RateLimitTestSupport.whileTheLimitCannotBeCounted;
+import static bipo.tech.duoraapi.TestIdentities.ISSUER;
+import static bipo.tech.duoraapi.TestIdentities.bearer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -39,6 +44,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import com.jayway.jsonpath.JsonPath;
 
+import bipo.tech.duoraapi.AccountFixtures;
 import bipo.tech.duoraapi.AccountTables;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
@@ -53,7 +59,6 @@ import bipo.tech.duoraapi.TestcontainersConfiguration;
 @ExtendWith(OutputCaptureExtension.class)
 class ReportIT {
 
-    private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     private static final String REPORTS_PATH = "/api/reports";
     private static final String UNKNOWN_ID = "01966c4e-7d1a-7c3e-9b5f-3f2a1c0d9e8b";
     /** duora.trustsafety.report-rate-limit: 10 por dia, uma ficha de volta a cada 2,4 h. */
@@ -69,7 +74,7 @@ class ReportIT {
     @BeforeEach
     void cleanDatabase() {
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
-        jdbcClient.sql("delete from rate_limit_bucket").update();
+        clearBuckets(jdbcClient);
     }
 
     @Test
@@ -155,9 +160,9 @@ class ReportIT {
         file(ana(), harassmentOf(ana))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().json("""
-                        {"title": "Bad Request", "status": 400, "detail": "an account cannot report itself",
-                         "instance": "/api/reports", "errors": [{"field": "reportedAccountId", "code": "SELF_REFERENCE"}]}
-                        """, JsonCompareMode.STRICT));
+                        {"title": "Bad Request", "status": 400, "instance": "/api/reports",
+                         "errors": [{"field": "reportedAccountId", "code": "SELF_REFERENCE"}]}
+                        """, strictIgnoringDetail()));
 
         assertThat(reportRows()).isEmpty();
     }
@@ -257,13 +262,7 @@ class ReportIT {
             file(ana(), harassmentOf(bruno)).andExpect(status().isCreated());
         }
 
-        file(ana(), harassmentOf(bruno))
-                .andExpect(status().isTooManyRequests())
-                .andExpect(header().string(HttpHeaders.RETRY_AFTER, SECONDS_TO_NEXT_REPORT))
-                .andExpect(content().json("""
-                        {"title": "Too Many Requests", "status": 429, "detail": "rate limit exceeded; try again later",
-                         "instance": "/api/reports"}
-                        """, JsonCompareMode.STRICT));
+        expectRejectedByTheLimit(file(ana(), harassmentOf(bruno)), SECONDS_TO_NEXT_REPORT, "/api/reports");
 
         assertThat(reportRows()).hasSize(DAILY_QUOTA);
     }
@@ -295,18 +294,9 @@ class ReportIT {
     @Test
     void reportIsRefusedWithoutWritingWhenTheQuotaCannotBeCounted() throws Exception {
         var bruno = accountIdOf("oid-bruno");
-        jdbcClient.sql("alter table rate_limit_bucket rename to rate_limit_bucket_unavailable").update();
-        try {
-            file(ana(), harassmentOf(bruno))
-                    .andExpect(status().isServiceUnavailable())
-                    .andExpect(header().string(HttpHeaders.RETRY_AFTER, "1"))
-                    .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                    .andExpect(content().json("""
-                            {"title": "Service Unavailable", "status": 503, "instance": "/api/reports"}
-                            """, JsonCompareMode.STRICT));
-        } finally {
-            jdbcClient.sql("alter table rate_limit_bucket_unavailable rename to rate_limit_bucket").update();
-        }
+        whileTheLimitCannotBeCounted(jdbcClient, () -> expectUnavailableBecauseTheLimitCannotBeCounted(
+                file(ana(), harassmentOf(bruno)),
+                "/api/reports"));
 
         assertThat(reportRows()).isEmpty();
     }
@@ -403,10 +393,7 @@ class ReportIT {
 
     /** Abre a conta pelo primeiro acesso, como acontece em produção, e devolve o id dela. */
     private String accountIdOf(String objectId) throws Exception {
-        mockMvc.perform(get("/api/me").with(user(objectId))).andExpect(status().isOk());
-        return jdbcClient.sql("select id from account where subject = :subject")
-                .param("subject", objectId)
-                .query(UUID.class).single().toString();
+        return AccountFixtures.openAccount(mockMvc, jdbcClient, objectId);
     }
 
     private List<String> reportRows() {
@@ -424,15 +411,11 @@ class ReportIT {
     }
 
     private static RequestPostProcessor ana() {
-        return user("oid-ana");
+        return bearer("oid-ana");
     }
 
     private static RequestPostProcessor bruno() {
-        return user("oid-bruno");
-    }
-
-    private static RequestPostProcessor user(String objectId) {
-        return jwt().jwt(token -> token.issuer(ISSUER).claim("oid", objectId));
+        return bearer("oid-bruno");
     }
 
     private static RequestPostProcessor anaWebSession() {
