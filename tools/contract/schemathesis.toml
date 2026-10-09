@@ -48,6 +48,12 @@ checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 
 include-name = "GET /api/events"
 checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 429, "5xx"]
 
+# Lista do ADMIN (docs/adr/0016): o mesmo pageToken, que só vale se a própria API o gerou
+# (AdminEventListIT.invalidPageTokenIsABadRequest).
+[[operations]]
+include-name = "GET /api/admin/events"
+checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 429, "5xx"]
+
 [[operations]]
 include-name = "GET /api/me/registrations"
 checks.positive_data_acceptance.expected-statuses = ["2xx", 400, 401, 403, 404, 429, "5xx"]
