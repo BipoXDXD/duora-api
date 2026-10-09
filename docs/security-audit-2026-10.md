@@ -75,7 +75,8 @@ decisão está em [Pendências de decisão](#pendências-de-decisão).
 | Log sem PII (canário) | waitlist, credenciais, cookies, query, tracing, code OAuth, perfil, denúncia | `SensitiveDataLoggingIT` (13 cenários anteriores) |
 | | `GET /api/me` | **novo** `SensitiveDataLoggingIT.currentUserNameNeverReachesTheLog` → **achou bug 2** |
 | | decisão `PUT`/`GET` | **novo** `DecisionLoggingIT.theDecisionNeverReachesTheLog` → **achou bug 1** |
-| | rodadas, eventos, inscrições, conexões | sem dado pessoal em texto livre: ids, datas, título do evento (conteúdo do ADMIN). Ids de outra pessoa nos logs de DEBUG: ver pendência 2 |
+| | rodadas, eventos, inscrições, conexões | sem dado pessoal em texto livre: ids, datas, título do evento (conteúdo do ADMIN) |
+| | ids de outra pessoa (par, bloqueados, conexões) | **novo** `SensitiveDataLoggingIT.partnerOfARoundNeverReachesTheLog`, `blockedAccountsNeverReachTheLog`, `connectionsNeverReachTheLog` (pendência 2, resolvida); fitness function `ArchitectureTest.apiRecordsWithAnAccountIdRedactTheirToString` |
 | Nenhum dado sensível em path ou query | todas | por desenho: path só com UUID e número da rodada; query só `maxPageSize` e `pageToken`. `OpenApiContractIT.noOperationAsksTheClientForTheCallersAccount` |
 | Rate limit por operação, 429 + `Retry-After` | `POST /api/waitlist` (IP) | `JoinWaitlistIT.joiningAboveRateLimitIsRejectedWithoutWriting`, `alternativeSpellingsOfRouteDoNotBypassRateLimit`, `ForwardedClientAddressIT` |
 | | `POST /api/reports` (conta) | `ReportIT.reportingAboveTheDailyQuotaIsRejectedWithRetryAfterAndWithoutWriting` e vizinhos |
@@ -84,7 +85,8 @@ decisão está em [Pendências de decisão](#pendências-de-decisão).
 | | `PUT` decisão (conta) | `DecisionRateLimitIT` |
 | | limite que cai com o banco falha fechado | `AccountRateLimitIT.rejectsWhenTheStoreIsDown` e os `…WhenTheLimitCannotBeCounted` |
 | | login, reset, envio de código | delegados ao Entra External ID (a API não tem login próprio) |
-| | `PATCH /api/me/profile`, `:block`, `:unblock` | **LACUNA de política**: ver pendência 1 |
+| | `:block` e `:unblock` (conta, 60/h, um bucket só) | `BlockRateLimitIT` (pendência 1, resolvida) |
+| | `PATCH /api/me/profile` (conta, 120/h) | `ProfileRateLimitIT` (pendência 1, resolvida) |
 | JWT: algoritmo fixo, assinatura, `exp`, `iss`, `aud` | porta bearer | `BearerTokenValidationIT.rejectsInvalidToken`: expirado, sem `exp`, `aud` de outro app, `iss` de outro tenant, sem `oid`, outra chave com o mesmo `kid`, payload adulterado, `alg none`, `alg nonE`, HS256 com a chave pública, lixo; `RequiredAuthenticationSettingsIT` |
 | CSRF em toda mutação da sessão web | todas as mutações do MVC (varredura) | **novo** `CsrfOnEveryMutationIT.everyMutationOfTheWebSessionRequiresTheCsrfToken` (sem token → 403 de segurança; com token → passa da segurança). Antes só havia teste por rota em perfil, `:block`, denúncia, inscrição, decisão, rodada e criação de evento: `:unblock`, `:publish` e `:cancel` eram LACUNA. Logout: `WebLoginIT.logoutWithoutCsrfTokenIsRejectedAndKeepsSession` |
 | | dispensa da waitlist | decisão registrada em `SecurityConfiguration` (rota anônima); a varredura a mantém na allowlist explícita |
@@ -107,7 +109,7 @@ decisão está em [Pendências de decisão](#pendências-de-decisão).
 | | conexão exige dois "sim" e nenhum bloqueio | `ConnectionIT.twoYesesFormOneConnectionThatBothSee`, `aBlockEitherWayPreventsTheConnection`; `RoundIT.peopleSeparatedByABlockAreNeverPaired` |
 | | janela de tempo da decisão | **LACUNA de política**: ver pendência 3 |
 | Resposta igual exista ou não (enumeração) | `POST /api/waitlist` | **novo** `JoinWaitlistIT.joiningWithAnEmailAlreadyListedLooksLikeJoiningWithANewOne` |
-| | `:block` e denúncia de conta inexistente → 404 | conhecido e aceito até aqui (ver pendência 4) |
+| | `:block` e denúncia de conta inexistente → 404 | conhecido e aceito (ver pendência 4); o `:block` ganhou limite de 60/h por conta (`BlockRateLimitIT.callsOnAnUnknownAccountSpendTheLimitToo`), que freia a varredura |
 | Idempotency key em dinheiro | — | não se aplica: a API não move dinheiro |
 | SSRF | — | não se aplica: nenhuma rota recebe URL |
 
@@ -127,16 +129,18 @@ Os dois só aparecem com `org.springframework.web` em DEBUG, o nível que algué
 
 ## Pendências de decisão
 
-1. **Rate limit em `PATCH /api/me/profile`, `:block` e `:unblock`.** Hoje não têm limite por conta. O `:block`
-   responde 404 para conta inexistente e 204 para existente: um oráculo de existência de conta, mitigado só pelos
-   74 bits aleatórios do UUIDv7. Opções: (a) limite por conta nos três, como a denúncia (ADR 0006/0015);
-   (b) só em `:block`/`:unblock`; (c) aceitar o risco e registrar. Recomendação: (b), algo como 60 por hora,
-   porque é o único com oráculo e com efeito em outra pessoa; custo: mais um bucket e um `RateLimitIT`.
-2. **Ids de outra pessoa nos logs de DEBUG.** `ConnectionsResponse` (com quem houve interesse mútuo),
-   `PairingResponse` (o par da rodada) e `BlockedAccountsResponse` (quem foi bloqueado) saem pelo `toString` padrão;
-   `FileReportRequest` mantém `reportedAccountId` de propósito. Ids são pseudônimos, mas ligam duas pessoas.
-   Recomendação: redigir ao menos em `ConnectionsResponse`, pelo mesmo motivo do bug 1, e registrar a regra
-   ("relação entre pessoas não vai para o log") na ADR 0013.
+1. **Rate limit em `PATCH /api/me/profile`, `:block` e `:unblock`. RESOLVIDA (2026-10-08).** Opções
+   consideradas: (a) limite por conta nos três; (b) só em `:block`/`:unblock`; (c) aceitar o risco. Foi
+   implementado um bucket `block:<conta>` de 60 por hora para `:block` e `:unblock` somados (o `:block` responde
+   404 × 204 e revela se a conta existe, e tem efeito em outra pessoa) e um bucket `profile:<conta>` de 120 por
+   hora para o `PATCH` do perfil, ambos sobre `config.AccountRateLimit`, com `429` + `Retry-After` e `503` falhando
+   fechado. O limite freia a enumeração, mas a barreira continua sendo os 74 bits aleatórios do UUIDv7. Registrado
+   nas ADRs 0015 e 0011 ("Rate limit"), com `BlockRateLimitIT`, `ProfileRateLimitIT` e `RequiredRateLimitSettingsIT`.
+2. **Ids de outra pessoa nos logs de DEBUG. RESOLVIDA (2026-10-08).** `ConnectionsResponse` (com quem houve
+   interesse mútuo), `PairingResponse` (o par da rodada) e `BlockedAccountsResponse` (quem foi bloqueado) agora
+   redigem o `toString`, inclusive o `nextPageToken` das listas, que carrega o último id. `FileReportRequest` mantém
+   `reportedAccountId` de propósito. A regra está na ADR 0013 (adendo de 2026-10-08), com teste no
+   `SensitiveDataLoggingIT` e uma fitness function para record de `..api..` com componente `*AccountId`.
 3. **Janela de tempo da decisão.** Hoje dá para decidir sobre o par de uma rodada a qualquer momento depois dela,
    inclusive com o evento encerrado ou cancelado depois. É regra de negócio: até quando a decisão vale?
 4. **404 de conta inexistente em `:block` e `POST /api/reports`.** Coerente com "id inexistente = 404", mas é o
@@ -164,5 +168,8 @@ Os dois só aparecem com `org.springframework.web` em DEBUG, o nível que algué
 | `events/AdminEventIT` | +3 casos em `invalidInputIsRejectedWithoutWriting` |
 | `waitlist/JoinWaitlistIT` | +2 |
 | `profiles/ProfileIT` | +1 caso em `unknownFieldIsRejectedWithoutWriting` (`role`) |
+
+**Atualização de 2026-10-08** (`fix/security-audit-followups`): `BlockRateLimitIT` (9 casos), `ProfileRateLimitIT`
+(7), `RequiredRateLimitSettingsIT` (+8 casos), `SensitiveDataLoggingIT` (+3) e `ArchitectureRulesTest` (+3).
 
 A enumeração de rotas saiu de `DenyByDefaultIT` para `config/RegisteredRoutes`, usada pelas quatro varreduras.
