@@ -173,3 +173,18 @@ Os dois só aparecem com `org.springframework.web` em DEBUG, o nível que algué
 (7), `RequiredRateLimitSettingsIT` (+8 casos), `SensitiveDataLoggingIT` (+3) e `ArchitectureRulesTest` (+3).
 
 A enumeração de rotas saiu de `DenyByDefaultIT` para `config/RegisteredRoutes`, usada pelas quatro varreduras.
+
+## Atualização de 2026-10-08, depois do merge de #34 e #38
+
+O texto acima não foi reescrito; ele vale para a base `22abc92`.
+
+- **Rotas que entraram depois da base e não estão nas tabelas acima:** as quatro do `chat` (#34, com limite de 20
+  mensagens por minuto por conta e `Idempotency-Key`) e `GET /api/admin/events` (#38). As varreduras sobre as rotas
+  registradas (`DenyByDefaultIT`, `CsrfOnEveryMutationIT`, `AdminRoleOnEveryAdminRouteIT`,
+  `ControlCharactersInRequestIT`) as pegam sem edição. O resto da régua (BOLA, saída com chaves exatas, log sem
+  PII) ficou com os testes do próprio chat ([ADR 0021](adr/0021-chat-temporario-e-reconexao.md)), que **não passou
+  por esta auditoria**.
+- **`GET /api/me` ganhou `roles`** (#38): a linha "Saída: conjunto exato de chaves" cita os testes
+  `...ExposesOnlyDisplayNameAndProfileStatus`, que hoje afirmam também `roles`.
+- **As pendências 1 a 7 continuam abertas.** Nenhuma foi resolvida por #34 ou #38; todas estão em
+  [`pendencias-do-usuario.md`](pendencias-do-usuario.md).
