@@ -188,10 +188,27 @@ mudou como descrito no fim desta seção. Cada item abaixo diz o que foi feito e
     - **`RateLimitTestSupport`**: `expectRejectedByTheLimit` (429), `expectUnavailableBecauseTheLimitCannotBeCounted`
       (503), `whileTheLimitCannotBeCounted` (o `rename` da tabela, com `finally`), `bucketKeysOf` e `clearBuckets`
       (18 lugares). O `ReportIT` também usa.
-    - **Não feito:** os `webSession(...)`/`admin()` com claims diferentes (8 classes com `oidcLogin`, 5 com `ROLE_ADMIN`
-      no `jwt`) ficam como estão, porque cada um carrega um claim que o teste mostra; e os `insertAccount`,
-      `insertBlock` e `insertConnection` dos `*SchemaIT`, com o `assertViolates(constraint, ...)` das ~25 asserções.
-      Os dois são o mesmo tipo de commit mecânico, e entram na próxima passada.
+    - **Segunda passada (`refactor/test-helpers-leftovers`), o que sobrou do item:**
+      - **`TestIdentities`** ganhou `webSession(oid)` (7 classes com `oidcLogin`), `adminBearer(oid)`,
+        `adminWebSession(oid)` e `adminWithoutIdentity()` (um token só com o papel, sem emissor nem oid, para as
+        rotas que olham o papel e nunca abrem conta; 6 classes). O `ROLE_ADMIN` mora num lugar só, e o oid, que muda
+        o que o teste prova (a conta do admin), continua visível na chamada. `bearer(oid, nome)` cobre as 4 cópias
+        com o claim `name`, e `bearer(oid)` pegou as 3 cópias que restavam. Os `ISSUER` soltos do `ChatIT` e do
+        `ChatReportIT` saíram.
+      - **`SchemaSupport`**: `insertAccount(jdbcClient, subject)` (era o mesmo SQL em 6 classes) e
+        `assertViolates(constraint, escrita)` (32 asserções de `DataIntegrityViolationException` + nome da
+        constraint, nos 4 `*SchemaIT`). O nome da constraint continua em cada teste; sabotar um deles faz o teste falhar.
+      - **Não extraídos, de propósito:** `insertBlock` e `insertConnection` não se repetem entre os `*SchemaIT`
+        (um por classe). Fora deles há 3 `insertBlock` (`BlockIT`, `SensitiveDataLoggingIT`, o do schema) e 2
+        `insertConnection` (`ConnectionIT`, `SensitiveDataLoggingIT`), mas com formas diferentes: o do schema usa
+        `now()` e grava o par sem normalizar (é o que o `connection_normalized_pair` testa); os outros recebem o
+        instante e normalizam com `least`/`greatest`. Unificar trocaria três linhas de SQL por conversões de
+        tipo em cada chamada. Entram quando houver a terceira cópia igual.
+      - **Fica como está:** o `moderator()` do `AdminRoleOnEveryAdminRouteIT` (outro papel, de propósito) e o
+        `webSession(issuer, oid)` do `AccountProvisioningIT` (o emissor é o que o teste varia).
+      - **Candidato fora desta lista:** o UUID de exemplo `01966c4e-...` aparece como "id que não existe" em 4 classes
+        de trustsafety (`UNKNOWN_ACCOUNT_ID`, `UNKNOWN_ID`, um literal) e como valor de exemplo em dezenas de outras.
+        Não é o mesmo conhecimento em todas, então não foi unificado.
 21. **Asserts frágeis.** Aplicado de forma **provisória**, na linha da recomendação da decisão 2 abaixo, até você
     decidir. `ProblemJson.strictIgnoringDetail()` compara o corpo inteiro em STRICT (título, status, `instance`,
     `reason`, `errors`), falha se aparecer um campo a mais e deixa o `detail` de fora. Passaram a usá-lo: os 6
@@ -235,6 +252,9 @@ mudou como descrito no fim desta seção. Cada item abaixo diz o que foi feito e
 rebase em `main`. Dos 31 a mais, 25 vêm dos PRs #46 e #48 (`ChatKeyTest`, `MaximumMatchingTest`,
 `PriorityMatchingTest`, `RoundSummaryTest`, +1 em `ChatTest` e +1 em `ChatIT`), e 6 são desta passada: +3 em
 `ConnectionIT`, +3 em `RegistrationIT`, +1 em `ProfileIT` e -1 em `PairingsIT`.
+
+A segunda passada de helpers (`refactor/test-helpers-leftovers`) não mudou a contagem: 3001 testes em 123 classes antes e
+depois, 0 falhas, `./mvnw clean verify`.
 
 ## 4. Decisões que dependem de você
 
