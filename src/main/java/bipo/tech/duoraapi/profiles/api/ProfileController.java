@@ -3,6 +3,7 @@ package bipo.tech.duoraapi.profiles.api;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import bipo.tech.duoraapi.config.AccountRateLimit;
 import bipo.tech.duoraapi.identity.AccountId;
 import bipo.tech.duoraapi.profiles.application.OutdatedProfileVersionException;
 import bipo.tech.duoraapi.profiles.application.ProfileService;
@@ -33,7 +35,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 /**
  * Perfil do próprio usuário, um recurso singular sob /api/me: existe para toda conta, vazio até a
  * primeira edição, e não há rota com o id de outro perfil (docs/adr/0011). A edição exige If-Match
- * com o ETag lido, para uma aba não apagar em silêncio o que outra gravou.
+ * com o ETag lido, para uma aba não apagar em silêncio o que outra gravou, e gasta o limite da conta depois
+ * de conferir o formato do If-Match e antes de abrir a transação (docs/adr/0011, "Rate limit").
  */
 @RestController
 @Tag(name = "profile", description = "Perfil do usuário logado")
@@ -56,9 +59,12 @@ class ProfileController {
     private static final Pattern VERSION_ETAG = Pattern.compile("\"(0|[1-9]\\d{0,17})\"");
 
     private final ProfileService profiles;
+    private final AccountRateLimit rateLimit;
 
-    ProfileController(ProfileService profiles) {
+    ProfileController(ProfileService profiles,
+            @Qualifier(ProfileEditRateLimitConfiguration.BEAN_NAME) AccountRateLimit rateLimit) {
         this.profiles = profiles;
+        this.rateLimit = rateLimit;
     }
 
     @GetMapping(PATH)
@@ -76,7 +82,8 @@ class ProfileController {
     @Operation(operationId = "editMyProfile", summary = "Edita o próprio perfil",
             description = "Merge patch de um nível: campo ausente não muda, null apaga e valor troca. Nome, data de "
                     + "nascimento e região não podem ser apagados; a data de nascimento só pode ser informada uma vez "
-                    + "e precisa ser de maior de idade. A edição é inteira ou nada.")
+                    + "e precisa ser de maior de idade. A edição é inteira ou nada. Cada "
+                    + "edição enviada, aceita ou não, gasta o limite da conta: 120 por hora, repostas aos poucos.")
     @ApiResponse(responseCode = "200", description = "O perfil editado, com a nova versão no ETag",
             headers = @Header(name = HttpHeaders.ETAG, required = true, description = ETAG_DESCRIPTION,
                     schema = @Schema(type = "string", pattern = ETAG_PATTERN, maxLength = ETAG_MAX_LENGTH)))
@@ -90,6 +97,18 @@ class ProfileController {
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     @ApiResponse(responseCode = "428", description = "Falta o If-Match",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
+    @ApiResponse(responseCode = "429", description = "Limite de edições desta conta esgotado; nada foi gravado",
+            headers = @Header(name = "Retry-After", required = true,
+                    description = "Segundos até a próxima edição ficar disponível",
+                    schema = @Schema(type = "integer", format = "int64", minimum = "0",
+                            maximum = AccountRateLimit.MAX_RETRY_AFTER_SECONDS)),
+            content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
+    @ApiResponse(responseCode = "503", description = "O limite desta conta não pôde ser contado; nada foi gravado",
+            headers = @Header(name = "Retry-After", required = true, description = "Segundos até tentar de novo",
+                    schema = @Schema(type = "integer", format = "int32",
+                            minimum = AccountRateLimit.UNAVAILABLE_RETRY_AFTER_SECONDS,
+                            maximum = AccountRateLimit.UNAVAILABLE_RETRY_AFTER_SECONDS)),
+            content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     ResponseEntity<ProfileResponse> editMyProfile(AccountId account,
             // required na spec, embora não no Spring: sem ele a resposta é o 428 documentado, e não um 400 genérico.
             @Parameter(name = HttpHeaders.IF_MATCH, in = ParameterIn.HEADER, required = true,
@@ -98,6 +117,7 @@ class ProfileController {
             @RequestHeader(name = HttpHeaders.IF_MATCH, required = false) String ifMatch,
             @RequestBody EditProfileRequest request) {
         long readVersion = readVersionIn(ifMatch);
+        rateLimit.consume(account);
         return withETag(profiles.edit(account.value(), readVersion, request.toChanges()));
     }
 

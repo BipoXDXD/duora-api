@@ -51,6 +51,16 @@ Mudança compatível ([ADR 0016](adr/0016-eventos-e-inscricoes.md)):
   disso, ou token que a API não gerou, é `400`; sem o papel, `403`. Evento encerrado continua na lista. O `duora-web`
   pode trocar a leitura de evento a evento por esta rota na área administrativa.
 
+Mudança compatível ([ADR 0015](adr/0015-bloqueio-e-denuncia.md), [ADR 0011](adr/0011-conta-e-perfil.md)):
+
+- Limite por conta no bloqueio e na edição do perfil: `POST /api/accounts/{accountId}:block` (`blockAccount`) e
+  `:unblock` (`unblockAccount`) dividem 60 chamadas por hora, e `PATCH /api/me/profile` (`editMyProfile`) aceita
+  120 por hora, repostas aos poucos. Acima do limite, as três respondem 429 com `Retry-After` (segundos, no
+  máximo 86400) e ProblemDetail, sem gravar nada, e ganham o 503 com `Retry-After: 1` para quando o limite não
+  pôde ser contado. Repetições idempotentes e o `404` de `:block` para conta inexistente também gastam o limite;
+  o `GET` do perfil e a lista de bloqueios não gastam. O `duora-web` deve respeitar o `Retry-After` e não
+  repetir chamadas em laço.
+
 Mudança compatível ([ADR 0015](adr/0015-bloqueio-e-denuncia.md)):
 
 - `POST /api/reports` (`fileReport`): a cota de denúncias passa a usar o mesmo limite por conta das outras

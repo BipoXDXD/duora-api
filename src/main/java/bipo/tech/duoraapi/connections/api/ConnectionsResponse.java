@@ -32,6 +32,22 @@ record ConnectionsResponse(
             @Schema(requiredMode = Schema.RequiredMode.REQUIRED, maxLength = ApiSchemas.INSTANT_MAX_LENGTH,
                     description = "Quando a conexão se formou")
             Instant connectedAt) {
+
+        /** Ver {@link ConnectionsResponse#toString()}: o id da outra conta fica de fora. */
+        @Override
+        public String toString() {
+            return "Connection[accountId=redacted, connectedAt=" + connectedAt + "]";
+        }
+
+    }
+
+    /**
+     * O Spring MVC registra a resposta por este toString em DEBUG: os ids de quem teve interesse mútuo com quem
+     * chama, e o cursor da próxima página (que carrega o último id), ligam duas pessoas e ficam de fora.
+     */
+    @Override
+    public String toString() {
+        return "ConnectionsResponse[items=" + items.size() + ", nextPageToken=redacted]";
     }
 
     static ConnectionsResponse of(ConnectionsPage page) {

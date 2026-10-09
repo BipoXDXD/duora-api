@@ -118,6 +118,33 @@ bio, region, version bigint not null default 0)`, com `CHECK` repetindo os limit
   próprios dados (inclusive fora do banco, como fotos no Blob Storage), e uma cascata esconderia isso. A FK
   entre tabelas de módulos diferentes é só integridade: nenhum módulo lê ou escreve a tabela do outro.
 
+### Rate limit da edição do perfil (2026-10-08)
+
+A versão inicial não limitava o `PATCH /api/me/profile`. Cada chamada abre uma transação, lê o perfil e, se a
+versão confere, grava uma versão nova; a auditoria de segurança de outubro de 2026
+(`docs/security-audit-2026-10.md`, pendência 1) apontou a falta de limite por operação. O custo é o de uma
+escrita curta pela chave primária, sem lock entre contas, então o risco é de volume (um laço no front ou um
+token vazado), e não de contenção.
+
+| Opção | Prós | Contras |
+|---|---|---|
+| Sem limite | Nada a mudar | Uma conta repete a escrita sem freio; cada edição aceita ainda cria uma versão |
+| Limite apertado (dezenas por dia) | Barra o abuso cedo | Pune o preenchimento normal: o formulário pode enviar um `PATCH` por campo ou por autosave |
+| **Limite por conta, generoso** | O uso humano nunca chega perto; trocar de rede não renova; vale entre réplicas | Uma ida ao banco por chamada, fora da transação; não impede o abuso, só o limita |
+
+**Decisão:** um bucket por conta, chave `profile:<conta>` na tabela `rate_limit_bucket` ([ADR
+0006](0006-rate-limit-no-postgresql.md)), consumido no controller depois de conferir o formato do `If-Match`
+e antes de abrir a transação. **120 por hora**, repostas aos poucos (uma a cada 30 segundos), em
+`duora.profiles.edit-rate-limit.capacity` e `.period`: preencher o perfil são quatro campos, e mesmo um
+autosave por campo ou por pausa na digitação ficaria bem abaixo; o abuso fica em cerca de 2880 escritas por dia
+por conta. Gastam a edição aceita e a recusada por versão desatualizada (`412`), porque as duas pagam a
+transação; não gastam a falta de `If-Match` (`428`), um `If-Match` que não é ETag (`412`), corpo inválido
+(`400`), a leitura (`GET`), a falta de credencial (`401`) e a sessão sem CSRF (`403`). Acima do limite, `429`
+com `Retry-After` (teto de 86400 s); com o bucket impossível de contar, `503` com `Retry-After: 1`, sem
+gravar (falha fechada). A capacidade é positiva e o período vai até um dia (`RequiredRateLimitSettingsIT`).
+Implementação: `ProfileEditRateLimitProperties` e `ProfileEditRateLimitConfiguration` (bean
+`profileEditRateLimit`) em `profiles.api`. Testes: `ProfileRateLimitIT`.
+
 ## Pendente com o usuário (decisões críticas, só o mínimo implementado)
 
 1. **Verificação real de idade.** Hoje a data é autodeclarada e o login social não comprova maioridade
@@ -163,6 +190,7 @@ STRIDE do fluxo (dado pessoal):
 | Information disclosure: valor recusado (dado pessoal) ecoa na resposta ou no log | Mensagens de erro sem o valor; `toString` sem PII nos tipos com dado pessoal | `ProfileIT.rejectedValueIsNotEchoedInTheResponseOrTheLog`, `DisplayNameTest.doesNotExposeTheNameInToString`, `BioTest.doesNotExposeTheTextInToString` |
 | Information disclosure: `/api/me` expõe id da conta, e-mail ou papéis | Allowlist `displayName` + `profileComplete` | `WebLoginIT.currentUserExposesOnlyDisplayNameAndProfileStatus`, `BearerTokenValidationIT.currentUserFromBearerTokenExposesOnlyDisplayNameAndProfileStatus` |
 | Information disclosure: guardar mais do que o necessário | `account` só com emissor, sujeito e data | `AccountProvisioningIT.accountStoresOnlyTheExternalIdentity` |
+| Denial of service: edições em laço (uma escrita por chamada, uma versão nova por edição aceita) | Limite de 120/h por conta, entre réplicas; 429 + `Retry-After`; falha fechada | `ProfileRateLimitIT.callsAboveTheLimitAreRejectedWithRetryAfterAndChangeNothing`, `editsWithAnOutdatedVersionSpendTheLimit`, `theLimitIsCountedForEachAccountSeparately`, `editIsRefusedWithoutWritingWhenTheLimitCannotBeCounted` |
 | Denial of service: entrada inválida ou grande vira 500 | Limites em todo campo; 400 sem gravar | `ProfileIT.invalidInputIsRejectedWithoutWriting`, `sqlInTheNameIsStoredAsPlainText` |
 | Elevation of privilege: rota nova pública por engano | Negar por padrão | `DenyByDefaultIT` (inclui `GET` e `PATCH /api/me/profile`), `ProfileIT.anonymousCannotReadOrEditProfiles`, `AccountProvisioningIT.anonymousRequestOpensNoAccount` |
 

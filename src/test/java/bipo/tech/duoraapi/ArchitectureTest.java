@@ -5,10 +5,12 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
 import java.util.Arrays;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaModifier;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
@@ -25,6 +27,10 @@ import com.tngtech.archunit.lang.SimpleConditionEvent;
 class ArchitectureTest {
 
     private static final String ROOT = "bipo.tech.duoraapi";
+
+    private static final Pattern ACCOUNT_ID_COMPONENT = Pattern.compile("(?i).*accountid");
+
+    private static final String ACCOUNT_ID_TYPE = ROOT + ".identity.AccountId";
 
     /** Subdomínios centrais: ports & adapters, domínio sem framework. */
     private static final String[] CORE_MODULES = {"experiences", "matching", "connections", "chat", "trustsafety"};
@@ -111,6 +117,45 @@ class ArchitectureTest {
     static final ArchRule modulesAreFreeOfCycles = slices().matching(ROOT + ".(*)..")
             .should().beFreeOfCycles()
             .because("um ciclo entre módulos impede separá-los e testá-los um sem o outro (docs/adr/0007)");
+
+    /**
+     * O Spring MVC registra em DEBUG o corpo lido e o escrito pelo {@code toString} do record, e o id de outra
+     * conta liga duas pessoas (docs/adr/0013): record da API com um componente de id de conta declara o próprio
+     * {@code toString}, sem o id. O {@code toString} que o compilador gera é {@code public final} (JLS 8.10.3),
+     * então o declarado se distingue por não ser final. A regra não vê o envelope que só tem uma lista desses
+     * itens: o {@code toString} dele também é redigido por convenção, para o cursor da página, que carrega o
+     * último id, não ser impresso.
+     */
+    @ArchTest
+    static final ArchRule apiRecordsWithAnAccountIdRedactTheirToString = apiRecordsWithAnAccountIdRedactTheirToString();
+
+    static ArchRule apiRecordsWithAnAccountIdRedactTheirToString() {
+        return classes().that().resideInAPackage("..api..")
+                .should(new ArchCondition<JavaClass>("declare toString when carrying the id of an account") {
+                    @Override
+                    public void check(JavaClass record, ConditionEvents events) {
+                        if (record.isRecord() && carriesAnAccountId(record) && !declaresToString(record)) {
+                            events.add(SimpleConditionEvent.violated(record, record.getName()
+                                    + " carries an account id and keeps the toString the compiler generates"));
+                        }
+                    }
+                })
+                .because("o id de outra conta não vai para o log do Spring MVC em DEBUG (docs/adr/0013)");
+    }
+
+    private static boolean carriesAnAccountId(JavaClass record) {
+        // Os campos de instância de um record são os componentes dele.
+        return record.getFields().stream()
+                .filter(field -> !field.getModifiers().contains(JavaModifier.STATIC))
+                .anyMatch(field -> ACCOUNT_ID_COMPONENT.matcher(field.getName()).matches()
+                        || field.getRawType().getName().equals(ACCOUNT_ID_TYPE));
+    }
+
+    private static boolean declaresToString(JavaClass record) {
+        return record.tryGetMethod("toString")
+                .map(method -> !method.getModifiers().contains(JavaModifier.FINAL))
+                .orElse(false);
+    }
 
     /** O primeiro segmento depois da raiz, ou null fora dela. */
     private static String moduleOf(String root, String packageName) {

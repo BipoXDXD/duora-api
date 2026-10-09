@@ -1,10 +1,15 @@
 package bipo.tech.duoraapi.config;
 
+import static bipo.tech.duoraapi.events.EventFixtures.admin;
+import static bipo.tech.duoraapi.events.EventFixtures.createPublishedEvent;
+import static bipo.tech.duoraapi.events.EventFixtures.registerWithCompleteProfile;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.io.IOException;
 import java.net.URI;
@@ -12,6 +17,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -34,6 +40,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.jayway.jsonpath.JsonPath;
+
 import bipo.tech.duoraapi.AccountTables;
 import bipo.tech.duoraapi.TestClockConfiguration;
 import bipo.tech.duoraapi.TestClockConfiguration.TestClock;
@@ -48,6 +56,9 @@ import bipo.tech.duoraapi.events.EventFixtures;
  * alguém ligaria para investigar um incidente: é nele que o MVC registra o corpo lido. O perfil
  * passa pelo MockMvc com {@code jwt()}, que pula só a validação do token (testada em
  * {@code BearerTokenValidationIT}); filtros, MVC e o log são os de verdade.
+ *
+ * <p>A relação entre duas pessoas (quem é o par, quem foi bloqueado, com quem houve interesse mútuo) também
+ * não vai para o log (docs/adr/0013): o id da outra conta é o dado, e as ids são conhecidas do teste.
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT, properties = {
         "logging.level.org.springframework.web=DEBUG",
@@ -62,6 +73,8 @@ class SensitiveDataLoggingIT {
     private static final String ISSUER = "https://tenant-id.ciamlogin.example/tenant-id/v2.0";
     /** Data de nascimento marcada: improvável em qualquer outra linha de log. */
     private static final String CANARY_BIRTH_DATE = "1987-03-29";
+
+    private static final String PARTNER_FIELD = "partnerAccountId";
 
     private static final String REPORTS_PATH = "/api/reports";
     private static final String REPORTED_OBJECT_ID = "oid-reported";
@@ -92,6 +105,7 @@ class SensitiveDataLoggingIT {
 
     @BeforeEach
     void cleanDatabase() {
+        clock.setTo(TestClockConfiguration.NOW);
         jdbcClient.sql("delete from waitlist_entry").update();
         jdbcClient.sql("delete from rate_limit_bucket").update();
         AccountTables.deleteAccountsAndTheirData(jdbcClient);
@@ -196,6 +210,65 @@ class SensitiveDataLoggingIT {
         assertThat(output.getAll()).doesNotContainIgnoringCase(canary);
     }
 
+    /** O par volta a quem chama em getMyPairing, e o id dele não vai para o log. */
+    @Test
+    void partnerOfARoundNeverReachesTheLog(CapturedOutput output) throws Exception {
+        String eventId = createPublishedEvent(mockMvc);
+        registerWithCompleteProfile(mockMvc, EventFixtures.user("ana"), eventId);
+        registerWithCompleteProfile(mockMvc, EventFixtures.user("bruno"), eventId);
+        clock.setTo(Instant.parse(EventFixtures.STARTS_AT));
+        mockMvc.perform(put("/api/admin/events/" + eventId + "/rounds/1").with(admin()));
+        String partner = accountIdOf("bruno");
+
+        var response = mockMvc.perform(get("/api/events/" + eventId + "/rounds/1/pairing")
+                        .with(EventFixtures.user("ana")))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(OK);
+        assertThat(response.getContentAsString()).contains(partner);
+        // O MVC corta a linha em 100 caracteres e o id do par começaria no 95º, então o id inteiro nunca aparece,
+        // com ou sem redação (com TRACE, que não corta, apareceria). O que prova a redação é o campo vir sempre
+        // seguido de "red", o começo de "redacted" que sobra do corte.
+        assertThat(output.getAll()).doesNotContainIgnoringCase(partner)
+                .doesNotContainPattern(PARTNER_FIELD + "=(?!red)");
+    }
+
+    /** A lista devolve a quem bloqueou as contas bloqueadas, e o log não leva os ids nem o cursor da próxima página. */
+    @Test
+    void blockedAccountsNeverReachTheLog(CapturedOutput output) throws Exception {
+        String blocker = accountIdOf("ana");
+        String firstBlocked = accountIdOf("bruno");
+        String secondBlocked = accountIdOf("carla");
+        insertBlock(blocker, firstBlocked, "2026-10-06T10:00:00Z");
+        insertBlock(blocker, secondBlocked, "2026-10-06T11:00:00Z");
+
+        var response = mockMvc.perform(get("/api/me/blocked-accounts?maxPageSize=1").with(EventFixtures.user("ana")))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(OK);
+        assertThat(response.getContentAsString()).contains(secondBlocked).doesNotContain("\"nextPageToken\":null");
+        assertThat(output.getAll()).doesNotContainIgnoringCase(firstBlocked).doesNotContainIgnoringCase(secondBlocked)
+                .doesNotContain(nextPageTokenIn(response));
+    }
+
+    /** A lista devolve a cada pessoa as contas com interesse mútuo, e o log não leva os ids nem o cursor. */
+    @Test
+    void connectionsNeverReachTheLog(CapturedOutput output) throws Exception {
+        String me = accountIdOf("ana");
+        String first = accountIdOf("bruno");
+        String second = accountIdOf("carla");
+        insertConnection(me, first, "2026-10-06T10:00:00Z");
+        insertConnection(me, second, "2026-10-06T11:00:00Z");
+
+        var response = mockMvc.perform(get("/api/me/connections?maxPageSize=1").with(EventFixtures.user("ana")))
+                .andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(OK);
+        assertThat(response.getContentAsString()).contains(second).doesNotContain("\"nextPageToken\":null");
+        assertThat(output.getAll()).doesNotContainIgnoringCase(first).doesNotContainIgnoringCase(second)
+                .doesNotContain(nextPageTokenIn(response));
+    }
+
     /** Nome longo demais, bio com caractere invisível e data fora do formato: 400 sem ecoar o valor. */
     @ParameterizedTest
     @ValueSource(strings = {
@@ -272,6 +345,37 @@ class SensitiveDataLoggingIT {
         assertThat(response.getHeaderNames()).allSatisfy(name ->
                 assertThat(String.join(",", response.getHeaders(name))).doesNotContainIgnoringCase(canary));
         assertThat(output.getAll()).doesNotContainIgnoringCase(canary);
+    }
+
+    /** Abre a conta pelo primeiro acesso, como em produção, e devolve o id dela. */
+    private String accountIdOf(String name) throws Exception {
+        mockMvc.perform(get("/api/me").with(EventFixtures.user(name))).andExpect(status().isOk());
+        return jdbcClient.sql("select id::text from account where subject = :subject")
+                .param("subject", "oid-" + name)
+                .query(String.class).single();
+    }
+
+    private void insertBlock(String blocker, String blocked, String blockedAt) {
+        jdbcClient.sql("""
+                        insert into account_block (blocker_account_id, blocked_account_id, created_at)
+                        values (cast(:blocker as uuid), cast(:blocked as uuid), cast(:at as timestamptz))
+                        """)
+                .param("blocker", blocker).param("blocked", blocked).param("at", blockedAt)
+                .update();
+    }
+
+    private void insertConnection(String account, String other, String connectedAt) {
+        jdbcClient.sql("""
+                        insert into connection (first_account_id, second_account_id, connected_at)
+                        values (least(cast(:a as uuid), cast(:b as uuid)), greatest(cast(:a as uuid), cast(:b as uuid)),
+                                cast(:at as timestamptz))
+                        """)
+                .param("a", account).param("b", other).param("at", connectedAt)
+                .update();
+    }
+
+    private static String nextPageTokenIn(MockHttpServletResponse response) throws Exception {
+        return JsonPath.read(response.getContentAsString(), "$.nextPageToken");
     }
 
     private MockHttpServletResponse fileReport(String body) throws Exception {
