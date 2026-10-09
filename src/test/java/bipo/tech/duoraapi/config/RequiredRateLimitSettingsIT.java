@@ -13,8 +13,9 @@ import bipo.tech.duoraapi.DuoraApiApplication;
 import bipo.tech.duoraapi.TestcontainersConfiguration;
 
 /**
- * Os limites por conta de denúncias, de inscrições, de rodadas e de decisões não sobem com valor inválido: capacidade zero bloquearia
- * todo mundo, e período zero ou acima de um dia quebra o teto do Retry-After documentado na spec.
+ * Os limites por conta de denúncias, de inscrições, de rodadas, de decisões e de mensagens do chat não sobem com
+ * valor inválido: capacidade zero bloquearia todo mundo, e período zero ou acima de um dia quebra o teto do
+ * Retry-After documentado na spec.
  */
 class RequiredRateLimitSettingsIT {
 
@@ -47,7 +48,11 @@ class RequiredRateLimitSettingsIT {
             "duora.connections.decision-rate-limit.capacity, 0, capacity",
             "duora.connections.decision-rate-limit.capacity, -1, capacity",
             "duora.connections.decision-rate-limit.period, PT0S, period",
-            "duora.connections.decision-rate-limit.period, P2D, period"})
+            "duora.connections.decision-rate-limit.period, P2D, period",
+            "duora.chat.message-rate-limit.capacity, 0, capacity",
+            "duora.chat.message-rate-limit.capacity, -1, capacity",
+            "duora.chat.message-rate-limit.period, PT0S, period",
+            "duora.chat.message-rate-limit.period, P2D, period"})
     void applicationRefusesToStartWithAnInvalidLimit(String property, String value, String field) {
         String[] arguments = {
                 "--server.port=0",

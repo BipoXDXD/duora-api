@@ -27,7 +27,7 @@ class ArchitectureTest {
     private static final String ROOT = "bipo.tech.duoraapi";
 
     /** Subdomínios centrais: ports & adapters, domínio sem framework. */
-    private static final String[] CORE_MODULES = {"experiences", "matching", "connections", "trustsafety"};
+    private static final String[] CORE_MODULES = {"experiences", "matching", "connections", "chat", "trustsafety"};
 
     /** Subdomínios de apoio: camadas simples (api, application, domain). */
     private static final String[] SUPPORTING_MODULES = {"waitlist", "identity", "profiles", "events", "notifications"};

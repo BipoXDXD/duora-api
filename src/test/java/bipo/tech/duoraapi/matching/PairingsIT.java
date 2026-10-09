@@ -89,6 +89,26 @@ class PairingsIT {
         assertThat(pairings.partnerOf(UUID.randomUUID(), 1, accountOf("ana"))).isEmpty();
     }
 
+    /** O chat da rodada fecha quando a seguinte começa (docs/adr/0021): quem pergunta é o módulo chat. */
+    @Test
+    void theLatestRoundIsTheLastOneStarted() throws Exception {
+        UUID eventId = roundOneWith("ana", "bruno");
+        assertThat(pairings.latestRoundOf(eventId)).hasValue(1);
+
+        mockMvc.perform(put("/api/admin/events/" + eventId + "/rounds/2").with(admin()))
+                .andExpect(status().isCreated());
+
+        assertThat(pairings.latestRoundOf(eventId)).hasValue(2);
+    }
+
+    @Test
+    void anEventWithoutRoundsHasNoLatestRound() throws Exception {
+        UUID withoutRounds = UUID.fromString(createPublishedEvent(mockMvc));
+
+        assertThat(pairings.latestRoundOf(withoutRounds)).isEmpty();
+        assertThat(pairings.latestRoundOf(UUID.randomUUID())).isEmpty();
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {Pairings.FIRST_ROUND - 1, Pairings.LAST_ROUND + 1})
     void aRoundNumberOutOfRangeIsAProgrammingError(int number) {

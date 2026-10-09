@@ -30,6 +30,14 @@ public enum RefusalReason {
     /** A data de nascimento já foi informada e não muda. */
     BIRTH_DATE_ALREADY_SET,
     /** A pessoa já decidiu sobre o par desta rodada, com a outra escolha; a decisão é final. */
-    DECISION_ALREADY_MADE
+    DECISION_ALREADY_MADE,
+    /**
+     * O chat da rodada não aceita mais mensagens: a rodada seguinte começou, o evento acabou, o limite de
+     * mensagens foi atingido ou há um bloqueio entre as duas pessoas. Um motivo só, para não revelar o
+     * bloqueio (docs/adr/0021).
+     */
+    CHAT_CLOSED,
+    /** A mesma Idempotency-Key já foi usada por quem chama com outro conteúdo (docs/adr/0005). */
+    IDEMPOTENCY_KEY_REUSED
 
 }

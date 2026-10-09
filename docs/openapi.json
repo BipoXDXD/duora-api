@@ -15,6 +15,9 @@
     "session" : [ ]
   } ],
   "tags" : [ {
+    "description" : "Chat temporário entre as duas pessoas que o sorteio juntou numa rodada",
+    "name" : "chat"
+  }, {
     "description" : "Bloqueio entre contas",
     "name" : "blocks"
   }, {
@@ -1693,6 +1696,614 @@
         },
         "summary" : "Inscreve quem chama no evento",
         "tags" : [ "events" ]
+      }
+    },
+    "/api/events/{eventId}/rounds/{number}/chat" : {
+      "get" : {
+        "description" : "Se o chat aceita mensagens agora e a posição da última. Abre ao sorteio e fecha para envio quando a rodada seguinte começa ou o evento acaba; fechado, continua legível pelos dois até 24 h depois do fim do evento. Leia de novo ao abrir a tela, ao voltar à aba e ao receber 409 no envio.",
+        "operationId" : "getMyRoundChat",
+        "parameters" : [ {
+          "description" : "Id do evento",
+          "in" : "path",
+          "name" : "eventId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        }, {
+          "description" : "Número da rodada no evento, a partir de 1",
+          "in" : "path",
+          "name" : "number",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Chat"
+                }
+              }
+            },
+            "description" : "O chat de quem chama na rodada",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID, ou número fora de 1 a 100",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Quem chama não formou par nessa rodada: ficou de fora, não estava no sorteio, ou a rodada ou o evento não existem",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lê o chat com o par da rodada",
+        "tags" : [ "chat" ]
+      }
+    },
+    "/api/events/{eventId}/rounds/{number}/chat/messages" : {
+      "get" : {
+        "description" : "As mensagens depois de afterSeq, em ordem crescente de posição. Peça de novo com o nextAfterSeq até ele vir null; depois, faça polling com afterSeq igual à maior posição já vista. Uma lacuna nas posições quer dizer mensagem perdida: peça de novo.",
+        "operationId" : "listMyRoundChatMessages",
+        "parameters" : [ {
+          "description" : "Id do evento",
+          "in" : "path",
+          "name" : "eventId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        }, {
+          "description" : "Número da rodada no evento, a partir de 1",
+          "in" : "path",
+          "name" : "number",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        }, {
+          "description" : "Só mensagens com posição maior que esta; ausente na primeira leitura",
+          "in" : "query",
+          "name" : "afterSeq",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 0,
+            "maximum" : 300,
+            "minimum" : 0
+          }
+        }, {
+          "description" : "Quantas mensagens no máximo nesta página",
+          "in" : "query",
+          "name" : "maxPageSize",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 50,
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ChatMessages"
+                }
+              }
+            },
+            "description" : "Uma página das mensagens",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID, ou número fora de 1 a 100, afterSeq fora de 0 a 300 ou maxPageSize fora de 1 a 100",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Quem chama não formou par nessa rodada: ficou de fora, não estava no sorteio, ou a rodada ou o evento não existem",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lista as mensagens do chat da rodada",
+        "tags" : [ "chat" ]
+      },
+      "post" : {
+        "description" : "Gere a Idempotency-Key ao criar o rascunho e reutilize-a em todo reenvio (rede caiu, timeout, aba recarregada): a mesma chave com o mesmo texto devolve a mesma mensagem (200), mesmo depois de o chat fechar. Com o chat fechado, pelo motivo que for, a resposta é 409 com reason CHAT_CLOSED; leia o chat de novo. Cada chamada, repetida ou não, gasta o limite da conta: 20 por minuto, repostas aos poucos.",
+        "operationId" : "sendRoundChatMessage",
+        "parameters" : [ {
+          "description" : "Id do evento",
+          "in" : "path",
+          "name" : "eventId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        }, {
+          "description" : "Número da rodada no evento, a partir de 1",
+          "in" : "path",
+          "name" : "number",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        }, {
+          "description" : "Gerada pelo cliente para o rascunho e repetida em todo reenvio dele",
+          "in" : "header",
+          "name" : "Idempotency-Key",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SendMessageRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ChatMessage"
+                }
+              }
+            },
+            "description" : "A mensagem que a mesma Idempotency-Key já tinha gravado, com o mesmo texto",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ChatMessage"
+                }
+              }
+            },
+            "description" : "A mensagem gravada",
+            "headers" : {
+              "Location" : {
+                "description" : "Endereço da mensagem",
+                "required" : true,
+                "schema" : {
+                  "type" : "string",
+                  "format" : "uri",
+                  "maxLength" : 2048
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ValidationProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID, ou número fora de 1 a 100, Idempotency-Key ausente ou que não é UUID, texto vazio, com mais de 500 caracteres ou com caractere proibido, JSON malformado ou campo desconhecido",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "403" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sessão web sem o token CSRF no header X-XSRF-TOKEN",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Quem chama não formou par nessa rodada: ficou de fora, não estava no sorteio, ou a rodada ou o evento não existem",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "409" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RefusalProblemDetail"
+                }
+              }
+            },
+            "description" : "O chat não aceita mensagens (reason CHAT_CLOSED), ou a Idempotency-Key já gravou outro texto (reason IDEMPOTENCY_KEY_REUSED); nada foi gravado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "415" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Corpo em outro formato que não application/json",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "429" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Limite de mensagens desta conta esgotado; nada foi gravado",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até a próxima mensagem ficar disponível",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int64",
+                  "maximum" : 86400,
+                  "minimum" : 0
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "503" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Outra mensagem ao mesmo chat demorou além do teto, ou o limite desta conta não pôde ser contado; nada foi gravado, e reenviar com a mesma Idempotency-Key é seguro",
+            "headers" : {
+              "Retry-After" : {
+                "description" : "Segundos até tentar de novo",
+                "required" : true,
+                "schema" : {
+                  "type" : "integer",
+                  "format" : "int32",
+                  "maximum" : 1,
+                  "minimum" : 1
+                },
+                "style" : "simple"
+              },
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Envia uma mensagem ao par da rodada",
+        "tags" : [ "chat" ]
+      }
+    },
+    "/api/events/{eventId}/rounds/{number}/chat/messages/{seq}" : {
+      "get" : {
+        "description" : "A mensagem numa posição do chat de quem chama.",
+        "operationId" : "getMyRoundChatMessage",
+        "parameters" : [ {
+          "description" : "Id do evento",
+          "in" : "path",
+          "name" : "eventId",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid",
+            "maxLength" : 36,
+            "minLength" : 36
+          }
+        }, {
+          "description" : "Número da rodada no evento, a partir de 1",
+          "in" : "path",
+          "name" : "number",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 100,
+            "minimum" : 1
+          }
+        }, {
+          "description" : "A posição da mensagem no chat",
+          "in" : "path",
+          "name" : "seq",
+          "required" : true,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 300,
+            "minimum" : 1
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ChatMessage"
+                }
+              }
+            },
+            "description" : "A mensagem",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "400" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Id que não é UUID, ou número fora de 1 a 100, ou posição fora de 1 a 300",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Sem credencial válida",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "404" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Não há mensagem nessa posição, ou quem chama não formou par nessa rodada",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          },
+          "500" : {
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description" : "Erro inesperado",
+            "headers" : {
+              "X-Request-Id" : {
+                "$ref" : "#/components/headers/RequestId"
+              }
+            }
+          }
+        },
+        "summary" : "Lê uma mensagem do chat da rodada",
+        "tags" : [ "chat" ]
       }
     },
     "/api/events/{eventId}/rounds/{number}/decision" : {
@@ -3422,6 +4033,80 @@
         },
         "required" : [ "items", "nextPageToken" ]
       },
+      "Chat" : {
+        "type" : "object",
+        "properties" : {
+          "chatId" : {
+            "type" : "string",
+            "format" : "uuid",
+            "description" : "Id opaco do chat, para casar avisos de tempo real com a tela",
+            "maxLength" : 36,
+            "minLength" : 36
+          },
+          "lastSeq" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "A posição da última mensagem, ou 0 sem nenhuma: a versão do chat",
+            "maximum" : 300,
+            "minimum" : 0
+          },
+          "open" : {
+            "type" : "boolean",
+            "description" : "Se aceita mensagens agora. Fechado, só leitura, pelo motivo que for: a rodada seguinte começou, o evento acabou, o chat chegou a 300 mensagens ou há um bloqueio"
+          }
+        },
+        "required" : [ "chatId", "lastSeq", "open" ]
+      },
+      "ChatMessage" : {
+        "type" : "object",
+        "properties" : {
+          "fromMe" : {
+            "type" : "boolean",
+            "description" : "Se quem chama enviou a mensagem"
+          },
+          "sentAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Quando o servidor gravou a mensagem; não define a ordem",
+            "maxLength" : 35
+          },
+          "seq" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "A posição da mensagem no chat, sem lacunas: a ordem de chegada ao servidor",
+            "maximum" : 300,
+            "minimum" : 1
+          },
+          "text" : {
+            "type" : "string",
+            "description" : "O texto como foi gravado; mostre como texto comum, nunca como HTML ou link",
+            "maxLength" : 500,
+            "minLength" : 1
+          }
+        },
+        "required" : [ "fromMe", "sentAt", "seq", "text" ]
+      },
+      "ChatMessages" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "description" : "Mensagens depois de afterSeq, em ordem crescente de posição",
+            "items" : {
+              "$ref" : "#/components/schemas/ChatMessage"
+            },
+            "maxItems" : 100
+          },
+          "nextAfterSeq" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32",
+            "description" : "O afterSeq da próxima página, ou null quando esta chega à última mensagem",
+            "maximum" : 300,
+            "minimum" : 1
+          }
+        },
+        "required" : [ "items", "nextAfterSeq" ]
+      },
       "Connection" : {
         "type" : "object",
         "properties" : {
@@ -3895,8 +4580,8 @@
           },
           "reason" : {
             "type" : "string",
-            "description" : "EVENT_NOT_PUBLISHED: o evento é rascunho. EVENT_ALREADY_PUBLISHED: já publicado. EVENT_CANCELLED: cancelado. EVENT_STARTED: já começou. EVENT_ENDED: já acabou. EVENT_FULL: sem vagas. EVENT_NOT_UNDERWAY: fora do horário ou não publicado, para iniciar rodada. ROUND_OUT_OF_SEQUENCE: a rodada anterior não existe. PROFILE_INCOMPLETE (403): falta nome, data de nascimento ou região. UNDERAGE (403): menor de 18 anos. BIRTH_DATE_ALREADY_SET: a data de nascimento não muda.",
-            "enum" : [ "EVENT_NOT_PUBLISHED", "EVENT_ALREADY_PUBLISHED", "EVENT_CANCELLED", "EVENT_STARTED", "EVENT_ENDED", "EVENT_FULL", "EVENT_NOT_UNDERWAY", "ROUND_OUT_OF_SEQUENCE", "PROFILE_INCOMPLETE", "UNDERAGE", "BIRTH_DATE_ALREADY_SET", "DECISION_ALREADY_MADE" ]
+            "description" : "EVENT_NOT_PUBLISHED: o evento é rascunho. EVENT_ALREADY_PUBLISHED: já publicado. EVENT_CANCELLED: cancelado. EVENT_STARTED: já começou. EVENT_ENDED: já acabou. EVENT_FULL: sem vagas. EVENT_NOT_UNDERWAY: fora do horário ou não publicado, para iniciar rodada. ROUND_OUT_OF_SEQUENCE: a rodada anterior não existe. PROFILE_INCOMPLETE (403): falta nome, data de nascimento ou região. UNDERAGE (403): menor de 18 anos. BIRTH_DATE_ALREADY_SET: a data de nascimento não muda. DECISION_ALREADY_MADE: a decisão da rodada é final. CHAT_CLOSED: o chat da rodada não aceita mais mensagens, sem dizer por quê. IDEMPOTENCY_KEY_REUSED: a Idempotency-Key já foi usada com outro conteúdo.",
+            "enum" : [ "EVENT_NOT_PUBLISHED", "EVENT_ALREADY_PUBLISHED", "EVENT_CANCELLED", "EVENT_STARTED", "EVENT_ENDED", "EVENT_FULL", "EVENT_NOT_UNDERWAY", "ROUND_OUT_OF_SEQUENCE", "PROFILE_INCOMPLETE", "UNDERAGE", "BIRTH_DATE_ALREADY_SET", "DECISION_ALREADY_MADE", "CHAT_CLOSED", "IDEMPOTENCY_KEY_REUSED" ]
           },
           "requestId" : {
             "type" : "string",
@@ -3981,6 +4666,19 @@
           }
         },
         "required" : [ "createdAt", "description", "id", "reason", "reportedAccountId", "status" ]
+      },
+      "SendMessageRequest" : {
+        "type" : "object",
+        "additionalProperties" : false,
+        "properties" : {
+          "text" : {
+            "type" : "string",
+            "description" : "O texto, em parágrafos, sem caracteres invisíveis nem de controle. Espaço nas pontas é removido e o texto é normalizado em NFC antes de contar os caracteres. Link e marcação são texto comum.",
+            "maxLength" : 500,
+            "minLength" : 1
+          }
+        },
+        "required" : [ "text" ]
       },
       "ValidationProblemDetail" : {
         "type" : "object",
