@@ -14,7 +14,7 @@ record ChatResponse(
         UUID chatId,
         @Schema(requiredMode = Schema.RequiredMode.REQUIRED,
                 description = "Se aceita mensagens agora. Fechado, só leitura, pelo motivo que for: a rodada "
-                        + "seguinte começou, o evento acabou, o chat chegou a 300 mensagens ou há um bloqueio")
+                        + "seguinte começou, o evento acabou, o chat chegou a " + ApiSchemas.MAX_MESSAGES + " mensagens ou há um bloqueio")
         boolean open,
         @Schema(requiredMode = Schema.RequiredMode.REQUIRED, format = "int32", minimum = "0",
                 maximum = ApiSchemas.MAX_MESSAGES,

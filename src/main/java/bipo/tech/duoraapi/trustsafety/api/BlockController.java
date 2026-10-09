@@ -44,7 +44,8 @@ class BlockController {
     static final int MAX_PAGE_SIZE = 100;
 
     private static final String RATE_LIMIT_DESCRIPTION = "Cada chamada, repetida ou não, gasta o limite da conta, "
-            + "somado com o do outro: 60 por hora, repostas aos poucos.";
+            + "somado com o do outro: " + BlockRateLimitProperties.DEFAULT_CAPACITY + " por hora, repostas aos "
+            + "poucos.";
     private static final String ACCOUNT_ID_DESCRIPTION = "Id da outra conta, como o app o recebe ao mostrar a pessoa";
 
     private final BlockService blocks;
@@ -124,7 +125,7 @@ class BlockController {
             description = "Do bloqueio mais recente para o mais antigo, paginado por cursor. A última página "
                     + "vem com nextPageToken null.")
     @ApiResponse(responseCode = "200", description = "Uma página dos bloqueios")
-    @ApiResponse(responseCode = "400", description = "maxPageSize fora de 1 a 100, ou pageToken que a API não gerou",
+    @ApiResponse(responseCode = "400", description = "maxPageSize fora de 1 a " + MAX_PAGE_SIZE + ", ou pageToken que a API não gerou",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     BlockedAccountsResponse blockedAccounts(AccountId caller,
             @Parameter(description = "Quantos bloqueios no máximo nesta página",

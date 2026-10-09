@@ -55,12 +55,14 @@ class AdminRoundController {
                     + "vezes. Idempotente pela chave evento + número: repetir, inclusive ao mesmo tempo, devolve "
                     + "a mesma rodada, por isso dispensa If-Match e Idempotency-Key (docs/adr/0017). A rodada N "
                     + "exige a N-1, e o evento precisa estar publicado e em andamento. Cada chamada, repetida ou "
-                    + "não, gasta o limite da conta ADMIN: 30 por hora, repostas aos poucos.")
+                    + "não, gasta o limite da conta ADMIN: " + RoundRateLimitProperties.DEFAULT_CAPACITY + " por hora, "
+                    + "repostas aos poucos.")
     @ApiResponse(responseCode = "201", description = "A rodada criada",
             headers = @Header(name = "Location", required = true, description = "Endereço da rodada",
                     schema = @Schema(type = "string", format = "uri", maxLength = ApiSchemas.LOCATION_MAX_LENGTH)))
     @ApiResponse(responseCode = "200", description = "A rodada que já existia")
-    @ApiResponse(responseCode = "400", description = "Id que não é UUID, ou número fora de 1 a 100",
+    @ApiResponse(responseCode = "400", description = "Id que não é UUID, ou número fora de " + ApiSchemas.FIRST_ROUND + " a "
+                    + ApiSchemas.LAST_ROUND,
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     @ApiResponse(responseCode = "404", description = "Não há evento com esse id",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
@@ -103,7 +105,8 @@ class AdminRoundController {
     @Operation(operationId = "getRound", summary = "Lê uma rodada do evento",
             description = "Quantos pares se formaram e quantas pessoas ficaram de fora, nunca quem.")
     @ApiResponse(responseCode = "200", description = "A rodada")
-    @ApiResponse(responseCode = "400", description = "Id que não é UUID, ou número fora de 1 a 100",
+    @ApiResponse(responseCode = "400", description = "Id que não é UUID, ou número fora de " + ApiSchemas.FIRST_ROUND + " a "
+                    + ApiSchemas.LAST_ROUND,
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     @ApiResponse(responseCode = "404", description = "O evento não tem rodada com esse número",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))

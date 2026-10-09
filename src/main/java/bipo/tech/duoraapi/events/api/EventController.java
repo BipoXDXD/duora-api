@@ -38,7 +38,7 @@ class EventController {
             description = "Só os publicados, do início mais próximo ao mais distante, paginados por cursor. A "
                     + "última página vem com nextPageToken null.")
     @ApiResponse(responseCode = "200", description = "Uma página dos eventos")
-    @ApiResponse(responseCode = "400", description = "maxPageSize fora de 1 a 50, ou pageToken que a API não gerou",
+    @ApiResponse(responseCode = "400", description = "maxPageSize fora de 1 a " + PageSize.MAX + ", ou pageToken que a API não gerou",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     PageResponse<EventResponse> upcoming(
             @Parameter(description = "Quantos eventos no máximo nesta página",

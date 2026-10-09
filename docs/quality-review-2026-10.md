@@ -83,6 +83,13 @@ O teste veio antes: o caso novo em `BlockIT.malformedPageTokens` falhou no códi
    ainda três jeitos de ler erro do PG: `violates()` no matching, `SqlStates` no trustsafety e a comparação
    inline. O próximo passo, depois da mudança desta branch, é um helper em `config`, por exemplo
    `PostgresLocks`.
+
+   **Feito** (branch `refactor/locks-and-spec-numbers`): `config.PostgresLocks` tem `limitWait` (o
+   `set_config('lock_timeout', ...)`) e `translatingTimeout` (55P03 vira `CannotAcquireLockException`). Os
+   quatro adapters (`JdbcRoundRepository`, `JdbcDecisionRepository`, `JdbcChatRepository` e
+   `RegistrationRepository`) o usam e mantêm o próprio teto (5 s, 2 s, 2 s, 2 s) e a própria mensagem; os
+   handlers 503 não mudaram. O `PostgresLocksTest` cobre a tradução. Sobra a leitura de constraint
+   (`violates()` e `SqlStates`), que lê FK e unicidade, não lock, e fica como está.
 6. **A paginação "limit + 1" em `ConnectionService` e `BlockService`.** O events já tem `ResultPage`. Dá
    para generalizar quando o chat ganhar lista.
 7. **A faixa da rodada (1..100) em 5 lugares e a capacidade máxima (200) em 2.** Onde aparecem:
@@ -100,6 +107,22 @@ O teste veio antes: o caso novo em `BlockIT.malformedPageTokens` falhou no códi
    Também há números de rate limit ("60 por hora") escritos à mão em 11 descrições, que viram mentira se
    `application.properties` mudar. As saídas possíveis são meta-annotations ou um `OpenApiCustomizer`. Só
    com o `OpenApiContractIT` vigiando o diff, num PR próprio.
+
+   **Feito em parte** (branch `refactor/locks-and-spec-numbers`, `docs/openapi.json` intacto):
+   - Os números das descrições leem constantes. Faixa da rodada: `Pairings.FIRST_ROUND`/`LAST_ROUND`, pelo
+     `ApiSchemas` de cada módulo. Teto do `maxPageSize`: `MAX_PAGE_SIZE`, `PageSize.MAX` e
+     `ChatParameters.MAX_PAGE_SIZE`. Chat: `Chat.MAX_MESSAGES` e `ChatMessageText.MAX_LENGTH`. Capacidade do
+     evento: `Capacity.MIN_PLACES`/`MAX_PLACES`.
+   - Os limites por conta ("60 por hora", "10 denúncias por dia") citam o padrão: `DEFAULT_CAPACITY` em cada
+     `*RateLimitProperties` e `Reports.DEFAULT_DAILY_LIMIT`. O número ainda existe em dois lugares (a constante e
+     o `application.properties`), porque a anotação só aceita constante. O `RateLimitDescriptionsTest` compara a
+     spec com o `application.properties` e falha se divergirem. A unidade ("por hora") continua escrita à mão e
+     também é conferida pelo teste.
+   - Os `@Parameter` de `eventId` e `number` do chat viraram `@EventIdPathParameter` e
+     `@RoundNumberPathParameter` (meta-annotations; o springdoc as resolve).
+   - Ficam de fora: os blocos `@ApiResponse` 429/503 e os `@Parameter` dos outros 6 controllers, e os dois
+     números de `Duration` ("12 horas", "365 dias" em `CreateEventRequest` e `AdminEventController`), que não são
+     constantes de anotação.
 10. **Texto livre Unicode.** `EventText` e `ProfileText` são idênticos, e o próprio comentário admite a
     cópia. O filtro de caracteres invisíveis é política técnica, não modelo, e caberia no shared kernel da
     raiz. Isso exige revisar a ADR 0007.
@@ -295,7 +318,7 @@ Registrado, sem correção:
      tem o mesmo nome do de `connections`.
    - `lock_timeout` + 55P03 aparecem em 4 adapters, mais o `set_config` de `RegistrationRepository` (item 3.5).
      O `PostgresLocks` proposto passa a ter quatro usuários e vale um PR próprio, porque toca matching,
-     connections e events.
+     connections e events. **Feito** (item 3.5).
    - A paginação "limit + 1" tem 3 cópias (`ConnectionService`, `BlockService`, `ChatService` com
      `MessagesPage`), mais o `ResultPage` do events (item 3.6). O cursor do chat é a posição, e não o keyset, então
      o que se repete é só o corte da sobra.
@@ -311,7 +334,8 @@ Registrado, sem correção:
    - "20 por minuto" e "10 denúncias por dia", que viram mentira se `application.properties` mudar;
    - os `@Parameter` de `eventId` e `number`, copiados nos 5 endpoints.
 
-   É o item 3.9, e precisa do `OpenApiContractIT` vigiando o diff.
+   É o item 3.9, e precisa do `OpenApiContractIT` vigiando o diff. **Feito** (item 3.9): os números leem
+   constantes e os `@Parameter` viraram meta-annotations, sem mudar o `docs/openapi.json`.
 6. **O `Location` da denúncia é montado por concatenação** (`REPORTS_PATH + report.id()` em
    `ChatController.report`), enquanto o envio usa `UriComponentsBuilder`. É o item 3.17.
 7. **`Reports` é `@Component`, e `Pairings` e `EventCalendar` são `@Service`.** As três são APIs publicadas com o

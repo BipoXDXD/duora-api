@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import bipo.tech.duoraapi.config.PostgresLocks;
 import bipo.tech.duoraapi.identity.AccountId;
 
 /**
@@ -57,10 +58,7 @@ public class RegistrationRepository {
      * {@link EventRepository#findByIdForUpdate}.
      */
     public void limitLockWait() {
-        jdbcClient.sql("select set_config('lock_timeout', :timeout, true)")
-                .param("timeout", LOCK_TIMEOUT)
-                .query(String.class)
-                .single();
+        PostgresLocks.limitWait(jdbcClient, LOCK_TIMEOUT);
     }
 
     public long countByEvent(UUID eventId) {

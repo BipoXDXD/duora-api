@@ -15,4 +15,11 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties("duora.connections.decision-rate-limit")
 record DecisionRateLimitProperties(@Positive int capacity, @NotNull Duration period) {
+
+    /**
+     * A capacidade de application.properties. A descrição da rota na spec cita este número, porque uma anotação
+     * só aceita constante; o RateLimitDescriptionsTest falha se os dois divergirem.
+     */
+    static final int DEFAULT_CAPACITY = 120;
+
 }

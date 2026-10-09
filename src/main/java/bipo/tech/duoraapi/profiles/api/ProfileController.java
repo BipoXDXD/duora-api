@@ -84,7 +84,8 @@ class ProfileController {
             description = "Merge patch de um nível: campo ausente não muda, null apaga e valor troca. Nome, data de "
                     + "nascimento e região não podem ser apagados; a data de nascimento só pode ser informada uma vez "
                     + "e precisa ser de maior de idade. A edição é inteira ou nada. Cada "
-                    + "edição enviada, aceita ou não, gasta o limite da conta: 120 por hora, repostas aos poucos.")
+                    + "edição enviada, aceita ou não, gasta o limite da conta: " + ProfileEditRateLimitProperties.DEFAULT_CAPACITY + " por hora, "
+                    + "repostas aos poucos.")
     @ApiResponse(responseCode = "200", description = "O perfil editado, com a nova versão no ETag",
             headers = @Header(name = HttpHeaders.ETAG, required = true, description = ETAG_DESCRIPTION,
                     schema = @Schema(type = "string", pattern = ETAG_PATTERN, maxLength = ETAG_MAX_LENGTH)))

@@ -15,12 +15,11 @@ import java.util.Set;
 import java.util.UUID;
 
 import org.postgresql.util.PSQLException;
-import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import bipo.tech.duoraapi.config.PostgresLocks;
 import bipo.tech.duoraapi.identity.AccountId;
 import bipo.tech.duoraapi.matching.domain.Pair;
 import bipo.tech.duoraapi.matching.domain.PairingHistory;
@@ -45,9 +44,6 @@ class JdbcRoundRepository implements RoundRepository {
     /** A FK que liga a rodada N à N-1, na migration V10. */
     private static final String PREVIOUS_ROUND_CONSTRAINT = "round_previous_fk";
 
-    /** lock_not_available, na tabela de códigos de erro do PostgreSQL: o lock_timeout estourou. */
-    private static final String LOCK_NOT_AVAILABLE = "55P03";
-
     private final JdbcClient jdbcClient;
 
     JdbcRoundRepository(JdbcClient jdbcClient) {
@@ -60,9 +56,9 @@ class JdbcRoundRepository implements RoundRepository {
      */
     @Override
     public boolean addIfAbsent(Round round) {
-        limitLockWait();
+        PostgresLocks.limitWait(jdbcClient, LOCK_TIMEOUT);
         try {
-            int inserted = jdbcClient.sql("""
+            int inserted = PostgresLocks.translatingTimeout(() -> jdbcClient.sql("""
                             insert into round (event_id, number, previous_number, seed, started_at)
                             values (:eventId, :number, :previousNumber, :seed, :startedAt)
                             on conflict (event_id, number) do nothing
@@ -73,28 +69,14 @@ class JdbcRoundRepository implements RoundRepository {
                             Types.INTEGER)
                     .param("seed", round.seed())
                     .param("startedAt", OffsetDateTime.ofInstant(round.startedAt(), ZoneOffset.UTC))
-                    .update();
+                    .update(), "timed out waiting for the same round to be started");
             return inserted == 1;
         } catch (DataIntegrityViolationException e) {
             if (violates(e, PREVIOUS_ROUND_CONSTRAINT)) {
                 throw new RoundOutOfSequenceException();
             }
             throw e;
-        } catch (UncategorizedSQLException e) {
-            // O JdbcClient não traduz o lock_timeout (55P03); o resto da aplicação o trata como lock não obtido.
-            if (LOCK_NOT_AVAILABLE.equals(e.getSQLException().getSQLState())) {
-                throw new CannotAcquireLockException("timed out waiting for the same round to be started", e);
-            }
-            throw e;
         }
-    }
-
-    /** Até o fim da transação: o teto vale também para o que ela grava depois da rodada. */
-    private void limitLockWait() {
-        jdbcClient.sql("select set_config('lock_timeout', :timeout, true)")
-                .param("timeout", LOCK_TIMEOUT)
-                .query(String.class)
-                .single();
     }
 
     @Override

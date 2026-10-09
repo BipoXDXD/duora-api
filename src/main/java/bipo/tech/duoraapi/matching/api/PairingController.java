@@ -40,7 +40,8 @@ class PairingController {
             description = "O id da conta do par, ou null se quem chama ficou de fora nesta rodada. Sem lugar na "
                     + "rodada, 404, exista o evento ou a rodada ou não.")
     @ApiResponse(responseCode = "200", description = "O lugar de quem chama na rodada")
-    @ApiResponse(responseCode = "400", description = "Id que não é UUID, ou número fora de 1 a 100",
+    @ApiResponse(responseCode = "400", description = "Id que não é UUID, ou número fora de " + ApiSchemas.FIRST_ROUND + " a "
+                    + ApiSchemas.LAST_ROUND,
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
     @ApiResponse(responseCode = "404", description = "Quem chama não estava no sorteio dessa rodada",
             content = @Content(mediaType = PROBLEM_JSON, schema = @Schema(ref = PROBLEM_SCHEMA)))
