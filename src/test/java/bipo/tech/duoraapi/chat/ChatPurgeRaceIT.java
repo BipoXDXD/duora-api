@@ -12,6 +12,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -29,6 +30,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.jayway.jsonpath.JsonPath;
 
@@ -73,6 +75,9 @@ class ChatPurgeRaceIT {
 
     @Autowired
     private ChatPurge purge;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
 
     @BeforeEach
     void resetState() {
@@ -134,6 +139,40 @@ class ChatPurgeRaceIT {
         assertThat(ChatFixtures.messageRows(jdbcClient)).isZero();
     }
 
+    /**
+     * O expurgo travou e apagou o chat, mas ainda não confirmou, quando o envio chega: o envio espera por ele e
+     * recebe o 409 do chat fechado.
+     */
+    @Test
+    void aSendThatWaitsForThePurgeIsRefusedAsClosed() throws Exception {
+        String eventId = expiredChatWithOneMessage();
+        var deleted = new CountDownLatch(1);
+        var commit = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            Future<?> purgeInFlight = executor.submit(() -> transactionTemplate.executeWithoutResult(status -> {
+                jdbcClient.sql("delete from chat where event_id = cast(:id as uuid)").param("id", eventId).update();
+                deleted.countDown();
+                awaitQuietly(commit);
+            }));
+            assertThat(deleted.await(PATIENCE.toSeconds(), TimeUnit.SECONDS)).isTrue();
+            Future<MvcResult> send = executor.submit(() -> ChatFixtures.send(mockMvc, eventId, user("bruno"),
+                    newKey(), "oi").andReturn());
+            try {
+                awaitUntil(() -> send.isDone() || aStatementWaitsForAnotherTransaction());
+            } finally {
+                commit.countDown();
+            }
+            purgeInFlight.get(PATIENCE.toSeconds(), TimeUnit.SECONDS);
+
+            MvcResult result = send.get(PATIENCE.toSeconds(), TimeUnit.SECONDS);
+            assertThat(result.getResponse().getStatus()).isEqualTo(409);
+            assertThat((String) JsonPath.read(result.getResponse().getContentAsString(), "$.reason"))
+                    .isEqualTo("CHAT_CLOSED");
+        }
+        assertThat(ChatFixtures.messageRows(jdbcClient)).isZero();
+    }
+
     /** Um chat com uma mensagem de um evento que acabou há mais de 24 h, e o relógio já depois do purge_after. */
     private String expiredChatWithOneMessage() throws Exception {
         String eventId = ChatFixtures.pairedInRoundOne(mockMvc, jdbcClient, clock, "ana", "bruno");
@@ -185,12 +224,26 @@ class ChatPurgeRaceIT {
                 .single();
     }
 
+    private boolean aStatementWaitsForAnotherTransaction() {
+        return jdbcClient.sql("select exists (select 1 from pg_locks where locktype = 'transactionid' and not granted)")
+                .query(Boolean.class)
+                .single();
+    }
+
     /** Espera por consulta ao banco, não por tempo: o sleep só espaça as consultas até o prazo. */
     private static void awaitUntil(BooleanSupplier condition) throws InterruptedException {
         Instant deadline = Instant.now().plus(PATIENCE);
         while (!condition.getAsBoolean()) {
             assertThat(Instant.now()).as("waited too long for the request to reach the barrier").isBefore(deadline);
             Thread.sleep(5);
+        }
+    }
+
+    private static void awaitQuietly(CountDownLatch latch) {
+        try {
+            assertThat(latch.await(PATIENCE.toSeconds(), TimeUnit.SECONDS)).isTrue();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

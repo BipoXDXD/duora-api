@@ -217,11 +217,11 @@ os casos de `isLatestRound`.
 
 ### 5.2 Concorrência e transações (só leitura)
 
-Nenhum bug que justifique `fix` nesta branch. O que foi conferido:
+Nenhum bug que justifique `fix` naquela branch. O item 1 abaixo foi corrigido depois. O que foi conferido:
 
-- **Envio:** `insert ... on conflict do nothing` seguido de `select ... for update`. Em READ COMMITTED, o insert
-  espera a transação que cria o mesmo chat, e o `select` seguinte, num snapshot novo, enxerga a linha
-  confirmada. A Idempotency-Key é procurada já com o chat travado e tem `unique` no banco. O `update` de
+- **Envio:** `insert ... on conflict do nothing` seguido de `select ... for update` (hoje um comando só, ver o
+  item 1). Em READ COMMITTED, o insert espera a transação que cria o mesmo chat, e o `select` seguinte, num
+  snapshot novo, enxerga a linha confirmada. A Idempotency-Key é procurada já com o chat travado e tem `unique` no banco. O `update` de
   `last_seq` confere a sequência anterior. As leituras de rodada atual e de bloqueio acontecem depois do lock.
 - **Teto de espera:** `set_config('lock_timeout', ..., true)` vale até o fim da transação. O 55P03 vira
   `CannotAcquireLockException` e 503 com `Retry-After: 1`, coberto por
@@ -232,17 +232,26 @@ Nenhum bug que justifique `fix` nesta branch. O que foi conferido:
 
 Registrado, sem correção:
 
-1. **Corrida rara entre uma requisição e o expurgo devolve 500.** O caso é um chat de evento acabado há mais de
-   24 h. O `insert ... on conflict do nothing` não trava a linha que já existe. Se o expurgo a apagar entre o
-   insert e a leitura, `findOrAdd` e `lockOrAdd` não acham o chat e lançam `IllegalStateException` (antes era
-   `NoSuchElementException`, também 500). Não há como reproduzir sem um gancho entre os dois comandos.
-   Saídas possíveis:
-   - em `lockOrAdd`, trocar os dois comandos por `insert ... on conflict do update set last_seq =
-     chat.last_seq returning ...`, que trava a linha no mesmo comando;
-   - nos dois métodos, tentar de novo uma vez.
-
-   O impacto é um 500 em vez de 409 ou 200, sem perda de dado. Isso se liga à decisão 6 pendente da ADR 0021
-   (o chat vazio que a leitura recria depois do expurgo).
+1. **Corrida rara entre uma requisição e o expurgo devolvia 500. Resolvido na branch `fix/chat-purge-race`.**
+   O caso é um chat de evento acabado há mais de 24 h. O `insert ... on conflict do nothing` não travava a linha
+   que já existia. Se o expurgo a apagasse entre o insert e a leitura, `findOrAdd` e `lockOrAdd` não achavam o
+   chat e lançavam `IllegalStateException`, e a resposta era 500.
+   - **Reprodução:** `ChatPurgeRaceIT` instala uma barreira, um trigger `after insert ... for each statement` na
+     tabela chat que espera um advisory lock segurado pelo teste. Com a requisição parada depois do insert, o
+     `ChatPurge.purgeExpired` de verdade roda em outra conexão, e só então a barreira abre. Antes da correção, o
+     `GET .../chat` e o envio responderam 500.
+   - **Correção:** `JdbcChatRepository.addOrLock` cria ou trava e devolve o chat num comando só:
+     `insert ... on conflict (...) do update set last_seq = chat.last_seq returning id, last_seq`. Com a linha
+     travada, o expurgo a pula (`skip locked`) e a apaga na execução seguinte. Se o expurgo a travou antes, o
+     comando espera por ele e cria outra linha. `lockOrAdd` usa o comando sob o `lock_timeout` de 2 s. `findOrAdd`
+     faz primeiro um `select` e só usa o comando quando o chat ainda não existe, para quem só lê não gravar uma
+     versão nova da linha a cada leitura.
+   - **Comportamento:** o mesmo de antes fora da corrida. A leitura responde 200 com o chat fechado e o envio
+     responde 409 `CHAT_CLOSED`. O chat vazio que a leitura recria depois do expurgo continua como está, e a
+     decisão 6 da ADR 0021 segue pendente.
+   - **Testes:** três em `ChatPurgeRaceIT`. Os dois da barreira falhavam com 500 antes da correção. O terceiro
+     cobre a ordem inversa, com o expurgo segurando o chat apagado e o envio esperando por ele, e também passava
+     antes.
 2. **O instante do envio é lido antes da espera pelo lock.** `now` e o horário do evento são lidos antes de
    `lockOrAdd`, que pode esperar até 2 s. Uma mensagem pode ser aceita até 2 s depois do fim do evento, e o
    `sentAt` de duas mensagens seguidas pode sair fora de ordem por até 2 s. A spec já diz que `sentAt` não

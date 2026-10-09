@@ -496,13 +496,19 @@ Decisões tomadas na implementação, sem mudar o que foi aceito:
 14. **Testes sem o agendador:** a configuração de teste põe `interval` em um dia, para um contexto em cache com o
     relógio de teste adiantado não apagar chats de outro teste; o `ChatPurgeIT` chama o expurgo direto, e o
     `ChatPurgeSchedulingIT` confere que a tarefa está registrada com o trigger com jitter.
-15. **Depois do expurgo,** `GET .../chat` ainda recria um chat vazio e fechado (o `insert ... on conflict do nothing`
-    das fatias 1 e 2), com outro `chatId`, que o expurgo seguinte apaga; nenhum conteúdo volta. A lista de mensagens
+15. **Depois do expurgo,** `GET .../chat` ainda recria um chat vazio e fechado (a criação na primeira leitura das
+    fatias 1 e 2), com outro `chatId`, que o expurgo seguinte apaga; nenhum conteúdo volta. A lista de mensagens
     vem vazia, e a mensagem e a denúncia respondem `404`. Mudar isso (responder `404` depois do prazo) muda o
     contrato das fatias 1 e 2 e fica como pendência abaixo.
 16. **Limites da cópia:** `ChatMessageEvidence` aceita de 1 a 500 caracteres e posição de 1 a 300, os mesmos do chat,
     repetidos no `trustsafety` (que não pode ler o chat); `ChatMessageTest.everyMessageFitsInTheReportEvidence`
     quebra se o chat passar a aceitar mais.
+17. **Requisição e expurgo no mesmo chat (2026-10-09):** criar e travar o chat são um comando só,
+    `insert ... on conflict (...) do update set last_seq = chat.last_seq returning id, last_seq`, que o envio usa
+    sob o `lock_timeout` e a leitura usa só quando o `select` não acha o chat. Antes, o `insert ... on conflict do
+    nothing` não travava a linha existente, e o expurgo podia apagá-la antes do `select` seguinte, com resposta
+    `500`. Agora o expurgo pula a linha travada e a apaga na execução seguinte. O `ChatPurgeRaceIT` reproduz a
+    corrida com um trigger de barreira e um advisory lock (docs/quality-review-2026-10.md, item 5.2.1).
 
 ## Pendente com o usuário (decisões críticas)
 

@@ -55,21 +55,19 @@ class JdbcChatRepository implements ChatRepository {
         this.jdbcClient = jdbcClient;
     }
 
+    /**
+     * Quem só lê não grava uma versão nova da linha: o chat que já existe sai de um select. Ausente, ele é criado
+     * pelo mesmo comando que o trava e o devolve, sem intervalo em que o expurgo o apague.
+     */
     @Override
     public Chat findOrAdd(ChatKey key, Instant purgeAfter, Instant createdAt) {
-        addIfAbsent(key, purgeAfter, createdAt);
-        return find(key).orElseThrow(JdbcChatRepository::chatVanished);
+        return find(key).orElseGet(() -> addOrLock(key, purgeAfter, createdAt));
     }
 
     @Override
     public Chat lockOrAdd(ChatKey key, Instant purgeAfter, Instant createdAt) {
         limitLockWait();
-        addIfAbsent(key, purgeAfter, createdAt);
-        return translatingLockTimeout(() -> jdbcClient.sql(SELECT_CHAT_BY_KEY + " for update")
-                .params(keyParams(key))
-                .query(chatMapper(key))
-                .optional())
-                .orElseThrow(JdbcChatRepository::chatVanished);
+        return addOrLock(key, purgeAfter, createdAt);
     }
 
     @Override
@@ -89,28 +87,25 @@ class JdbcChatRepository implements ChatRepository {
     }
 
     /**
-     * {@code on conflict do nothing} na chave natural: com o mesmo chat sendo criado por outra transação, o insert
-     * espera ela terminar e, se ela confirmar, não faz nada.
+     * Cria o chat ou trava o que existe, e devolve a linha, num comando só. O {@code do update} que não muda nada
+     * existe pelo lock: com a linha travada, o expurgo a pula ({@code skip locked}). Se o expurgo já a travou, o
+     * comando espera por ele e, com a linha apagada, cria outra. Com o mesmo chat sendo criado ou travado por
+     * outra transação, espera ela terminar e devolve a última versão confirmada.
      */
-    private void addIfAbsent(ChatKey key, Instant purgeAfter, Instant createdAt) {
-        translatingLockTimeout(() -> jdbcClient.sql("""
+    private Chat addOrLock(ChatKey key, Instant purgeAfter, Instant createdAt) {
+        return translatingLockTimeout(() -> jdbcClient.sql("""
                         insert into chat (event_id, round_number, first_account_id, second_account_id, purge_after,
                                           created_at)
                         values (:eventId, :roundNumber, :first, :second, :purgeAfter, :createdAt)
-                        on conflict (event_id, round_number, first_account_id, second_account_id) do nothing
+                        on conflict (event_id, round_number, first_account_id, second_account_id)
+                        do update set last_seq = chat.last_seq
+                        returning id, last_seq
                         """)
                 .params(keyParams(key))
                 .param("purgeAfter", OffsetDateTime.ofInstant(purgeAfter, ZoneOffset.UTC))
                 .param("createdAt", OffsetDateTime.ofInstant(createdAt, ZoneOffset.UTC))
-                .update());
-    }
-
-    /**
-     * Só o expurgo apaga um chat, e só o vencido: sumir entre a criação e a leitura é a corrida com ele num chat de
-     * evento acabado há mais de 24 h.
-     */
-    private static IllegalStateException chatVanished() {
-        return new IllegalStateException("the chat was deleted between its creation and its read");
+                .query(chatMapper(key))
+                .single());
     }
 
     @Override
